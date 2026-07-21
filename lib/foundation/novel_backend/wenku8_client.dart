@@ -571,9 +571,10 @@ class Wenku8Client {
       }
       for (final div in contentDiv.querySelectorAll('div.divimage')) {
         final img = div.querySelector('img');
-        var src = _pickImgSrc(img) ??
-            absUrl(_base, div.querySelector('a')?.attributes['href']);
-        src = preferHttps(src ?? '');
+        var src = preferHttps(
+          _pickImgSrc(img) ??
+              absUrl(_base, div.querySelector('a')?.attributes['href']),
+        );
         if (src.isNotEmpty) {
           if (!images.contains(src)) images.add(src);
           div.replaceWith(Text('\n$src\n'));
