@@ -92,18 +92,24 @@ ComicSource _buildSource({
     ),
   ];
 
-  final searchOptions = [
-    SearchOptions(
-      LinkedHashMap.from({
-        'articlename': '书名',
-        'author': '作者',
-        'tag': '标签',
-      }),
-      '搜索类型',
-      'select',
-      'articlename',
-    ),
-  ];
+  // wenku8 site search only offers 小说标题 / 作者名称 (no tag in the form).
+  // linovelib is a single keyword box — no type selector.
+  final List<SearchOptions>? searchOptions;
+  if (key == 'wenku8') {
+    searchOptions = [
+      SearchOptions(
+        LinkedHashMap.from({
+          'articlename': '书名',
+          'author': '作者',
+        }),
+        '搜索类型',
+        'select',
+        'articlename',
+      ),
+    ];
+  } else {
+    searchOptions = null;
+  }
 
   return ComicSource(
     name,
@@ -141,10 +147,14 @@ ComicSource _buildSource({
     null,
     null,
     null,
-    (namespace, tag) => PageJumpTarget(key, 'search', {
-      'text': tag,
-      'options': ['tag'],
-    }),
+    // wenku8 tags cloud uses tags.php; linovelib just keyword-searches the tag text.
+    (namespace, tag) => PageJumpTarget(
+      key,
+      'search',
+      key == 'wenku8'
+          ? {'text': tag, 'options': ['tag']}
+          : {'text': tag},
+    ),
     null,
     null,
     false,
