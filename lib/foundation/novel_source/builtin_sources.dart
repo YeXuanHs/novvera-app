@@ -1,6 +1,7 @@
+import 'dart:collection';
+
 import 'package:novvera/foundation/comic_source/comic_source.dart';
 import 'package:novvera/foundation/consts.dart';
-import 'package:novvera/foundation/log.dart';
 import 'package:novvera/foundation/novel_api/novel_api_client.dart';
 import 'package:novvera/foundation/novel_backend/novel_http.dart';
 import 'package:novvera/foundation/novel_source/novel_page_cache.dart';
@@ -91,6 +92,19 @@ ComicSource _buildSource({
     ),
   ];
 
+  final searchOptions = [
+    SearchOptions(
+      LinkedHashMap.from({
+        'articlename': '书名',
+        'author': '作者',
+        'tag': '标签',
+      }),
+      '搜索类型',
+      'select',
+      'articlename',
+    ),
+  ];
+
   return ComicSource(
     name,
     key,
@@ -100,8 +114,13 @@ ComicSource _buildSource({
     null,
     explorePages,
     SearchPageData(
-      null,
-      (keyword, page, options) => _loadSearchAll(key, keyword, page),
+      searchOptions,
+      (keyword, page, options) => _loadSearch(
+        key,
+        keyword,
+        page,
+        options.isNotEmpty ? options.first : 'articlename',
+      ),
       null,
     ),
     null,
@@ -122,7 +141,10 @@ ComicSource _buildSource({
     null,
     null,
     null,
-    (namespace, tag) => PageJumpTarget(key, 'search', {'text': tag}),
+    (namespace, tag) => PageJumpTarget(key, 'search', {
+      'text': tag,
+      'options': ['tag'],
+    }),
     null,
     null,
     false,
@@ -250,101 +272,43 @@ String _resolveRankType(String category, String? param, List<String> options) {
   return _rankTypes.keys.first;
 }
 
-Future<Map<String, dynamic>?> _searchOne(
+Future<Res<List<Comic>>> _loadSearch(
   String source,
   String keyword,
+  int page,
   String type,
-  int page,
-) async {
-  try {
-    return await NovelApiClient.instance.get(
-      source,
-      '/search',
-      query: {
-        'keyword': keyword,
-        'type': type,
-        'page': page,
-        'fmt': 'utf8',
-      },
-    );
-  } catch (e) {
-    Log.warning('NovelSource', '$source search/$type: $e');
-    return null;
-  }
-}
-
-bool _searchHasItems(Map<String, dynamic>? data) {
-  final items = data?['items'];
-  return items is List && items.isNotEmpty;
-}
-
-/// Search book name / author / tag, then dedupe by aid.
-///
-/// wenku8 `search.php` only allows one hit per ~5s. Book-title and author both
-/// use that endpoint — parallelizing them makes the slower request return the
-/// rate-limit page. Title-only hits like「艾莉」then show empty if author wins
-/// the race. `tags.php` is a different endpoint and may run with title.
-Future<Res<List<Comic>>> _loadSearchAll(
-  String source,
-  String keyword,
-  int page,
 ) async {
   try {
     final kw = keyword.trim();
     if (kw.isEmpty) {
       return const Res([], subData: 1);
     }
-
-    final results = <Map<String, dynamic>>[];
-    if (source == 'wenku8') {
-      final pair = await Future.wait([
-        _searchOne(source, kw, 'articlename', page),
-        _searchOne(source, kw, 'tag', page),
-      ]);
-      for (final r in pair) {
-        if (r != null) results.add(r);
-      }
-      // Author also hits search.php — only when title missed.
-      if (!_searchHasItems(pair[0])) {
-        final author = await _searchOne(source, kw, 'author', page);
-        if (author != null) results.add(author);
-      }
-    } else {
-      final all = await Future.wait([
-        _searchOne(source, kw, 'articlename', page),
-        _searchOne(source, kw, 'author', page),
-        _searchOne(source, kw, 'tag', page),
-      ]);
-      for (final r in all) {
-        if (r != null) results.add(r);
-      }
-    }
-
-    final seen = <String>{};
-    final comics = <Comic>[];
-    final pagerMaxes = <int?>[];
-    final itemCounts = <int>[];
-    final fullPageSize = source == 'linovelib' ? 20 : 10;
-    for (final data in results) {
-      final items = (data['items'] as List? ?? []).whereType<Map>().toList();
-      pagerMaxes.add(int.tryParse('${data['pager_max'] ?? ''}'));
-      itemCounts.add(items.length);
-      for (final e in items) {
-        final comic = _itemToComic(Map<String, dynamic>.from(e), source);
-        if (comic.id.isEmpty || !seen.add(comic.id)) continue;
-        comics.add(comic);
-      }
-    }
-    var maxPage = mergeSearchMaxPage(
-      page,
-      pagerMaxes: pagerMaxes,
-      itemCounts: itemCounts,
-      fullPageSize: fullPageSize,
+    final searchType = const {'articlename', 'author', 'tag'}.contains(type)
+        ? type
+        : 'articlename';
+    final data = await NovelApiClient.instance.get(
+      source,
+      '/search',
+      query: {
+        'keyword': kw,
+        'type': searchType,
+        'page': page,
+        'fmt': 'utf8',
+      },
     );
-    if (comics.isEmpty && page > 1) {
-      maxPage = page - 1;
-    }
-    return Res(comics, subData: maxPage);
+    final items = (data['items'] as List? ?? [])
+        .whereType<Map>()
+        .map((e) => _itemToComic(Map<String, dynamic>.from(e), source))
+        .where((c) => c.id.isNotEmpty)
+        .toList();
+    final pagerMax = int.tryParse('${data['pager_max'] ?? ''}');
+    final maxPage = inferMaxPage(
+      page,
+      items.length,
+      fullPageSize: source == 'linovelib' ? 20 : 10,
+      parsed: pagerMax ?? int.tryParse('${data['max_page'] ?? ''}'),
+    );
+    return Res(items, subData: maxPage);
   } catch (e) {
     return Res.error(e.toString());
   }
