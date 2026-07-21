@@ -27,9 +27,14 @@ if (flutterVersionName == null) {
 
 def keystorePropertiesFile = rootProject.file("key.properties")
 def keystoreProperties = new Properties()
-def hasReleaseKeystore = keystorePropertiesFile.exists()
-if (hasReleaseKeystore) {
+def hasReleaseKeystore = false
+if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+    def storePath = keystoreProperties['storeFile']
+    hasReleaseKeystore = storePath != null && rootProject.file(storePath).exists()
+    if (!hasReleaseKeystore) {
+        logger.warn("key.properties found but keystore missing at ${storePath}; using debug signing")
+    }
 }
 
 android {
@@ -62,8 +67,10 @@ android {
 
     signingConfigs {
         if (hasReleaseKeystore) {
+            // storeFile in key.properties is relative to android/ (rootProject), not app/
+            def releaseStoreFile = rootProject.file(keystoreProperties['storeFile'])
             debug {
-                storeFile file(keystoreProperties['storeFile'])
+                storeFile releaseStoreFile
                 storePassword keystoreProperties['storePassword']
                 keyAlias keystoreProperties['keyAlias']
                 keyPassword keystoreProperties['keyPassword']
@@ -71,7 +78,7 @@ android {
             release {
                 keyAlias keystoreProperties['keyAlias']
                 keyPassword keystoreProperties['keyPassword']
-                storeFile file(keystoreProperties['storeFile'])
+                storeFile releaseStoreFile
                 storePassword keystoreProperties['storePassword']
             }
         }
