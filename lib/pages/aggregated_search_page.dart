@@ -1,11 +1,11 @@
 import "package:flutter/material.dart";
 import 'package:shimmer_animation/shimmer_animation.dart';
-import "package:venera/components/components.dart";
-import "package:venera/foundation/app.dart";
-import "package:venera/foundation/appdata.dart";
-import "package:venera/foundation/comic_source/comic_source.dart";
-import "package:venera/pages/search_result_page.dart";
-import "package:venera/utils/translations.dart";
+import "package:novvera/components/components.dart";
+import "package:novvera/foundation/app.dart";
+import "package:novvera/foundation/appdata.dart";
+import "package:novvera/foundation/comic_source/comic_source.dart";
+import "package:novvera/pages/search_result_page.dart";
+import "package:novvera/utils/translations.dart";
 
 class AggregatedSearchPage extends StatefulWidget {
   const AggregatedSearchPage({super.key, required this.keyword});

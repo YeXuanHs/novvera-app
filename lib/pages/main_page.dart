@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:venera/foundation/appdata.dart';
-import 'package:venera/pages/categories_page.dart';
-import 'package:venera/pages/search_page.dart';
-import 'package:venera/pages/settings/settings_page.dart';
-import 'package:venera/utils/translations.dart';
+import 'package:novvera/foundation/appdata.dart';
+import 'package:novvera/pages/categories_page.dart';
+import 'package:novvera/pages/search_page.dart';
+import 'package:novvera/pages/settings/settings_page.dart';
+import 'package:novvera/utils/translations.dart';
 
 import '../components/components.dart';
 import '../foundation/app.dart';

@@ -80,7 +80,7 @@ class _AboutSettingsState extends State<AboutSettings> {
 
 Future<bool> checkUpdate() async {
   var res = await AppDio().get(
-    "https://raw.githubusercontent.com/YeXuanHs/Novvera-app-desktop/master/pubspec.yaml",
+    "https://raw.githubusercontent.com/YeXuanHs/Novvera-app-desktop/main/pubspec.yaml",
   );
   if (res.statusCode == 200) {
     var data = loadYaml(res.data);

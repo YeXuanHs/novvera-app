@@ -1,14 +1,14 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:desktop_webview_window/desktop_webview_window.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flex_seed_scheme/flex_seed_scheme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:venera/foundation/log.dart';
-import 'package:venera/pages/auth_page.dart';
-import 'package:venera/pages/main_page.dart';
-import 'package:venera/utils/io.dart';
+import 'package:novvera/foundation/log.dart';
+import 'package:novvera/pages/auth_page.dart';
+import 'package:novvera/pages/main_page.dart';
+import 'package:novvera/utils/io.dart';
 import 'package:window_manager/window_manager.dart';
 import 'components/components.dart';
 import 'components/window_frame.dart';
@@ -199,7 +199,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         tertiary = light.tertiary;
       }
       return MaterialApp(
-        title: "venera",
+        title: "Novvera",
         home: home,
         debugShowCheckedModeBanner: false,
         theme: getTheme(primary, secondary, tertiary, Brightness.light),

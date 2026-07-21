@@ -1,7 +1,7 @@
 import 'package:flutter/services.dart';
-import 'package:venera/foundation/app.dart';
-import 'package:venera/foundation/appdata.dart';
-import 'package:venera/utils/ext.dart';
+import 'package:novvera/foundation/app.dart';
+import 'package:novvera/foundation/appdata.dart';
+import 'package:novvera/utils/ext.dart';
 
 String? _cachedProxy;
 
@@ -26,7 +26,7 @@ Future<String?> _getProxy() async {
 
   String res;
   if (!App.isLinux) {
-    const channel = MethodChannel("venera/method_channel");
+    const channel = MethodChannel("novvera/method_channel");
     try {
       res = await channel.invokeMethod("getProxy");
     } catch (e) {

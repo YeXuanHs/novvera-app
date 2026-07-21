@@ -3,11 +3,11 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
-import 'package:venera/foundation/app.dart';
-import 'package:venera/foundation/log.dart';
-import 'package:venera/utils/data_sync.dart';
-import 'package:venera/utils/init.dart';
-import 'package:venera/utils/io.dart';
+import 'package:novvera/foundation/app.dart';
+import 'package:novvera/foundation/log.dart';
+import 'package:novvera/utils/data_sync.dart';
+import 'package:novvera/utils/init.dart';
+import 'package:novvera/utils/io.dart';
 
 class Appdata with Init {
   Appdata._create();

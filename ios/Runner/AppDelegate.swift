@@ -21,7 +21,7 @@ import Foundation // 添加此行
           fatalError("rootViewController is not of type FlutterViewController")
     }
 
-    let methodChannel = FlutterMethodChannel(name: "venera/method_channel", binaryMessenger: controller.binaryMessenger)
+    let methodChannel = FlutterMethodChannel(name: "novvera/method_channel", binaryMessenger: controller.binaryMessenger)
     methodChannel.setMethodCallHandler { (call, result) in
       if call.method == "getProxy" {
         if let proxySettings = CFNetworkCopySystemProxySettings()?.takeUnretainedValue() as NSDictionary?,

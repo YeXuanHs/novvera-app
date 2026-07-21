@@ -3,10 +3,10 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:html/dom.dart';
-import 'package:venera/foundation/app.dart';
-import 'package:venera/foundation/log.dart';
-import 'package:venera/foundation/novel_backend/novel_http.dart';
-import 'package:venera/utils/io.dart';
+import 'package:novvera/foundation/app.dart';
+import 'package:novvera/foundation/log.dart';
+import 'package:novvera/foundation/novel_backend/novel_http.dart';
+import 'package:novvera/utils/io.dart';
 
 const _base = 'https://www.wenku8.net';
 const _loginRefreshInterval = Duration(hours: 1);

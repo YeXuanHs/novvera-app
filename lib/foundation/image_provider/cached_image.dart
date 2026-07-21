@@ -1,10 +1,10 @@
 import 'dart:async' show Future;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:venera/foundation/comic_type.dart';
-import 'package:venera/foundation/local.dart';
-import 'package:venera/network/images.dart';
-import 'package:venera/utils/io.dart';
+import 'package:novvera/foundation/comic_type.dart';
+import 'package:novvera/foundation/local.dart';
+import 'package:novvera/network/images.dart';
+import 'package:novvera/utils/io.dart';
 import 'base_image_provider.dart';
 import 'cached_image.dart' as image_provider;
 

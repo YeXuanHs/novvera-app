@@ -1,8 +1,8 @@
 import 'dart:collection';
 
-import 'package:venera/foundation/comic_source/comic_source.dart';
-import 'package:venera/foundation/novel_api/novel_api_client.dart';
-import 'package:venera/foundation/res.dart';
+import 'package:novvera/foundation/comic_source/comic_source.dart';
+import 'package:novvera/foundation/novel_api/novel_api_client.dart';
+import 'package:novvera/foundation/res.dart';
 
 const kNovelSourceKeys = {'wenku8', 'linovelib'};
 

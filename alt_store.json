@@ -5,7 +5,7 @@
   "subtitle": "Novvera official AltStore Source.",
   "description": "This is the official AltStore Source for Novvera.\n\nA free and open-source light novel reader for desktop.",
   "tintColor": "#0784FC",
-  "iconURL": "https://raw.githubusercontent.com/YeXuanHs/Novvera-app-desktop/master/assets/app_icon.png",
+  "iconURL": "https://raw.githubusercontent.com/YeXuanHs/Novvera-app-desktop/main/assets/app_icon.png",
   "apps": [
     {
       "beta": false,
@@ -18,7 +18,7 @@
       "versionDescription": "Novvera desktop fork — light novel reader with builtin wenku8 / linovelib sources.",
       "downloadURL": "https://github.com/YeXuanHs/Novvera-app-desktop/releases/latest",
       "localizedDescription": "A free and open-source light novel reader",
-      "iconURL": "https://raw.githubusercontent.com/YeXuanHs/Novvera-app-desktop/master/assets/app_icon.png",
+      "iconURL": "https://raw.githubusercontent.com/YeXuanHs/Novvera-app-desktop/main/assets/app_icon.png",
       "tintColor": "#0784FC",
       "category": "utilities",
       "size": 0,

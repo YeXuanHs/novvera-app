@@ -84,7 +84,7 @@ bool FlutterWindow::OnCreate() {
   RegisterPlugins(flutter_controller_->engine());
 
   const flutter::MethodChannel<> channel(
-      flutter_controller_->engine()->messenger(), "venera/method_channel",
+      flutter_controller_->engine()->messenger(), "novvera/method_channel",
       &flutter::StandardMethodCodec::GetInstance()
   );
   channel.SetMethodCallHandler(
@@ -115,7 +115,7 @@ bool FlutterWindow::OnCreate() {
   });
 
   flutter::EventChannel<> channel2(
-    flutter_controller_->engine()->messenger(), "venera/mouse",
+    flutter_controller_->engine()->messenger(), "novvera/mouse",
     &flutter::StandardMethodCodec::GetInstance()
   );
 
@@ -137,7 +137,7 @@ bool FlutterWindow::OnCreate() {
   channel2.SetStreamHandler(std::move(eventHandler));
 
   const flutter::MethodChannel<> channel3(
-    flutter_controller_->engine()->messenger(), "venera/clipboard",
+    flutter_controller_->engine()->messenger(), "novvera/clipboard",
     &flutter::StandardMethodCodec::GetInstance()
   );
   channel3.SetMethodCallHandler(

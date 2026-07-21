@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart';
-import 'package:venera/foundation/log.dart';
-import 'package:venera/utils/ext.dart';
+import 'package:novvera/foundation/log.dart';
+import 'package:novvera/utils/ext.dart';
 
 class CookieJarSql {
   late Database _db;

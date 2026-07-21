@@ -1,4 +1,4 @@
-package com.github.wgh136.venera
+package com.github.yexuanhs.novvera
 
 import android.Manifest
 import android.app.Activity
@@ -106,7 +106,7 @@ class MainActivity : FlutterFragmentActivity() {
         GeneratedPluginRegistrant.registerWith(flutterEngine)
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-            "venera/method_channel"
+            "novvera/method_channel"
         ).setMethodCallHandler { call, res ->
             when (call.method) {
                 "getProxy" -> res.success(getProxy())
@@ -140,7 +140,7 @@ class MainActivity : FlutterFragmentActivity() {
             }
         }
 
-        val channel = EventChannel(flutterEngine.dartExecutor.binaryMessenger, "venera/volume")
+        val channel = EventChannel(flutterEngine.dartExecutor.binaryMessenger, "novvera/volume")
         channel.setStreamHandler(
             object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
@@ -158,20 +158,20 @@ class MainActivity : FlutterFragmentActivity() {
                 }
             })
 
-        val storageChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "venera/storage")
+        val storageChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "novvera/storage")
         storageChannel.setMethodCallHandler { _, res ->
             requestStoragePermission { result ->
                 res.success(result)
             }
         }
 
-        val selectFileChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "venera/select_file")
+        val selectFileChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "novvera/select_file")
         selectFileChannel.setMethodCallHandler { req, res ->
             val mimeType = req.arguments<String>()
             openFile(res, mimeType!!)
         }
 
-        val shareTextChannel = EventChannel(flutterEngine.dartExecutor.binaryMessenger, "venera/text_share")
+        val shareTextChannel = EventChannel(flutterEngine.dartExecutor.binaryMessenger, "novvera/text_share")
         shareTextChannel.setStreamHandler(
             object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
@@ -385,7 +385,7 @@ class MainActivity : FlutterFragmentActivity() {
             if(tmp.exists()) {
                 tmp.delete()
             }
-            Log.i("Venera", "copy file (${fileName}) to ${tmp.absolutePath}")
+            Log.i("Novvera", "copy file (${fileName}) to ${tmp.absolutePath}")
             Thread {
                 try {
                     contentResolver.openInputStream(uri)?.use { input ->

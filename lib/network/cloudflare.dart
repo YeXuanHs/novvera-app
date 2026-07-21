@@ -2,12 +2,12 @@ import 'dart:io' as io;
 
 import 'package:dio/dio.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-import 'package:venera/foundation/app.dart';
-import 'package:venera/foundation/appdata.dart';
-import 'package:venera/foundation/consts.dart';
-import 'package:venera/foundation/log.dart';
-import 'package:venera/pages/webview.dart';
-import 'package:venera/utils/ext.dart';
+import 'package:novvera/foundation/app.dart';
+import 'package:novvera/foundation/appdata.dart';
+import 'package:novvera/foundation/consts.dart';
+import 'package:novvera/foundation/log.dart';
+import 'package:novvera/pages/webview.dart';
+import 'package:novvera/utils/ext.dart';
 
 import 'cookie_jar.dart';
 
@@ -71,7 +71,7 @@ class CloudflareInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
-    if (err.response?.statusCode == 403) {
+    if (err.response?.statusCode == 403 || err.response?.statusCode == 503) {
       handler.next(_check(err.response!) ?? err);
     } else {
       handler.next(err);
@@ -80,7 +80,7 @@ class CloudflareInterceptor extends Interceptor {
 
   @override
   void onResponse(Response response, ResponseInterceptorHandler handler) {
-    if (response.statusCode == 403) {
+    if (response.statusCode == 403 || response.statusCode == 503) {
       var err = _check(response);
       if (err != null) {
         handler.reject(err);
@@ -93,6 +93,27 @@ class CloudflareInterceptor extends Interceptor {
   CloudflareException? _check(Response response) {
     if (response.headers['cf-mitigated']?.firstOrNull == "challenge") {
       return CloudflareException(response.requestOptions.uri.toString());
+    }
+    // Fallback: classic challenge pages without cf-mitigated header.
+    final status = response.statusCode;
+    if (status == 403 || status == 503) {
+      final data = response.data;
+      String html = '';
+      if (data is String) {
+        html = data;
+      } else if (data is List<int>) {
+        html = String.fromCharCodes(data.take(4096));
+      }
+      if (html.contains('challenge-platform') ||
+          html.contains('Just a moment') ||
+          html.contains('cf-browser-verification') ||
+          html.contains('window._cf_chl_opt')) {
+        return CloudflareException(
+          response.realUri.toString().isNotEmpty
+              ? response.realUri.toString()
+              : response.requestOptions.uri.toString(),
+        );
+      }
     }
     return null;
   }

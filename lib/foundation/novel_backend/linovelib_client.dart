@@ -1,10 +1,11 @@
 import 'dart:io';
 
 import 'package:html/dom.dart';
-import 'package:venera/foundation/log.dart';
-import 'package:venera/foundation/novel_backend/chapterlog.dart';
-import 'package:venera/foundation/novel_backend/novel_http.dart';
-import 'package:venera/network/cookie_jar.dart';
+import 'package:novvera/foundation/log.dart';
+import 'package:novvera/foundation/novel_backend/chapterlog.dart';
+import 'package:novvera/foundation/novel_backend/novel_http.dart';
+import 'package:novvera/network/cloudflare.dart';
+import 'package:novvera/network/cookie_jar.dart';
 
 const _base = 'https://www.linovelib.com';
 
@@ -57,15 +58,13 @@ class LinovelibClient {
 
   Future<void> init() async {
     try {
-      final res = await _http.getHtml('$_base/');
-      if (isCloudflareChallenge(res.html, res.status)) {
-        Log.warning(
-          'Linovelib',
-          'Cloudflare challenge on homepage; open site in browser if needed',
-        );
-      } else {
-        Log.info('Linovelib', 'HTTP session ready');
-      }
+      await _http.getHtml('$_base/');
+      Log.info('Linovelib', 'HTTP session ready');
+    } on CloudflareException catch (e) {
+      Log.warning(
+        'Linovelib',
+        'Cloudflare on bootstrap (${e.url}); verify when browsing',
+      );
     } catch (e) {
       Log.warning('Linovelib', 'bootstrap: $e');
     }
@@ -127,9 +126,6 @@ class LinovelibClient {
     final path =
         (_rankPaths[type] ?? _rankPaths['monthvisit']!).replaceAll('{page}', '$page');
     final res = await _http.getHtml('$_base$path');
-    if (isCloudflareChallenge(res.html, res.status)) {
-      throw Exception('Cloudflare 拦截，请稍后重试');
-    }
     final items = _parseRank(parseHtml(res.html));
     return {
       'type': type,
@@ -216,8 +212,7 @@ class LinovelibClient {
         'Referer': '$_base/',
       },
     );
-    if (res.html.trim().isEmpty ||
-        isCloudflareChallenge(res.html, res.status)) {
+    if (res.html.trim().isEmpty) {
       await passSearchGuard();
       res = await _http.postForm(
         '$_base/S6/',
@@ -227,9 +222,6 @@ class LinovelibClient {
           'Referer': '$_base/',
         },
       );
-    }
-    if (isCloudflareChallenge(res.html, res.status)) {
-      throw Exception('搜索被 Cloudflare 拦截');
     }
     return {
       'type': type,
@@ -309,9 +301,6 @@ class LinovelibClient {
   Future<Map<String, dynamic>> bookDetail(String aid) async {
     if (_bookCache.containsKey(aid)) return Map.from(_bookCache[aid]!);
     final res = await _http.getHtml('$_base/novel/$aid.html');
-    if (isCloudflareChallenge(res.html, res.status)) {
-      throw Exception('Cloudflare 拦截');
-    }
     final doc = parseHtml(res.html);
     var name = _meta(doc, ['og:novel:book_name', 'og:title']) ?? '';
     if (name.isEmpty) {
@@ -372,9 +361,6 @@ class LinovelibClient {
       return _catalogSummary(_catalogCache[aid]!);
     }
     final res = await _http.getHtml('$_base/novel/$aid/catalog');
-    if (isCloudflareChallenge(res.html, res.status)) {
-      throw Exception('Cloudflare 拦截');
-    }
     final doc = parseHtml(res.html);
     var title = _meta(doc, ['og:novel:book_name', 'og:title']) ?? '';
     if (title.isEmpty) {
@@ -569,9 +555,6 @@ class LinovelibClient {
     while (url.isNotEmpty && !seen.contains(url)) {
       seen.add(url);
       final res = await _http.getHtml(url);
-      if (isCloudflareChallenge(res.html, res.status)) {
-        throw Exception('章节被 Cloudflare 拦截');
-      }
       final page = _parseChapterPage(res.html, cid);
       if (pageTitle.isEmpty) {
         pageTitle = (page['page_title'] as String?) ?? '';

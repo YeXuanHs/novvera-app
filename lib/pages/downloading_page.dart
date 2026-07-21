@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:venera/components/components.dart';
-import 'package:venera/foundation/app.dart';
-import 'package:venera/foundation/image_provider/cached_image.dart';
-import 'package:venera/foundation/local.dart';
-import 'package:venera/network/download.dart';
-import 'package:venera/utils/io.dart';
-import 'package:venera/utils/translations.dart';
+import 'package:novvera/components/components.dart';
+import 'package:novvera/foundation/app.dart';
+import 'package:novvera/foundation/image_provider/cached_image.dart';
+import 'package:novvera/foundation/local.dart';
+import 'package:novvera/network/download.dart';
+import 'package:novvera/utils/io.dart';
+import 'package:novvera/utils/translations.dart';
 
 class DownloadingPage extends StatefulWidget {
   const DownloadingPage({super.key});

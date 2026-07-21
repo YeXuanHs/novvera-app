@@ -3,9 +3,9 @@ run-name: Build Novvera (Windows / macOS / Linux)
 
 on:
   push:
-    branches: [master, main]
+    branches: [main]
   pull_request:
-    branches: [master, main]
+    branches: [main]
   workflow_dispatch: {}
   release:
     types: [published]
@@ -17,7 +17,7 @@ jobs:
   Build_Windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -41,9 +41,14 @@ jobs:
       - run: flutter pub get
 
       - name: Build Windows release + installer
+        shell: pwsh
+        env:
+          RUSTFLAGS: "--cfg reqwest_unstable"
         run: |
           flutter build windows --release
-          python windows/build.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python windows/build.py --package-only
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Collect artifacts
         shell: pwsh
@@ -63,7 +68,7 @@ jobs:
   Build_MacOS:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -97,7 +102,7 @@ jobs:
   Build_Linux:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -125,7 +130,6 @@ jobs:
           mkdir -p result
           BUNDLE=$(find build/linux -type d -path '*/release/bundle' | head -1)
           tar -C "$(dirname "$BUNDLE")" -czf "result/Novvera-${APP_VERSION}-linux-x64.tar.gz" "$(basename "$BUNDLE")"
-          # Optional debian package (best-effort)
           dart pub global activate -s git https://github.com/venera-app/flutter_to_debian.git || true
           python3 debian/build.py x64 || true
           find build/linux -name '*.deb' -exec cp {} result/ \; || true
@@ -137,19 +141,29 @@ jobs:
           path: result/
           if-no-files-found: error
 
+  # Official Flutter release manifests often lack linux-arm64 zip for a given
+  # stable hotfix, so flutter-action cannot resolve 3.41.4/arm64. Install via
+  # git clone of the same tag instead (works on ubuntu-*-arm runners).
   Build_Linux_ARM64:
     runs-on: ubuntu-22.04-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          flutter-version-file: pubspec.yaml
-          cache: true
+      - name: Install Flutter from git (arm64)
+        run: |
+          FLUTTER_VERSION=$(grep -E '^\s*flutter:\s' pubspec.yaml | head -1 | sed -E 's/.*flutter:[[:space:]]*//')
+          git clone --depth 1 -b "$FLUTTER_VERSION" https://github.com/flutter/flutter.git "$HOME/flutter"
+          echo "$HOME/flutter/bin" >> "$GITHUB_PATH"
+          echo "$HOME/flutter/bin/cache/dart-sdk/bin" >> "$GITHUB_PATH"
+
+      - name: Flutter precache
+        run: |
+          flutter config --no-analytics
+          flutter precache --linux
+          flutter --version
 
       - name: Install Linux deps
         run: |

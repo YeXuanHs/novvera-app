@@ -1,14 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:venera/components/components.dart';
-import 'package:venera/foundation/app.dart';
-import 'package:venera/foundation/appdata.dart';
-import 'package:venera/foundation/favorites.dart';
-import 'package:venera/utils/data_sync.dart';
-import 'package:venera/utils/translations.dart';
+import 'package:novvera/components/components.dart';
+import 'package:novvera/foundation/app.dart';
+import 'package:novvera/foundation/appdata.dart';
+import 'package:novvera/foundation/favorites.dart';
+import 'package:novvera/utils/data_sync.dart';
+import 'package:novvera/utils/translations.dart';
 import '../foundation/global_state.dart';
-import 'package:venera/foundation/follow_updates.dart';
+import 'package:novvera/foundation/follow_updates.dart';
 
 class FollowUpdatesWidget extends StatefulWidget {
   const FollowUpdatesWidget({super.key});

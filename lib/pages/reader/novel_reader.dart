@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:venera/foundation/comic_source/comic_source.dart';
-import 'package:venera/foundation/comic_type.dart';
-import 'package:venera/foundation/history.dart';
-import 'package:venera/foundation/novel_source/builtin_sources.dart';
-import 'package:venera/utils/translations.dart';
+import 'package:novvera/components/components.dart';
+import 'package:novvera/foundation/comic_source/comic_source.dart';
+import 'package:novvera/foundation/comic_type.dart';
+import 'package:novvera/foundation/history.dart';
+import 'package:novvera/foundation/novel_source/builtin_sources.dart';
+import 'package:novvera/utils/translations.dart';
 
 /// Scrollable text + illustration reader for builtin novel sources.
 class NovelReader extends StatefulWidget {
@@ -353,18 +354,10 @@ class _NovelReaderState extends State<NovelReader> {
       return const Center(child: CircularProgressIndicator());
     }
     if (error != null) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(error!, textAlign: TextAlign.center),
-            const SizedBox(height: 12),
-            FilledButton(
-              onPressed: () => _loadChapter(),
-              child: Text('Retry'.tl),
-            ),
-          ],
-        ),
+      return NetworkError(
+        message: error!,
+        withAppbar: false,
+        retry: () => _loadChapter(),
       );
     }
     final blocks = _buildBlocks(content ?? '');

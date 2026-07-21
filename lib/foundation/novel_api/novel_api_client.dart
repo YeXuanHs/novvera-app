@@ -1,6 +1,6 @@
-import 'package:venera/foundation/log.dart';
-import 'package:venera/foundation/novel_backend/linovelib_client.dart';
-import 'package:venera/foundation/novel_backend/wenku8_client.dart';
+import 'package:novvera/foundation/log.dart';
+import 'package:novvera/foundation/novel_backend/linovelib_client.dart';
+import 'package:novvera/foundation/novel_backend/wenku8_client.dart';
 
 /// In-process novel backend (Dart). Keeps the same `get(source, path)` shape
 /// used by builtin sources; no Python sidecar.

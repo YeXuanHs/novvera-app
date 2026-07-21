@@ -4,8 +4,9 @@ import 'dart:typed_data';
 import 'package:fast_gbk/fast_gbk.dart';
 import 'package:html/dom.dart';
 import 'package:html/parser.dart' as html_parser;
-import 'package:venera/foundation/log.dart';
-import 'package:venera/network/app_dio.dart';
+import 'package:novvera/foundation/log.dart';
+import 'package:novvera/network/app_dio.dart';
+import 'package:novvera/network/cloudflare.dart';
 
 String cleanText(String? s) {
   if (s == null) return '';
@@ -48,17 +49,21 @@ String gbkQueryEncode(String text) {
 }
 
 bool isCloudflareChallenge(String html, int? status) {
+  final challengeMarkers = html.contains('Just a moment') ||
+      html.contains('cf-browser-verification') ||
+      html.contains('challenge-platform') ||
+      html.contains('window._cf_chl_opt') ||
+      html.contains('cf-challenge') ||
+      html.contains('Enable JavaScript and cookies to continue');
   if (status == 403 || status == 503) {
-    if (html.contains('Just a moment') ||
-        html.contains('cf-browser-verification') ||
-        html.contains('challenge-platform')) {
-      return true;
-    }
+    return challengeMarkers;
   }
+  // Some sites return 200 with challenge interstitial.
   return html.contains('cf-browser-verification') &&
       html.contains('challenge-platform');
 }
 
+/// Throws [CloudflareException] so UI (`NetworkError`) can show Verify.
 /// Thin wrapper around AppDio for novel site scraping.
 class NovelHttp {
   NovelHttp({this.defaultReferer});
@@ -66,59 +71,87 @@ class NovelHttp {
   final String? defaultReferer;
   final Dio _dio = AppDio();
 
+  Never _throwCf(String url) {
+    Log.warning('NovelHttp', 'Cloudflare challenge at $url');
+    throw CloudflareException(url);
+  }
+
+  void _ensureNotChallenge(String html, int? status, String url) {
+    if (isCloudflareChallenge(html, status)) {
+      _throwCf(url);
+    }
+  }
+
+  Future<T> _guardDio<T>(Future<T> Function() run) async {
+    try {
+      return await run();
+    } on CloudflareException {
+      rethrow;
+    } on DioException catch (e) {
+      if (e is CloudflareException) rethrow;
+      final err = e.error;
+      if (err is CloudflareException) throw err;
+      final fromMsg = CloudflareException.fromString(e.message ?? '');
+      if (fromMsg != null) throw fromMsg;
+      rethrow;
+    }
+  }
+
   Future<({int status, String html, String url})> getHtml(
     String url, {
     bool preferGbk = false,
     Map<String, String>? headers,
   }) async {
-    final res = await _dio.get<List<int>>(
-      url,
-      options: Options(
-        responseType: ResponseType.bytes,
-        followRedirects: true,
-        validateStatus: (s) => s != null && s < 600,
-        headers: {
-          if (defaultReferer != null) 'Referer': defaultReferer!,
-          'Accept':
-              'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-          ...?headers,
-        },
-      ),
-    );
-    final bytes = Uint8List.fromList(res.data ?? const []);
-    final html = decodeHtmlBytes(bytes, preferGbk: preferGbk);
-    final finalUrl = res.realUri.toString();
-    if (isCloudflareChallenge(html, res.statusCode)) {
-      Log.warning('NovelHttp', 'Cloudflare challenge at $url');
-    }
-    return (status: res.statusCode ?? 0, html: html, url: finalUrl);
+    return _guardDio(() async {
+      final res = await _dio.get<List<int>>(
+        url,
+        options: Options(
+          responseType: ResponseType.bytes,
+          followRedirects: true,
+          validateStatus: (s) => s != null && s < 600,
+          headers: {
+            if (defaultReferer != null) 'Referer': defaultReferer!,
+            'Accept':
+                'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            ...?headers,
+          },
+        ),
+      );
+      final bytes = Uint8List.fromList(res.data ?? const []);
+      final html = decodeHtmlBytes(bytes, preferGbk: preferGbk);
+      final finalUrl = res.realUri.toString();
+      _ensureNotChallenge(html, res.statusCode, finalUrl);
+      return (status: res.statusCode ?? 0, html: html, url: finalUrl);
+    });
   }
 
-  Future<({int status, String html})> postForm(
+  Future<({int status, String html, String url})> postForm(
     String url,
     Map<String, String> form, {
     bool preferGbk = false,
     Map<String, String>? headers,
   }) async {
-    final res = await _dio.post<List<int>>(
-      url,
-      data: form,
-      options: Options(
-        contentType: Headers.formUrlEncodedContentType,
-        responseType: ResponseType.bytes,
-        followRedirects: true,
-        validateStatus: (s) => s != null && s < 600,
-        headers: {
-          if (defaultReferer != null) 'Referer': defaultReferer!,
-          ...?headers,
-        },
-      ),
-    );
-    final bytes = Uint8List.fromList(res.data ?? const []);
-    return (
-      status: res.statusCode ?? 0,
-      html: decodeHtmlBytes(bytes, preferGbk: preferGbk),
-    );
+    return _guardDio(() async {
+      final res = await _dio.post<List<int>>(
+        url,
+        data: form,
+        options: Options(
+          contentType: Headers.formUrlEncodedContentType,
+          responseType: ResponseType.bytes,
+          followRedirects: true,
+          validateStatus: (s) => s != null && s < 600,
+          headers: {
+            if (defaultReferer != null) 'Referer': defaultReferer!,
+            ...?headers,
+          },
+        ),
+      );
+      final bytes = Uint8List.fromList(res.data ?? const []);
+      final html = decodeHtmlBytes(bytes, preferGbk: preferGbk);
+      final finalUrl = res.realUri.toString();
+      _ensureNotChallenge(html, res.statusCode, finalUrl);
+      return (status: res.statusCode ?? 0, html: html, url: finalUrl);
+    });
   }
 }

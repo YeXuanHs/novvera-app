@@ -5,12 +5,12 @@ import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
 import 'package:sqlite3/sqlite3.dart';
-import 'package:venera/foundation/appdata.dart';
-import 'package:venera/foundation/image_provider/local_favorite_image.dart';
-import 'package:venera/foundation/local.dart';
-import 'package:venera/foundation/log.dart';
-import 'package:venera/pages/follow_updates_page.dart';
-import 'package:venera/utils/tags_translation.dart';
+import 'package:novvera/foundation/appdata.dart';
+import 'package:novvera/foundation/image_provider/local_favorite_image.dart';
+import 'package:novvera/foundation/local.dart';
+import 'package:novvera/foundation/log.dart';
+import 'package:novvera/pages/follow_updates_page.dart';
+import 'package:novvera/utils/tags_translation.dart';
 import 'dart:io';
 
 import 'app.dart';

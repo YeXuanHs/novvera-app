@@ -5,20 +5,20 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_saf/flutter_saf.dart';
 import 'package:rhttp/rhttp.dart';
-import 'package:venera/foundation/app.dart';
-import 'package:venera/foundation/cache_manager.dart';
-import 'package:venera/foundation/comic_source/comic_source.dart';
-import 'package:venera/foundation/js_engine.dart';
-import 'package:venera/foundation/log.dart';
-import 'package:venera/foundation/novel_api/novel_api_client.dart';
-import 'package:venera/network/cookie_jar.dart';
-import 'package:venera/pages/follow_updates_page.dart';
-import 'package:venera/pages/settings/settings_page.dart';
-import 'package:venera/utils/app_links.dart';
-import 'package:venera/utils/handle_text_share.dart';
-import 'package:venera/utils/opencc.dart';
-import 'package:venera/utils/tags_translation.dart';
-import 'package:venera/utils/translations.dart';
+import 'package:novvera/foundation/app.dart';
+import 'package:novvera/foundation/cache_manager.dart';
+import 'package:novvera/foundation/comic_source/comic_source.dart';
+import 'package:novvera/foundation/js_engine.dart';
+import 'package:novvera/foundation/log.dart';
+import 'package:novvera/foundation/novel_api/novel_api_client.dart';
+import 'package:novvera/network/cookie_jar.dart';
+import 'package:novvera/pages/follow_updates_page.dart';
+import 'package:novvera/pages/settings/settings_page.dart';
+import 'package:novvera/utils/app_links.dart';
+import 'package:novvera/utils/handle_text_share.dart';
+import 'package:novvera/utils/opencc.dart';
+import 'package:novvera/utils/tags_translation.dart';
+import 'package:novvera/utils/translations.dart';
 import 'foundation/appdata.dart';
 
 
@@ -76,7 +76,7 @@ Future<void> init() async {
     // Report to the monitor thread that the app is running
     // https://github.com/venera-app/venera/issues/343
     Timer.periodic(const Duration(seconds: 1), (_) {
-      const methodChannel = MethodChannel('venera/method_channel');
+      const methodChannel = MethodChannel('novvera/method_channel');
       methodChannel.invokeMethod("heartBeat");
     });
   }
