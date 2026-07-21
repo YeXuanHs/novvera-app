@@ -32,8 +32,8 @@ import 'package:novvera/foundation/local.dart';
 import 'package:novvera/foundation/log.dart';
 import 'package:novvera/foundation/res.dart';
 import 'package:novvera/network/images.dart';
-import 'package:novvera/pages/reader/novel_reader.dart';
 import 'package:novvera/foundation/novel_source/builtin_sources.dart';
+import 'package:novvera/foundation/novel_source/novel_page_cache.dart';
 import 'package:novvera/pages/settings/settings_page.dart';
 import 'package:novvera/utils/clipboard_image.dart';
 import 'package:novvera/utils/data_sync.dart';
@@ -213,6 +213,11 @@ class _ReaderState extends State<Reader>
     mode = ReaderMode.fromKey(
       appdata.settings.getReaderSetting(cid, type.sourceKey, 'readerMode'),
     );
+    // Novels: text + illustration stream uses continuous vertical scroll so the
+    // existing pull-bar maps to block index (same as Venera continuous comics).
+    if (isNovelSource(type.sourceKey)) {
+      mode = ReaderMode.continuousTopToBottom;
+    }
     history = widget.history;
     if (!appdata.settings.getReaderSetting(
       cid,

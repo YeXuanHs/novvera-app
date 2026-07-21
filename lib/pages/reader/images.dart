@@ -331,11 +331,21 @@ class _GalleryModeState extends State<_GalleryMode>
             photoViewControllers[index] ??= PhotoViewController();
 
             if (reader.imagesPerPage == 1 || pageImages.length == 1) {
+              final key = pageImages[0];
+              if (NovelPageCache.isTextKey(key)) {
+                return PhotoViewGalleryPageOptions.customChild(
+                  controller: photoViewControllers[index],
+                  child: _buildNovelTextPage(
+                    context,
+                    NovelPageCache.get(key) ?? '',
+                  ),
+                );
+              }
               return PhotoViewGalleryPageOptions(
                 filterQuality: FilterQuality.medium,
                 controller: photoViewControllers[index],
                 imageProvider: _createImageProviderFromKey(
-                  pageImages[0],
+                  key,
                   context,
                   startIndex + 1,
                 ),
@@ -861,6 +871,13 @@ class _ContinuousModeState extends State<_ContinuousMode>
         if (index == 0 || index == reader.maxPage + 1) {
           return const SizedBox();
         }
+        final imageKey = reader.images![index - 1];
+        if (NovelPageCache.isTextKey(imageKey)) {
+          return _buildNovelTextPage(
+            context,
+            NovelPageCache.get(imageKey) ?? '',
+          );
+        }
         double? width, height;
         if (reader.mode == ReaderMode.continuousLeftToRight ||
             reader.mode == ReaderMode.continuousRightToLeft) {
@@ -1235,11 +1252,37 @@ ImageProvider _createImageProvider(int page, BuildContext context) {
   return _createImageProviderFromKey(imageKey, context, page);
 }
 
+Widget _buildNovelTextPage(BuildContext context, String text) {
+  final width = MediaQuery.sizeOf(context).width;
+  final pad = width > 720 ? (width - 720) / 2 + 24.0 : 24.0;
+  return ColoredBox(
+    color: context.colorScheme.surface,
+    child: SizedBox(
+      width: double.infinity,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(pad, 20, pad, 20),
+        child: Text(
+          text,
+          style: TextStyle(
+            fontSize: 17,
+            height: 1.75,
+            color: context.colorScheme.onSurface,
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 /// [_precacheImage] is used to precache the image for the given page.
 /// The image is cached using the flutter's [precacheImage] method.
 /// The image will be downloaded and decoded into memory.
 void _precacheImage(int page, BuildContext context) {
   if (page <= 0 || page > context.reader.images!.length) {
+    return;
+  }
+  final key = context.reader.images![page - 1];
+  if (NovelPageCache.isTextKey(key)) {
     return;
   }
   precacheImage(_createImageProvider(page, context), context);
@@ -1253,7 +1296,7 @@ void _preDownloadImage(int page, BuildContext context) {
   }
   var reader = context.reader;
   var imageKey = reader.images![page - 1];
-  if (imageKey.startsWith("file://")) {
+  if (imageKey.startsWith("file://") || NovelPageCache.isTextKey(imageKey)) {
     return;
   }
   var cid = reader.cid;

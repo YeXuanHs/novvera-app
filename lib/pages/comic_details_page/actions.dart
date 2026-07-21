@@ -103,34 +103,18 @@ abstract mixin class _ComicPageActions {
   /// [group] the chapter group number, start from 1
   void read([int? ep, int? page, int? group]) {
     final hist = history ?? History.fromModel(model: comic, ep: 0, page: 0);
-    final Widget pageWidget;
-    if (isNovelSource(comic.sourceKey) && comic.chapters != null) {
-      pageWidget = NovelReader(
-        type: comic.comicType,
-        cid: comic.id,
-        name: comic.title,
-        chapters: comic.chapters!,
-        initialChapter: ep,
-        initialPage: page,
-        initialChapterGroup: group,
-        history: hist,
-        author: comic.findAuthor() ?? '',
-        tags: comic.plainTags,
-      );
-    } else {
-      pageWidget = Reader(
-        type: comic.comicType,
-        cid: comic.id,
-        name: comic.title,
-        chapters: comic.chapters,
-        initialChapter: ep,
-        initialPage: page,
-        initialChapterGroup: group,
-        history: hist,
-        author: comic.findAuthor() ?? '',
-        tags: comic.plainTags,
-      );
-    }
+    final pageWidget = Reader(
+      type: comic.comicType,
+      cid: comic.id,
+      name: comic.title,
+      chapters: comic.chapters,
+      initialChapter: ep,
+      initialPage: page,
+      initialChapterGroup: group,
+      history: hist,
+      author: comic.findAuthor() ?? '',
+      tags: comic.plainTags,
+    );
     App.rootContext.to(() => pageWidget).then((_) {
       onReadEnd();
     });

@@ -2,6 +2,7 @@ import 'package:novvera/foundation/comic_source/comic_source.dart';
 import 'package:novvera/foundation/consts.dart';
 import 'package:novvera/foundation/novel_api/novel_api_client.dart';
 import 'package:novvera/foundation/novel_backend/novel_http.dart';
+import 'package:novvera/foundation/novel_source/novel_page_cache.dart';
 import 'package:novvera/foundation/res.dart';
 
 const kNovelSourceKeys = {'wenku8', 'linovelib'};
@@ -105,7 +106,7 @@ ComicSource _buildSource({
     null,
     (id) => _loadComicInfo(key, id),
     null,
-    null,
+    (id, ep) => _loadChapterPages(key, id, ep),
     (imageKey, comicId, epId) async => _imageLoadingConfig(key, imageKey),
     (imageKey) => _imageLoadingConfig(key, imageKey),
     'builtin:$key',
@@ -120,7 +121,7 @@ ComicSource _buildSource({
     null,
     null,
     null,
-    null,
+    (namespace, tag) => PageJumpTarget(key, 'search', {'text': tag}),
     null,
     null,
     false,
@@ -391,6 +392,55 @@ Future<Res<Map<String, dynamic>>> loadNovelChapter(
       query: {'fmt': 'utf8', 'json': true},
     );
     return Res(data);
+  } catch (e) {
+    return Res.error(e.toString());
+  }
+}
+
+/// Build Venera Reader pages: text blocks as `noveltxt://` keys, images as URLs.
+Future<Res<List<String>>> _loadChapterPages(
+  String source,
+  String aid,
+  String? epId,
+) async {
+  try {
+    final ep = (epId == null || epId.isEmpty) ? '1-1' : epId;
+    final res = await loadNovelChapter(source, aid, ep);
+    if (res.error) {
+      return Res.error(res.errorMessage ?? 'load chapter failed');
+    }
+    NovelPageCache.clear();
+    final data = res.data;
+    final text = (data['content'] ?? '').toString();
+    final images = (data['images'] as List? ?? [])
+        .map((e) => normalizeNovelImageUrl(e.toString()))
+        .where((e) => e.startsWith('http'))
+        .toList();
+
+    final pages = <String>[];
+    final seenImages = <String>{};
+    for (final raw in text.split('\n')) {
+      final line = raw.trimRight();
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) continue;
+      if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+        final url = normalizeNovelImageUrl(trimmed);
+        if (url.startsWith('http') && seenImages.add(url)) {
+          pages.add(url);
+        }
+        continue;
+      }
+      pages.add(NovelPageCache.put(line));
+    }
+    for (final url in images) {
+      if (seenImages.add(url)) {
+        pages.add(url);
+      }
+    }
+    if (pages.isEmpty) {
+      pages.add(NovelPageCache.put('（本章无内容）'));
+    }
+    return Res(pages);
   } catch (e) {
     return Res.error(e.toString());
   }

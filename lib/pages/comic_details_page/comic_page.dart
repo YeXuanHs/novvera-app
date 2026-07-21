@@ -22,8 +22,6 @@ import 'package:novvera/network/download.dart';
 import 'package:novvera/network/cache.dart';
 import 'package:novvera/pages/favorites/favorites_page.dart';
 import 'package:novvera/pages/reader/reader.dart';
-import 'package:novvera/pages/reader/novel_reader.dart';
-import 'package:novvera/foundation/novel_source/builtin_sources.dart';
 import 'package:novvera/utils/file_type.dart';
 import 'package:novvera/utils/io.dart';
 import 'package:novvera/utils/tags_translation.dart';
@@ -221,22 +219,6 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
       if (isFirst) {
         Future.microtask(() {
           App.rootContext.to(() {
-            if (isNovelSource(widget.sourceKey) && localComic.chapters != null) {
-              return NovelReader(
-                type: ComicType.local,
-                cid: widget.id,
-                name: localComic.title,
-                chapters: localComic.chapters!,
-                initialPage: history?.page,
-                initialChapter: history?.ep,
-                initialChapterGroup: history?.group,
-                history:
-                    history ??
-                    History.fromModel(model: localComic, ep: 0, page: 0),
-                author: localComic.subTitle ?? '',
-                tags: localComic.tags,
-              );
-            }
             return Reader(
               type: ComicType.local,
               cid: widget.id,

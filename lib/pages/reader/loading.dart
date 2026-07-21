@@ -25,20 +25,6 @@ class _ReaderWithLoadingState
     extends LoadingState<ReaderWithLoading, ReaderProps> {
   @override
   Widget buildContent(BuildContext context, ReaderProps data) {
-    if (isNovelSource(widget.sourceKey) && data.chapters != null) {
-      return NovelReader(
-        type: data.type,
-        cid: data.cid,
-        name: data.name,
-        chapters: data.chapters!,
-        history: data.history,
-        initialChapter: widget.initialEp ?? data.history.ep,
-        initialPage: widget.initialPage ?? data.history.page,
-        initialChapterGroup: data.history.group,
-        author: data.author,
-        tags: data.tags,
-      );
-    }
     return Reader(
       type: data.type,
       cid: data.cid,
