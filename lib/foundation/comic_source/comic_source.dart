@@ -70,6 +70,7 @@ class ComicSourceManager with ChangeNotifier, Init {
 
   void _registerBuiltinPages() {
     var explorePages = List.from(appdata.settings['explore_pages'] ?? []);
+    var categoryPages = List.from(appdata.settings['categories'] ?? []);
     var searchPages = appdata.settings['searchSources'];
     searchPages = searchPages is List ? List.from(searchPages) : <dynamic>[];
 
@@ -79,16 +80,26 @@ class ComicSourceManager with ChangeNotifier, Init {
           explorePages.add(page.title);
         }
       }
+      final catKey = source.categoryData?.key;
+      if (catKey != null && !categoryPages.contains(catKey)) {
+        categoryPages.add(catKey);
+      }
       if (source.searchPageData != null && !searchPages.contains(source.key)) {
         searchPages.add(source.key);
       }
     }
 
-    // Drop stale JS-source pages that are no longer available
+    // Drop stale JS-source / old "源·类型" explore titles
     final allExplore = _sources
         .expand((e) => e.explorePages.map((p) => p.title))
         .toSet();
     explorePages = explorePages.where((e) => allExplore.contains(e)).toList();
+    final allCategories = _sources
+        .map((e) => e.categoryData?.key)
+        .whereType<String>()
+        .toSet();
+    categoryPages =
+        categoryPages.where((e) => allCategories.contains(e)).toList();
     final allSearch = _sources
         .where((e) => e.searchPageData != null)
         .map((e) => e.key)
@@ -96,6 +107,7 @@ class ComicSourceManager with ChangeNotifier, Init {
     searchPages = searchPages.where((e) => allSearch.contains(e)).toList();
 
     appdata.settings['explore_pages'] = explorePages.toSet().toList();
+    appdata.settings['categories'] = categoryPages.toSet().toList();
     appdata.settings['searchSources'] = searchPages.toSet().toList();
     appdata.settings['favorites'] = <String>[]; // no network favorites
     appdata.saveData();

@@ -9,18 +9,13 @@ const kNovelSourceKeys = {'wenku8', 'linovelib'};
 bool isNovelSource(String? key) => key != null && kNovelSourceKeys.contains(key);
 
 /// Built-in light-novel sources backed by in-process Dart scrapers.
+///
+/// Discovery UX matches Venera ranking: pick a source, then a rank type,
+/// then browse books — not one explore tab per "source·type".
 List<ComicSource> createBuiltinNovelSources() {
   return [
-    _buildSource(
-      name: '轻小说文库',
-      key: 'wenku8',
-      rankPrefix: '文库8',
-    ),
-    _buildSource(
-      name: '哔哩轻小说',
-      key: 'linovelib',
-      rankPrefix: '哔哩',
-    ),
+    _buildSource(name: '轻小说文库', key: 'wenku8'),
+    _buildSource(name: '哔哩轻小说', key: 'linovelib'),
   ];
 }
 
@@ -37,20 +32,39 @@ const _rankTypes = <String, String>{
 ComicSource _buildSource({
   required String name,
   required String key,
-  required String rankPrefix,
 }) {
-  final explorePages = _rankTypes.entries
-      .map(
-        (e) => ExplorePageData(
-          '$rankPrefix·${e.value}',
-          ExplorePageType.multiPageComicList,
-          (page) => _loadRank(key, e.key, page),
-          null,
-          null,
-          null,
-        ),
-      )
-      .toList();
+  final ranking = RankingData(
+    Map<String, String>.from(_rankTypes),
+    (option, page) => _loadRank(key, option, page),
+    null,
+  );
+
+  final categoryData = CategoryData(
+    title: name,
+    key: key,
+    categories: const [],
+    enableRankingPage: true,
+  );
+
+  final categoryComicsData = CategoryComicsData(
+    load: (category, param, options, page) {
+      final type = options.isNotEmpty ? options.first : _rankTypes.keys.first;
+      return _loadRank(key, type, page);
+    },
+    rankingData: ranking,
+  );
+
+  // One explore tab per source; body uses ranking chips via RankingData.
+  final explorePages = [
+    ExplorePageData(
+      name,
+      ExplorePageType.multiPageComicList,
+      null,
+      null,
+      null,
+      null,
+    ),
+  ];
 
   final searchOptions = [
     SearchOptions(
@@ -65,12 +79,12 @@ ComicSource _buildSource({
     ),
   ];
 
-  final source = ComicSource(
+  return ComicSource(
     name,
     key,
     null, // account
-    null, // categoryData
-    null, // categoryComicsData
+    categoryData,
+    categoryComicsData,
     null, // favoriteData — local favorites only
     explorePages,
     SearchPageData(
@@ -109,7 +123,6 @@ ComicSource _buildSource({
     null,
     null,
   );
-  return source;
 }
 
 Comic _itemToComic(Map<String, dynamic> item, String sourceKey) {
@@ -157,7 +170,6 @@ Future<Res<List<Comic>>> _loadRank(String source, String type, int page) async {
         .whereType<Map>()
         .map((e) => _itemToComic(Map<String, dynamic>.from(e), source))
         .toList();
-    // Heuristic: empty page means no more; otherwise allow next
     final maxPage = items.isEmpty ? page : page + 1;
     return Res(items, subData: maxPage);
   } catch (e) {
