@@ -1,0 +1,202 @@
+name: Build PC
+run-name: Build Novvera (Windows / macOS / Linux)
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch: {}
+  release:
+    types: [published]
+
+env:
+  RUSTFLAGS: "--cfg reqwest_unstable"
+
+jobs:
+  Build_Windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install httpx
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+          architecture: x64
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Build Windows release + installer
+        run: |
+          flutter build windows --release
+          python windows/build.py
+
+      - name: Collect artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path result | Out-Null
+          Get-ChildItem build/windows -Recurse -Include *.zip,*.exe |
+            Where-Object { $_.Name -match '^(Novvera|Venera)-' } |
+            ForEach-Object { Copy-Item $_.FullName result/ -Force }
+          Get-ChildItem result | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows_build
+          path: result/
+          if-no-files-found: error
+
+  Build_MacOS:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Build macOS release
+        run: flutter build macos --release
+
+      - name: Create DMG
+        run: |
+          APP_VERSION=$(grep "version:" pubspec.yaml | head -1 | cut -d':' -f2 | tr -d ' ' | cut -d'+' -f1)
+          mkdir -p dist/dmg_contents result
+          APP_PATH=$(find build/macos -name "*.app" -type d | head -1)
+          cp -R "$APP_PATH" dist/dmg_contents/
+          ln -s /Applications dist/dmg_contents/Applications
+          hdiutil create -volname "Novvera" -srcfolder dist/dmg_contents -ov -format UDZO "result/Novvera-${APP_VERSION}-macos.dmg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos_build
+          path: result/
+          if-no-files-found: error
+
+  Build_Linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+          architecture: x64
+          cache: true
+
+      - name: Install Linux deps
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ninja-build libgtk-3-dev webkit2gtk-4.1 clang cmake pkg-config
+
+      - run: flutter pub get
+
+      - name: Build Linux release
+        run: flutter build linux --release
+
+      - name: Package zip + deb
+        run: |
+          APP_VERSION=$(grep "version:" pubspec.yaml | head -1 | cut -d':' -f2 | tr -d ' ' | cut -d'+' -f1)
+          mkdir -p result
+          BUNDLE=$(find build/linux -type d -path '*/release/bundle' | head -1)
+          tar -C "$(dirname "$BUNDLE")" -czf "result/Novvera-${APP_VERSION}-linux-x64.tar.gz" "$(basename "$BUNDLE")"
+          # Optional debian package (best-effort)
+          dart pub global activate -s git https://github.com/venera-app/flutter_to_debian.git || true
+          python3 debian/build.py x64 || true
+          find build/linux -name '*.deb' -exec cp {} result/ \; || true
+          ls -la result/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux_x64_build
+          path: result/
+          if-no-files-found: error
+
+  Build_Linux_ARM64:
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+          cache: true
+
+      - name: Install Linux deps
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ninja-build libgtk-3-dev webkit2gtk-4.1 clang cmake pkg-config
+
+      - run: flutter pub get
+
+      - name: Build Linux ARM64 release
+        run: flutter build linux --release
+
+      - name: Package
+        run: |
+          APP_VERSION=$(grep "version:" pubspec.yaml | head -1 | cut -d':' -f2 | tr -d ' ' | cut -d'+' -f1)
+          mkdir -p result
+          BUNDLE=$(find build/linux -type d -path '*/release/bundle' | head -1)
+          tar -C "$(dirname "$BUNDLE")" -czf "result/Novvera-${APP_VERSION}-linux-arm64.tar.gz" "$(basename "$BUNDLE")"
+          dart pub global activate -s git https://github.com/venera-app/flutter_to_debian.git || true
+          python3 debian/build.py arm64 || true
+          find build/linux -name '*.deb' -exec cp {} result/ \; || true
+          ls -la result/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux_arm64_build
+          path: result/
+          if-no-files-found: error
+
+  Release:
+    runs-on: ubuntu-latest
+    needs: [Build_Windows, Build_MacOS, Build_Linux, Build_Linux_ARM64]
+    if: github.event_name == 'release'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: outputs
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            outputs/*.zip
+            outputs/*.exe
+            outputs/*.dmg
+            outputs/*.tar.gz
+            outputs/*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

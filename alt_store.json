@@ -1,0 +1,33 @@
+﻿{
+  "name": "Novvera",
+  "identifier": "com.github.yexuanhs.novvera.source",
+  "website": "https://github.com/YeXuanHs/Novvera-app-desktop",
+  "subtitle": "Novvera official AltStore Source.",
+  "description": "This is the official AltStore Source for Novvera.\n\nA free and open-source light novel reader for desktop.",
+  "tintColor": "#0784FC",
+  "iconURL": "https://raw.githubusercontent.com/YeXuanHs/Novvera-app-desktop/master/assets/app_icon.png",
+  "apps": [
+    {
+      "beta": false,
+      "name": "Novvera",
+      "bundleIdentifier": "com.github.yexuanhs.novvera",
+      "developerName": "YeXuanHs",
+      "subtitle": "A free and open-source light novel reader",
+      "version": "1.6.3",
+      "versionDate": "2026-07-21",
+      "versionDescription": "Novvera desktop fork — light novel reader with builtin wenku8 / linovelib sources.",
+      "downloadURL": "https://github.com/YeXuanHs/Novvera-app-desktop/releases/latest",
+      "localizedDescription": "A free and open-source light novel reader",
+      "iconURL": "https://raw.githubusercontent.com/YeXuanHs/Novvera-app-desktop/master/assets/app_icon.png",
+      "tintColor": "#0784FC",
+      "category": "utilities",
+      "size": 0,
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {}
+      },
+      "versions": []
+    }
+  ],
+  "news": []
+}
