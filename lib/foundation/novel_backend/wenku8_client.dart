@@ -200,6 +200,66 @@ class Wenku8Client {
     };
   }
 
+  /// Homepage recommendation blocks (登录后 index.php 的 .blocktitle 分区).
+  Future<Map<String, dynamic>> home() async {
+    await ensureAccount();
+    final res = await _http.getHtml('$_base/index.php', preferGbk: true);
+    final doc = parseHtml(res.html);
+    final sections = <Map<String, dynamic>>[];
+    const skip = [
+      '公告',
+      '登录',
+      '书架',
+      '搜索',
+      '入口',
+      'Telegram',
+      '大赏',
+      '醒目',
+    ];
+    for (final titleEl in doc.querySelectorAll('.blocktitle')) {
+      var title = cleanText(titleEl.text);
+      if (title.isEmpty) continue;
+      if (skip.any((s) => title.contains(s))) continue;
+      // Trim long promo titles: "完本轻小说推广区(已经完结…)" -> "完本轻小说推广区"
+      final cut = title.indexOf('(');
+      if (cut > 2) title = title.substring(0, cut).trim();
+      Element? content = titleEl.nextElementSibling;
+      if (content == null ||
+          !(content.classes.contains('blockcontent') ||
+              (content.className).contains('blockcontent'))) {
+        content = titleEl.parent;
+      }
+      if (content == null) continue;
+      final items = <Map<String, dynamic>>[];
+      final seen = <String>{};
+      for (final a in content.querySelectorAll('a[href]')) {
+        final href = a.attributes['href'] ?? '';
+        final aid = _extractAid(href);
+        if (aid == null || !seen.add(aid)) continue;
+        var name = cleanText(a.attributes['title'] ?? a.text);
+        if (name.length < 2) continue;
+        if (RegExp(r'更多|查看|登录|注册|首页').hasMatch(name)) continue;
+        final img = a.querySelector('img') ??
+            a.parent?.querySelector('img');
+        var cover = absUrl(_base, img?.attributes['src']);
+        if (cover.isEmpty) {
+          final folder = int.parse(aid) ~/ 1000;
+          cover = 'http://img.wenku8.com/image/$folder/$aid/${aid}s.jpg';
+        }
+        items.add({
+          'aid': aid,
+          'name': name,
+          'cover': cover,
+          'author': '',
+          'author_raw': '',
+        });
+      }
+      if (items.length < 3) continue;
+      sections.add({'title': title, 'items': items});
+    }
+    return {'sections': sections};
+  }
+
   Future<Map<String, dynamic>> search(
     String keyword,
     String type,

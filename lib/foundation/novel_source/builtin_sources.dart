@@ -10,8 +10,8 @@ bool isNovelSource(String? key) => key != null && kNovelSourceKeys.contains(key)
 
 /// Built-in light-novel sources backed by in-process Dart scrapers.
 ///
-/// Discovery UX matches Venera ranking: pick a source, then a rank type,
-/// then browse books — not one explore tab per "source·type".
+/// - **发现 (Explore)**: homepage recommendation sections (multipart)
+/// - **分类 (Categories)**: rank types via Ranking page
 List<ComicSource> createBuiltinNovelSources() {
   return [
     _buildSource(name: '轻小说文库', key: 'wenku8'),
@@ -54,14 +54,14 @@ ComicSource _buildSource({
     rankingData: ranking,
   );
 
-  // One explore tab per source; body uses ranking chips via RankingData.
+  // Explore = site homepage recommendations (like Venera 包子漫画 multipart)
   final explorePages = [
     ExplorePageData(
       name,
-      ExplorePageType.multiPageComicList,
+      ExplorePageType.singlePageWithMultiPart,
       null,
       null,
-      null,
+      () => _loadHome(key),
       null,
     ),
   ];
@@ -82,10 +82,10 @@ ComicSource _buildSource({
   return ComicSource(
     name,
     key,
-    null, // account
+    null,
     categoryData,
     categoryComicsData,
-    null, // favoriteData — local favorites only
+    null,
     explorePages,
     SearchPageData(
       searchOptions,
@@ -97,12 +97,12 @@ ComicSource _buildSource({
       ),
       null,
     ),
-    null, // settings
+    null,
     (id) => _loadComicInfo(key, id),
-    null, // loadComicThumbnail
-    null, // loadComicPages — novel reader fetches text
-    null, // getImageLoadingConfig
-    null, // getThumbnailLoadingConfig
+    null,
+    null,
+    null,
+    null,
     'builtin:$key',
     '',
     '1.0.0',
@@ -157,6 +157,31 @@ Comic _itemToComic(Map<String, dynamic> item, String sourceKey) {
     null,
     null,
   );
+}
+
+Future<Res<List<ExplorePagePart>>> _loadHome(String source) async {
+  try {
+    final data = await NovelApiClient.instance.get(source, '/meta/home');
+    final sections = (data['sections'] as List? ?? []).whereType<Map>();
+    final parts = <ExplorePagePart>[];
+    for (final sec in sections) {
+      final title = (sec['title'] ?? '').toString();
+      if (title.isEmpty) continue;
+      final comics = (sec['items'] as List? ?? [])
+          .whereType<Map>()
+          .map((e) => _itemToComic(Map<String, dynamic>.from(e), source))
+          .where((c) => c.id.isNotEmpty && c.title.isNotEmpty)
+          .toList();
+      if (comics.isEmpty) continue;
+      parts.add(ExplorePagePart(title, comics, null));
+    }
+    if (parts.isEmpty) {
+      return Res.error('主页暂无推荐分区');
+    }
+    return Res(parts);
+  } catch (e) {
+    return Res.error(e.toString());
+  }
 }
 
 Future<Res<List<Comic>>> _loadRank(String source, String type, int page) async {

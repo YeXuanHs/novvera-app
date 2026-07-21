@@ -281,22 +281,6 @@ class _SingleExplorePageState extends AutomaticGlobalState<_SingleExplorePage>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final source = ComicSource.find(comicSourceKey);
-    final ranking = source?.categoryComicsData?.rankingData;
-    // Novel builtin sources: one explore tab per source + rank-type chips.
-    if (ranking != null &&
-        data.loadPage == null &&
-        data.loadNext == null &&
-        data.loadMultiPart == null &&
-        data.loadMixed == null) {
-      return _RankingExploreBody(
-        ranking: ranking,
-        controller: scrollController,
-        refreshHandlerCallback: (c) {
-          refreshHandler = c;
-        },
-      );
-    }
     if (data.loadMultiPart != null) {
       return _MultiPartExplorePage(
         key: const PageStorageKey("comic_list"),
@@ -593,81 +577,5 @@ class _MultiPartExplorePageState extends State<_MultiPartExplorePage> {
     for (var part in parts!) {
       yield* _buildExplorePagePart(part, widget.comicSourceKey);
     }
-  }
-}
-
-/// Source explore tab with rank-type chips (same UX as [RankingPage]).
-class _RankingExploreBody extends StatefulWidget {
-  const _RankingExploreBody({
-    required this.ranking,
-    required this.controller,
-    required this.refreshHandlerCallback,
-  });
-
-  final RankingData ranking;
-  final ScrollController controller;
-  final void Function(VoidCallback c) refreshHandlerCallback;
-
-  @override
-  State<_RankingExploreBody> createState() => _RankingExploreBodyState();
-}
-
-class _RankingExploreBodyState extends State<_RankingExploreBody> {
-  late String optionValue;
-  VoidCallback? _listRefresh;
-
-  @override
-  void initState() {
-    super.initState();
-    optionValue = widget.ranking.options.keys.first;
-    widget.refreshHandlerCallback(() {
-      _listRefresh?.call();
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ComicList(
-      key: Key(optionValue),
-      enablePageStorage: true,
-      controller: widget.controller,
-      refreshHandlerCallback: (c) {
-        _listRefresh = c;
-      },
-      leadingSliver: SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final option in widget.ranking.options.entries)
-                    OptionChip(
-                      text: option.value.tl,
-                      isSelected: option.key == optionValue,
-                      onTap: () {
-                        if (option.key == optionValue) return;
-                        setState(() {
-                          optionValue = option.key;
-                        });
-                      },
-                    ),
-                ],
-              ),
-              const Divider(),
-            ],
-          ),
-        ),
-      ),
-      loadPage: widget.ranking.load == null
-          ? null
-          : (i) => widget.ranking.load!(optionValue, i),
-      loadNext: widget.ranking.loadWithNext == null
-          ? null
-          : (i) => widget.ranking.loadWithNext!(optionValue, i),
-    );
   }
 }

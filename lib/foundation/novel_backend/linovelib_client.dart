@@ -135,6 +135,55 @@ class LinovelibClient {
     };
   }
 
+  /// Homepage recommendation blocks (.top-title / .top-title-two).
+  Future<Map<String, dynamic>> home() async {
+    final res = await _http.getHtml('$_base/');
+    final doc = parseHtml(res.html);
+    final sections = <Map<String, dynamic>>[];
+    final seenTitles = <String>{};
+    for (final titleEl in doc.querySelectorAll('.top-title, .top-title-two')) {
+      var title = cleanText(titleEl.text).replaceAll('更多', '').trim();
+      if (title.isEmpty || title.length > 24) continue;
+      if (!seenTitles.add(title)) continue;
+      Element? section = titleEl.parent;
+      for (var i = 0; i < 5 && section != null; i++) {
+        if (section.querySelectorAll('a[href*="/novel/"]').length >= 3) break;
+        section = section.parent;
+      }
+      if (section == null) continue;
+      final items = <Map<String, dynamic>>[];
+      final seen = <String>{};
+      for (final a in section.querySelectorAll('a[href*="/novel/"]')) {
+        final href = a.attributes['href'] ?? '';
+        final aid = _extractAid(href);
+        if (aid.isEmpty || !seen.add(aid)) continue;
+        final name = cleanText(a.attributes['title'] ?? a.text);
+        if (name.length < 2) continue;
+        final book = a.parent;
+        final img = book?.querySelector('img') ??
+            a.querySelector('img');
+        var cover = absUrl(
+          _base,
+          img?.attributes['data-original'] ?? img?.attributes['src'],
+        );
+        if (cover.isEmpty) {
+          final folder = int.parse(aid) ~/ 1000;
+          cover = '$_base/files/article/image/$folder/$aid/${aid}s.jpg';
+        }
+        items.add({
+          'aid': aid,
+          'name': name,
+          'cover': cover,
+          'author': '',
+          'author_raw': '',
+        });
+      }
+      if (items.length < 3) continue;
+      sections.add({'title': title, 'items': items});
+    }
+    return {'sections': sections};
+  }
+
   List<Map<String, dynamic>> _parseRank(Document doc) {
     final items = <Map<String, dynamic>>[];
     final seen = <String>{};

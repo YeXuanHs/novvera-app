@@ -64,6 +64,9 @@ class NovelApiClient {
         int.tryParse('${q['page'] ?? 1}') ?? 1,
       );
     }
+    if (path == '/meta/home' || path == '/home') {
+      return c.home();
+    }
     if (path == '/search') {
       return c.search(
         (q['keyword'] ?? '').toString(),
@@ -101,6 +104,9 @@ class NovelApiClient {
         (q['type'] ?? 'allvisit').toString(),
         int.tryParse('${q['page'] ?? 1}') ?? 1,
       );
+    }
+    if (path == '/meta/home' || path == '/home') {
+      return c.home();
     }
     if (path == '/search') {
       return c.search(
