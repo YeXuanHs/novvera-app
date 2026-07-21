@@ -221,11 +221,12 @@ Future<Res<List<Comic>>> _loadRank(String source, String type, int page) async {
         .whereType<Map>()
         .map((e) => _itemToComic(Map<String, dynamic>.from(e), source))
         .toList();
+    final pagerMax = int.tryParse('${data['pager_max'] ?? ''}');
     final maxPage = inferMaxPage(
       page,
       items.length,
       fullPageSize: source == 'linovelib' ? 20 : 10,
-      parsed: int.tryParse('${data['max_page'] ?? ''}'),
+      parsed: pagerMax ?? int.tryParse('${data['max_page'] ?? ''}'),
     );
     return Res(items, subData: maxPage);
   } catch (e) {
@@ -277,22 +278,25 @@ Future<Res<List<Comic>>> _loadSearchAll(
     );
     final seen = <String>{};
     final comics = <Comic>[];
-    var maxPage = 1;
+    final pagerMaxes = <int?>[];
+    final itemCounts = <int>[];
+    final fullPageSize = source == 'linovelib' ? 20 : 10;
     for (final data in results) {
       final items = (data['items'] as List? ?? []).whereType<Map>().toList();
-      final mp = inferMaxPage(
-        page,
-        items.length,
-        fullPageSize: source == 'linovelib' ? 20 : 10,
-        parsed: int.tryParse('${data['max_page'] ?? ''}'),
-      );
-      if (mp > maxPage) maxPage = mp;
+      pagerMaxes.add(int.tryParse('${data['pager_max'] ?? ''}'));
+      itemCounts.add(items.length);
       for (final e in items) {
         final comic = _itemToComic(Map<String, dynamic>.from(e), source);
         if (comic.id.isEmpty || !seen.add(comic.id)) continue;
         comics.add(comic);
       }
     }
+    var maxPage = mergeSearchMaxPage(
+      page,
+      pagerMaxes: pagerMaxes,
+      itemCounts: itemCounts,
+      fullPageSize: fullPageSize,
+    );
     if (comics.isEmpty && page > 1) {
       maxPage = page - 1;
     }

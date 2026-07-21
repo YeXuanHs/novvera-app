@@ -110,6 +110,10 @@ int? parseHtmlMaxPage(Document doc) {
 
 /// Infer max page when HTML pager is missing.
 /// Never use "current+1 forever" — that makes 1/2 → 2/3 → 3/4 endless UI.
+///
+/// When [parsed] is set (from `#pagestats` / `a.last`), always prefer it.
+/// Soft `page+1` is only for a single source with a full page and no pager;
+/// callers that merge several searches must use [mergeSearchMaxPage] instead.
 int inferMaxPage(int page, int itemCount, {int fullPageSize = 10, int? parsed}) {
   if (parsed != null && parsed >= 1) {
     return parsed < page ? page : parsed;
@@ -121,6 +125,36 @@ int inferMaxPage(int page, int itemCount, {int fullPageSize = 10, int? parsed}) 
   if (itemCount < fullPageSize) {
     return page;
   }
+  return page + 1;
+}
+
+/// Merge max pages from parallel search types (书名/作者/标签).
+/// Prefer any real HTML pager; never let a soft `page+1` from one type
+/// inflate past a parsed pager from another (that caused endless 1/2→2/3…).
+int mergeSearchMaxPage(
+  int page, {
+  required List<int?> pagerMaxes,
+  required List<int> itemCounts,
+  int fullPageSize = 10,
+}) {
+  int? bestPager;
+  for (final p in pagerMaxes) {
+    if (p == null || p < 1) continue;
+    if (bestPager == null || p > bestPager) bestPager = p;
+  }
+  if (bestPager != null) {
+    return bestPager < page ? page : bestPager;
+  }
+  var anyFull = false;
+  var anyItems = false;
+  for (final n in itemCounts) {
+    if (n > 0) anyItems = true;
+    if (n >= fullPageSize) anyFull = true;
+  }
+  if (!anyItems) {
+    return page <= 1 ? 1 : page - 1;
+  }
+  if (!anyFull) return page;
   return page + 1;
 }
 

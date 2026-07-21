@@ -128,16 +128,18 @@ class LinovelibClient {
     final res = await _http.getHtml('$_base$path');
     final doc = parseHtml(res.html);
     final items = _parseRank(doc);
+    final pagerMax = parseHtmlMaxPage(doc);
     final maxPage = inferMaxPage(
       page,
       items.length,
       fullPageSize: 20,
-      parsed: parseHtmlMaxPage(doc),
+      parsed: pagerMax,
     );
     return {
       'type': type,
       'type_name': _rankTypes[type] ?? type,
       'page': page,
+      'pager_max': pagerMax,
       'max_page': maxPage,
       'items': items,
     };
@@ -298,16 +300,18 @@ class LinovelibClient {
     }
     final doc = parseHtml(res.html);
     final items = _parseSearch(doc);
+    final pagerMax = parseHtmlMaxPage(doc);
     final maxPage = inferMaxPage(
       page,
       items.length,
       fullPageSize: 20,
-      parsed: parseHtmlMaxPage(doc),
+      parsed: pagerMax,
     );
     return {
       'type': type,
       'keyword': keyword,
       'page': page,
+      'pager_max': pagerMax,
       'max_page': maxPage,
       'items': items,
     };

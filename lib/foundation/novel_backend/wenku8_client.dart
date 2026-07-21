@@ -193,16 +193,18 @@ class Wenku8Client {
     final res = await _http.getHtml(url, preferGbk: true);
     final doc = parseHtml(res.html);
     final items = _parseRank(doc);
+    final pagerMax = parseHtmlMaxPage(doc);
     final maxPage = inferMaxPage(
       page,
       items.length,
       fullPageSize: 10,
-      parsed: parseHtmlMaxPage(doc),
+      parsed: pagerMax,
     );
     return {
       'type': type,
       'type_name': _rankTypes[type] ?? type,
       'page': page,
+      'pager_max': pagerMax,
       'max_page': maxPage,
       'items': items,
     };
@@ -288,6 +290,7 @@ class Wenku8Client {
           'type': type,
           'keyword': keyword,
           'page': page,
+          'pager_max': 1,
           'max_page': 1,
           'items': [info],
         };
@@ -311,16 +314,18 @@ class Wenku8Client {
         'cover': cover,
       });
     }
+    final pagerMax = parseHtmlMaxPage(doc);
     final maxPage = inferMaxPage(
       page,
       items.length,
       fullPageSize: 10,
-      parsed: parseHtmlMaxPage(doc),
+      parsed: pagerMax,
     );
     return {
       'type': type,
       'keyword': keyword,
       'page': page,
+      'pager_max': pagerMax,
       'max_page': maxPage,
       'items': items,
     };
