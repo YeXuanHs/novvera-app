@@ -1,5 +1,5 @@
-name: Build PC
-run-name: Build Novvera (Windows / macOS / Linux)
+name: Build ALL
+run-name: Build Novvera (Desktop + Mobile)
 
 on:
   push:
@@ -99,6 +99,119 @@ jobs:
           path: result/
           if-no-files-found: error
 
+  Build_IOS:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Build iOS (no codesign)
+        run: flutter build ios --release --no-codesign
+
+      - name: Package IPA
+        run: |
+          APP_VERSION=$(grep "version:" pubspec.yaml | head -1 | cut -d':' -f2 | tr -d ' ' | cut -d'+' -f1)
+          APP_DIR=$(find build/ios -type d -name Runner.app | head -1)
+          mkdir -p Payload result
+          cp -R "$APP_DIR" Payload/
+          zip -r "result/Novvera-${APP_VERSION}-ios.ipa" Payload
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ios_build
+          path: result/
+          if-no-files-found: error
+
+  Build_Android:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+          architecture: x64
+          cache: true
+
+      - name: Setup Android signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          # Alternate secret names used by some forks
+          KEYSTORE_ALT: ${{ secrets.ANDROID_KEYSTORE }}
+          KEY_PROPERTIES_ALT: ${{ secrets.ANDROID_KEY_PROPERTIES }}
+        run: |
+          set -euo pipefail
+          if [ -n "${KEYSTORE_BASE64:-}" ] && [ -n "${KEYSTORE_PASSWORD:-}" ] && [ -n "${KEY_ALIAS:-}" ] && [ -n "${KEY_PASSWORD:-}" ]; then
+            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > android/keystore.jks
+            {
+              printf 'storeFile=keystore.jks\n'
+              printf 'storePassword=%s\n' "$KEYSTORE_PASSWORD"
+              printf 'keyAlias=%s\n' "$KEY_ALIAS"
+              printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+            } > android/key.properties
+            echo "Using ANDROID_KEYSTORE_* secrets"
+          elif [ -n "${KEYSTORE_ALT:-}" ] && [ -n "${KEY_PROPERTIES_ALT:-}" ]; then
+            printf '%s' "$KEYSTORE_ALT" | base64 --decode > android/keystore.jks
+            printf '%s\n' "$KEY_PROPERTIES_ALT" > android/key.properties
+            echo "Using ANDROID_KEYSTORE + ANDROID_KEY_PROPERTIES secrets"
+          else
+            echo "No Android signing secrets; generating CI keystore (debug-equivalent)"
+            keytool -genkeypair -v \
+              -keystore android/keystore.jks \
+              -storepass novvera-ci \
+              -alias novvera \
+              -keypass novvera-ci \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Novvera CI, OU=CI, O=Novvera, L=CI, ST=CI, C=CN"
+            {
+              printf 'storeFile=keystore.jks\n'
+              printf 'storePassword=novvera-ci\n'
+              printf 'keyAlias=novvera\n'
+              printf 'keyPassword=novvera-ci\n'
+            } > android/key.properties
+          fi
+
+      - run: flutter pub get
+
+      - name: Build Android APK
+        env:
+          RUSTFLAGS: "--cfg reqwest_unstable"
+        run: flutter build apk --release
+
+      - name: Collect APKs
+        run: |
+          mkdir -p result
+          find build/app/outputs/apk -name '*.apk' -exec cp {} result/ \;
+          ls -la result/
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: android_build
+          path: result/
+          if-no-files-found: error
+
   Build_Linux:
     runs-on: ubuntu-22.04
     steps:
@@ -194,7 +307,15 @@ jobs:
 
   Release:
     runs-on: ubuntu-latest
-    needs: [Build_Windows, Build_MacOS, Build_Linux, Build_Linux_ARM64]
+    needs:
+      [
+        Build_Windows,
+        Build_MacOS,
+        Build_IOS,
+        Build_Android,
+        Build_Linux,
+        Build_Linux_ARM64,
+      ]
     if: github.event_name == 'release'
     permissions:
       contents: write
@@ -210,6 +331,8 @@ jobs:
             outputs/*.zip
             outputs/*.exe
             outputs/*.dmg
+            outputs/*.ipa
+            outputs/*.apk
             outputs/*.tar.gz
             outputs/*.deb
         env:
