@@ -167,8 +167,9 @@ class LinovelibClient {
           img?.attributes['data-original'] ?? img?.attributes['src'],
         );
         if (cover.isEmpty) {
-          final folder = int.parse(aid) ~/ 1000;
-          cover = '$_base/files/article/image/$folder/$aid/${aid}s.jpg';
+          cover = linovelibCoverUrl(aid);
+        } else {
+          cover = preferHttps(cover);
         }
         items.add({
           'aid': aid,
@@ -203,12 +204,26 @@ class LinovelibClient {
       }
       final cate = intro?.querySelector('.rank_d_b_cate');
       if (cate != null) author = cleanText(cate.text);
+      Element? book = a.parent;
+      while (book != null && !book.classes.contains('rank_d_book_intro') &&
+          !book.classes.contains('rank_d_list')) {
+        book = book.parent;
+      }
+      final img = book?.querySelector('img') ??
+          a.parent?.querySelector('img');
+      var cover = preferHttps(absUrl(
+        _base,
+        img?.attributes['data-original'] ?? img?.attributes['src'],
+      ));
+      if (cover.isEmpty) {
+        cover = linovelibCoverUrl(aid);
+      }
       items.add({
         'name': cleanText(a.text),
         'author': author,
         'author_raw': author,
         'aid': aid,
-        'cover': '',
+        'cover': cover,
       });
     }
     return items;
@@ -238,7 +253,7 @@ class LinovelibClient {
             'author': keyword,
             'author_raw': keyword,
             'aid': aid,
-            'cover': '',
+            'cover': linovelibCoverUrl(aid),
           });
         }
       }
@@ -313,12 +328,20 @@ class LinovelibClient {
           author = cleanText(info.split('|').first);
         }
       }
+      final img = block.querySelector('img');
+      var cover = preferHttps(absUrl(
+        _base,
+        img?.attributes['data-original'] ?? img?.attributes['src'],
+      ));
+      if (cover.isEmpty) {
+        cover = linovelibCoverUrl(aid);
+      }
       items.add({
         'name': name,
         'author': author,
         'author_raw': author,
         'aid': aid,
-        'cover': '',
+        'cover': cover,
       });
     }
     if (items.isEmpty) {
@@ -327,20 +350,15 @@ class LinovelibClient {
         if (!_aidRe.hasMatch(href)) continue;
         final aid = _extractAid(href);
         final name = cleanText(a.text);
-        if (aid.isEmpty ||
-            name.isEmpty ||
-            name == '书籍详情' ||
-            name == '加入书架' ||
-            seen.contains(aid)) {
-          continue;
-        }
+        if (aid.isEmpty || name.isEmpty || seen.contains(aid)) continue;
+        if (name == '书籍详情' || name == '加入书架') continue;
         seen.add(aid);
         items.add({
           'name': name,
           'author': '',
           'author_raw': '',
           'aid': aid,
-          'cover': '',
+          'cover': linovelibCoverUrl(aid),
         });
       }
     }
@@ -362,7 +380,10 @@ class LinovelibClient {
     final updateTime = _meta(doc, ['og:novel:update_time', 'update']);
     final lastChapter = _meta(doc, ['og:novel:latest_chapter_name']);
     final tags = _meta(doc, ['og:novel:tags']);
-    final cover = absUrl(_base, _meta(doc, ['og:image', 'pic']));
+    var cover = preferHttps(absUrl(_base, _meta(doc, ['og:image', 'pic'])));
+    if (cover.isEmpty) {
+      cover = linovelibCoverUrl(aid);
+    }
     var intro = _meta(doc, ['og:description', 'description']) ?? '';
     if (intro.isEmpty) {
       final dec = doc.querySelector('.book-dec p') ?? doc.querySelector('.book-dec');
@@ -517,26 +538,26 @@ class LinovelibClient {
         if (txt.replaceAll(_spaceRe, '').isEmpty) continue;
         pTexts.add(cleanText(txt));
       } else if (node.localName == 'img') {
-        final src = absUrl(
+        final src = preferHttps(absUrl(
           _base,
           node.attributes['data-src'] ?? node.attributes['src'],
-        );
+        ));
         if (src.isNotEmpty) images.add(src);
       } else {
         for (final img in node.querySelectorAll('img')) {
-          final src = absUrl(
+          final src = preferHttps(absUrl(
             _base,
             img.attributes['data-src'] ?? img.attributes['src'],
-          );
+          ));
           if (src.isNotEmpty && !images.contains(src)) images.add(src);
         }
       }
     }
     for (final img in tc.querySelectorAll('img')) {
-      final src = absUrl(
+      final src = preferHttps(absUrl(
         _base,
         img.attributes['data-src'] ?? img.attributes['src'],
-      );
+      ));
       if (src.isNotEmpty && !images.contains(src)) images.add(src);
     }
 

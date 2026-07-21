@@ -4,6 +4,8 @@ import 'package:novvera/components/components.dart';
 import 'package:novvera/foundation/comic_source/comic_source.dart';
 import 'package:novvera/foundation/comic_type.dart';
 import 'package:novvera/foundation/history.dart';
+import 'package:novvera/foundation/image_provider/cached_image.dart';
+import 'package:novvera/foundation/novel_backend/novel_http.dart';
 import 'package:novvera/foundation/novel_source/builtin_sources.dart';
 import 'package:novvera/utils/translations.dart';
 
@@ -147,7 +149,7 @@ class _NovelReaderState extends State<NovelReader> {
     final data = res.data;
     final text = (data['content'] ?? '').toString();
     final imgs = (data['images'] as List? ?? [])
-        .map((e) => e.toString())
+        .map((e) => preferHttps(e.toString()))
         .where((e) => e.startsWith('http'))
         .toList();
     setState(() {
@@ -197,9 +199,10 @@ class _NovelReaderState extends State<NovelReader> {
         continue;
       }
       if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-        if (!seenImages.contains(trimmed)) {
-          seenImages.add(trimmed);
-          blocks.add(_NovelBlock.image(trimmed));
+        final url = preferHttps(trimmed);
+        if (!seenImages.contains(url)) {
+          seenImages.add(url);
+          blocks.add(_NovelBlock.image(url));
         }
         continue;
       }
@@ -386,20 +389,14 @@ class _NovelReaderState extends State<NovelReader> {
                 child: Center(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 560),
-                    child: Image.network(
-                      b.imageUrl!,
-                      fit: BoxFit.contain,
-                      loadingBuilder: (c, child, progress) {
-                        if (progress == null) return child;
-                        return const SizedBox(
-                          height: 120,
-                          child: Center(child: CircularProgressIndicator()),
-                        );
-                      },
-                      errorBuilder: (_, __, ___) => const Icon(
-                        Icons.broken_image_outlined,
-                        size: 48,
+                    child: AnimatedImage(
+                      image: CachedImageProvider(
+                        b.imageUrl!,
+                        sourceKey: sourceKey,
+                        cid: widget.cid,
                       ),
+                      fit: BoxFit.contain,
+                      width: double.infinity,
                     ),
                   ),
                 ),

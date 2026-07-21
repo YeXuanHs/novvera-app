@@ -20,6 +20,30 @@ String absUrl(String base, String? href) {
   return Uri.parse(base).resolve(href).toString();
 }
 
+/// Prefer https for CDN hosts that still emit http links.
+String preferHttps(String url) {
+  if (url.startsWith('http://')) {
+    return 'https://${url.substring(7)}';
+  }
+  return url;
+}
+
+/// Wenku8 cover CDN: img.wenku8.com/image/{aid//1000}/{aid}/{aid}s.jpg
+String wenku8CoverUrl(String aid) {
+  final id = int.tryParse(aid);
+  if (id == null) return '';
+  final folder = id ~/ 1000;
+  return 'https://img.wenku8.com/image/$folder/$aid/${aid}s.jpg';
+}
+
+/// Linovelib cover path used by the site templates.
+String linovelibCoverUrl(String aid) {
+  final id = int.tryParse(aid);
+  if (id == null) return '';
+  final folder = id ~/ 1000;
+  return 'https://www.linovelib.com/files/article/image/$folder/$aid/${aid}s.jpg';
+}
+
 Document parseHtml(String source) => html_parser.parse(source);
 
 String decodeHtmlBytes(Uint8List bytes, {bool preferGbk = false}) {

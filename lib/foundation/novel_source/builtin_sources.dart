@@ -1,5 +1,7 @@
 import 'package:novvera/foundation/comic_source/comic_source.dart';
+import 'package:novvera/foundation/consts.dart';
 import 'package:novvera/foundation/novel_api/novel_api_client.dart';
+import 'package:novvera/foundation/novel_backend/novel_http.dart';
 import 'package:novvera/foundation/res.dart';
 
 const kNovelSourceKeys = {'wenku8', 'linovelib'};
@@ -104,8 +106,8 @@ ComicSource _buildSource({
     (id) => _loadComicInfo(key, id),
     null,
     null,
-    null,
-    null,
+    (imageKey, comicId, epId) async => _imageLoadingConfig(key, imageKey),
+    (imageKey) => _imageLoadingConfig(key, imageKey),
     'builtin:$key',
     '',
     '1.0.0',
@@ -128,10 +130,34 @@ ComicSource _buildSource({
   );
 }
 
+Map<String, dynamic> _imageLoadingConfig(String sourceKey, String imageKey) {
+  final referer = sourceKey == 'wenku8'
+      ? 'https://www.wenku8.net/'
+      : 'https://www.linovelib.com/';
+  var url = preferHttps(imageKey);
+  // Legacy pic.wenku8.com host; AppDio follows the CDN redirect.
+  if (url.contains('pic.wenku8.com') || url.contains('img.wenku8.com')) {
+    // keep
+  }
+  return {
+    'url': url,
+    'headers': {
+      'user-agent': webUA,
+      'Referer': referer,
+      'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+    },
+  };
+}
+
 Comic _itemToComic(Map<String, dynamic> item, String sourceKey) {
   final aid = '${item['aid'] ?? ''}';
   final title = (item['name'] ?? item['title'] ?? '').toString();
-  final cover = (item['cover'] ?? '').toString();
+  var cover = preferHttps((item['cover'] ?? '').toString());
+  if (cover.isEmpty && aid.isNotEmpty) {
+    cover = sourceKey == 'wenku8'
+        ? wenku8CoverUrl(aid)
+        : linovelibCoverUrl(aid);
+  }
   final authorRaw = (item['author_raw'] ?? '').toString();
   final author = authorRaw.isNotEmpty
       ? authorRaw
@@ -281,7 +307,12 @@ Future<Res<ComicDetails>> _loadComicInfo(String source, String id) async {
     );
 
     final title = (info['name'] ?? catalog['title'] ?? '').toString();
-    final cover = (info['cover'] ?? '').toString();
+    var cover = preferHttps((info['cover'] ?? '').toString());
+    if (cover.isEmpty) {
+      cover = source == 'wenku8'
+          ? wenku8CoverUrl(id)
+          : linovelibCoverUrl(id);
+    }
     final authorRaw = (info['author_raw'] ?? '').toString();
     final category = (info['category'] ?? '').toString();
     final intro = (info['intro'] ?? '').toString();

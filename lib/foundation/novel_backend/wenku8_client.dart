@@ -243,8 +243,9 @@ class Wenku8Client {
             a.parent?.querySelector('img');
         var cover = absUrl(_base, img?.attributes['src']);
         if (cover.isEmpty) {
-          final folder = int.parse(aid) ~/ 1000;
-          cover = 'http://img.wenku8.com/image/$folder/$aid/${aid}s.jpg';
+          cover = wenku8CoverUrl(aid);
+        } else {
+          cover = preferHttps(cover);
         }
         items.add({
           'aid': aid,
@@ -291,12 +292,18 @@ class Wenku8Client {
       final a = div.querySelector('b a');
       if (a == null) continue;
       final ps = div.querySelectorAll('p');
+      final aid = _extractAid(a.attributes['href'] ?? '') ?? '';
+      final img = div.querySelector('img');
+      var cover = preferHttps(absUrl(_base, img?.attributes['src']));
+      if (cover.isEmpty && aid.isNotEmpty) {
+        cover = wenku8CoverUrl(aid);
+      }
       items.add({
         'name': cleanText(a.attributes['title'] ?? a.text),
         'author': ps.isNotEmpty ? cleanText(ps.first.text) : '',
         'author_raw': ps.isNotEmpty ? cleanText(ps.first.text) : '',
-        'aid': _extractAid(a.attributes['href'] ?? '') ?? '',
-        'cover': '',
+        'aid': aid,
+        'cover': cover,
       });
     }
     return {
@@ -315,12 +322,18 @@ class Wenku8Client {
       final a = div.querySelector('b a');
       if (a == null) continue;
       final ps = div.querySelectorAll('p');
+      final aid = _extractAid(a.attributes['href'] ?? '') ?? '';
+      final img = div.querySelector('img');
+      var cover = preferHttps(absUrl(_base, img?.attributes['src']));
+      if (cover.isEmpty && aid.isNotEmpty) {
+        cover = wenku8CoverUrl(aid);
+      }
       items.add({
         'name': cleanText(a.attributes['title'] ?? a.text),
         'author': ps.isNotEmpty ? cleanText(ps.first.text) : '',
         'author_raw': ps.isNotEmpty ? cleanText(ps.first.text) : '',
-        'aid': _extractAid(a.attributes['href'] ?? '') ?? '',
-        'cover': '',
+        'aid': aid,
+        'cover': cover,
       });
     }
     return items;
@@ -367,7 +380,10 @@ class Wenku8Client {
     }
     final imgTd = doc.querySelector('td[width="20%"][valign="top"] img');
     if (imgTd != null) {
-      data['cover'] = absUrl(_base, imgTd.attributes['src']);
+      data['cover'] = preferHttps(absUrl(_base, imgTd.attributes['src']));
+    }
+    if ((data['cover'] as String).isEmpty) {
+      data['cover'] = wenku8CoverUrl(aid);
     }
     final pageText = doc.body?.text ?? '';
     for (final tr in doc.querySelectorAll('tr')) {
@@ -548,14 +564,14 @@ class Wenku8Client {
           src = absUrl(_base, div.querySelector('a')?.attributes['href']);
         }
         if (src.isNotEmpty) {
-          images.add(src);
-          div.replaceWith(Text('\n$src\n'));
+          images.add(preferHttps(src));
+          div.replaceWith(Text('\n${preferHttps(src)}\n'));
         } else {
           div.remove();
         }
       }
       for (final img in contentDiv.querySelectorAll('img.imagecontent')) {
-        final src = absUrl(_base, img.attributes['src']);
+        final src = preferHttps(absUrl(_base, img.attributes['src']));
         if (src.isNotEmpty) {
           if (!images.contains(src)) images.add(src);
           img.replaceWith(Text('\n$src\n'));
