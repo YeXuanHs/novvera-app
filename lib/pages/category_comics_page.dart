@@ -40,6 +40,7 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
           throw "The comic source ${source.name} does not support category comics";
         }
         data = source.categoryComicsData!;
+        optionsLoader = data.optionsLoader;
         if (data.options != null) {
           options = data.options!.where((element) {
             if (element.notShowWhen.contains(widget.category)) {
@@ -50,10 +51,10 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
             return true;
           }).toList();
         } else {
-          options = null;
+          // null options + no loader → ready (do not spin forever)
+          options = optionsLoader != null ? null : const [];
         }
-        if (data.optionsLoader != null) {
-          optionsLoader = data.optionsLoader;
+        if (optionsLoader != null) {
           loadOptions();
         }
         resetOptionsValue();

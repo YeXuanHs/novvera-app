@@ -1,5 +1,3 @@
-import 'dart:collection';
-
 import 'package:novvera/foundation/comic_source/comic_source.dart';
 import 'package:novvera/foundation/novel_api/novel_api_client.dart';
 import 'package:novvera/foundation/res.dart';
@@ -69,6 +67,7 @@ ComicSource _buildSource({
   );
 
   final categoryComicsData = CategoryComicsData(
+    options: const [],
     load: (category, param, options, page) {
       final type = _resolveRankType(category, param, options);
       return _loadRank(key, type, page);
@@ -88,19 +87,6 @@ ComicSource _buildSource({
     ),
   ];
 
-  final searchOptions = [
-    SearchOptions(
-      LinkedHashMap.from({
-        'articlename': '书名',
-        'author': '作者',
-        'tag': '标签',
-      }),
-      '搜索类型',
-      'select',
-      'articlename',
-    ),
-  ];
-
   return ComicSource(
     name,
     key,
@@ -110,13 +96,8 @@ ComicSource _buildSource({
     null,
     explorePages,
     SearchPageData(
-      searchOptions,
-      (keyword, page, options) => _loadSearch(
-        key,
-        keyword,
-        page,
-        options.isNotEmpty ? options.first : 'articlename',
-      ),
+      null,
+      (keyword, page, options) => _loadSearchAll(key, keyword, page),
       null,
     ),
     null,
@@ -217,6 +198,7 @@ Future<Res<List<Comic>>> _loadRank(String source, String type, int page) async {
         .whereType<Map>()
         .map((e) => _itemToComic(Map<String, dynamic>.from(e), source))
         .toList();
+    // Soft max-page: one HTML page at a time; grow while the page is non-empty.
     final maxPage = items.isEmpty ? page : page + 1;
     return Res(items, subData: maxPage);
   } catch (e) {
@@ -239,29 +221,47 @@ String _resolveRankType(String category, String? param, List<String> options) {
   return _rankTypes.keys.first;
 }
 
-Future<Res<List<Comic>>> _loadSearch(
+const _searchTypes = ['articlename', 'author', 'tag'];
+
+/// Search book name / author / tag in parallel, then dedupe by aid.
+Future<Res<List<Comic>>> _loadSearchAll(
   String source,
   String keyword,
   int page,
-  String type,
 ) async {
   try {
-    final data = await NovelApiClient.instance.get(
-      source,
-      '/search',
-      query: {
-        'keyword': keyword,
-        'type': type,
-        'page': page,
-        'fmt': 'utf8',
-      },
+    final kw = keyword.trim();
+    if (kw.isEmpty) {
+      return const Res([], subData: 1);
+    }
+    final results = await Future.wait(
+      _searchTypes.map(
+        (type) => NovelApiClient.instance.get(
+          source,
+          '/search',
+          query: {
+            'keyword': kw,
+            'type': type,
+            'page': page,
+            'fmt': 'utf8',
+          },
+        ),
+      ),
     );
-    final items = (data['items'] as List? ?? [])
-        .whereType<Map>()
-        .map((e) => _itemToComic(Map<String, dynamic>.from(e), source))
-        .toList();
-    final maxPage = items.isEmpty ? page : page + 1;
-    return Res(items, subData: maxPage);
+    final seen = <String>{};
+    final comics = <Comic>[];
+    var anyNonEmpty = false;
+    for (final data in results) {
+      final items = (data['items'] as List? ?? []).whereType<Map>();
+      if (items.isNotEmpty) anyNonEmpty = true;
+      for (final e in items) {
+        final comic = _itemToComic(Map<String, dynamic>.from(e), source);
+        if (comic.id.isEmpty || !seen.add(comic.id)) continue;
+        comics.add(comic);
+      }
+    }
+    final maxPage = anyNonEmpty ? page + 1 : page;
+    return Res(comics, subData: maxPage);
   } catch (e) {
     return Res.error(e.toString());
   }
