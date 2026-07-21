@@ -293,11 +293,7 @@ class Wenku8Client {
       if (a == null) continue;
       final ps = div.querySelectorAll('p');
       final aid = _extractAid(a.attributes['href'] ?? '') ?? '';
-      final img = div.querySelector('img');
-      var cover = preferHttps(absUrl(_base, img?.attributes['src']));
-      if (cover.isEmpty && aid.isNotEmpty) {
-        cover = wenku8CoverUrl(aid);
-      }
+      final cover = _coverFromCard(div, aid);
       items.add({
         'name': cleanText(a.attributes['title'] ?? a.text),
         'author': ps.isNotEmpty ? cleanText(ps.first.text) : '',
@@ -323,11 +319,7 @@ class Wenku8Client {
       if (a == null) continue;
       final ps = div.querySelectorAll('p');
       final aid = _extractAid(a.attributes['href'] ?? '') ?? '';
-      final img = div.querySelector('img');
-      var cover = preferHttps(absUrl(_base, img?.attributes['src']));
-      if (cover.isEmpty && aid.isNotEmpty) {
-        cover = wenku8CoverUrl(aid);
-      }
+      final cover = _coverFromCard(div, aid);
       items.add({
         'name': cleanText(a.attributes['title'] ?? a.text),
         'author': ps.isNotEmpty ? cleanText(ps.first.text) : '',
@@ -348,6 +340,26 @@ class Wenku8Client {
     final novel = RegExp(r'/novel/\d+/(\d+)/').firstMatch(href);
     if (novel != null) return novel.group(1);
     return m.last.group(1);
+  }
+
+  /// Prefer real src / data-src / data-original from the page.
+  String? _pickImgSrc(Element? img) {
+    if (img == null) return null;
+    for (final key in ['data-original', 'data-src', 'data-lazy', 'src']) {
+      final v = absUrl(_base, img.attributes[key]);
+      if (v.isNotEmpty) return v;
+    }
+    return null;
+  }
+
+  /// Cover from list card HTML; if the page omitted <img>, derive CDN from aid.
+  String _coverFromCard(Element card, String aid) {
+    final img = card.querySelector('img');
+    var cover = preferHttps(_pickImgSrc(img) ?? '');
+    if (cover.isEmpty && aid.isNotEmpty) {
+      cover = wenku8CoverUrl(aid);
+    }
+    return cover;
   }
 
   Future<Map<String, dynamic>> bookDetail(String aid) async {
@@ -559,23 +571,22 @@ class Wenku8Client {
       }
       for (final div in contentDiv.querySelectorAll('div.divimage')) {
         final img = div.querySelector('img');
-        var src = absUrl(_base, img?.attributes['src']);
-        if (src.isEmpty) {
-          src = absUrl(_base, div.querySelector('a')?.attributes['href']);
-        }
+        var src = _pickImgSrc(img) ??
+            absUrl(_base, div.querySelector('a')?.attributes['href']);
+        src = preferHttps(src ?? '');
         if (src.isNotEmpty) {
-          images.add(preferHttps(src));
-          div.replaceWith(Text('\n${preferHttps(src)}\n'));
+          if (!images.contains(src)) images.add(src);
+          div.replaceWith(Text('\n$src\n'));
         } else {
           div.remove();
         }
       }
-      for (final img in contentDiv.querySelectorAll('img.imagecontent')) {
-        final src = preferHttps(absUrl(_base, img.attributes['src']));
-        if (src.isNotEmpty) {
-          if (!images.contains(src)) images.add(src);
-          img.replaceWith(Text('\n$src\n'));
-        }
+      // Auto-collect every illustration the page embeds (class names vary).
+      for (final img in contentDiv.querySelectorAll('img')) {
+        final src = preferHttps(_pickImgSrc(img) ?? '');
+        if (src.isEmpty) continue;
+        if (!images.contains(src)) images.add(src);
+        img.replaceWith(Text('\n$src\n'));
       }
       for (final br in contentDiv.querySelectorAll('br')) {
         br.replaceWith(Text('\n'));
