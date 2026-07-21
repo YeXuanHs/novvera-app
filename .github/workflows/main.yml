@@ -59,7 +59,7 @@ jobs:
             ForEach-Object { Copy-Item $_.FullName result/ -Force }
           Get-ChildItem result | Format-Table Name, Length
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: windows_build
           path: result/
@@ -93,7 +93,7 @@ jobs:
           ln -s /Applications dist/dmg_contents/Applications
           hdiutil create -volname "Novvera" -srcfolder dist/dmg_contents -ov -format UDZO "result/Novvera-${APP_VERSION}-macos.dmg"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: macos_build
           path: result/
@@ -135,7 +135,7 @@ jobs:
           find build/linux -name '*.deb' -exec cp {} result/ \; || true
           ls -la result/
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: linux_x64_build
           path: result/
@@ -186,7 +186,7 @@ jobs:
           find build/linux -name '*.deb' -exec cp {} result/ \; || true
           ls -la result/
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: linux_arm64_build
           path: result/
@@ -199,7 +199,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v6
         with:
           path: outputs
           merge-multiple: true
