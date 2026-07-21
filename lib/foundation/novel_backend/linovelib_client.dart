@@ -126,11 +126,19 @@ class LinovelibClient {
     final path =
         (_rankPaths[type] ?? _rankPaths['monthvisit']!).replaceAll('{page}', '$page');
     final res = await _http.getHtml('$_base$path');
-    final items = _parseRank(parseHtml(res.html));
+    final doc = parseHtml(res.html);
+    final items = _parseRank(doc);
+    final maxPage = inferMaxPage(
+      page,
+      items.length,
+      fullPageSize: 20,
+      parsed: parseHtmlMaxPage(doc),
+    );
     return {
       'type': type,
       'type_name': _rankTypes[type] ?? type,
       'page': page,
+      'max_page': maxPage,
       'items': items,
     };
   }
@@ -261,6 +269,7 @@ class LinovelibClient {
         'type': type,
         'keyword': keyword,
         'page': page,
+        'max_page': 1,
         'items': items,
       };
     }
@@ -287,11 +296,20 @@ class LinovelibClient {
         },
       );
     }
+    final doc = parseHtml(res.html);
+    final items = _parseSearch(doc);
+    final maxPage = inferMaxPage(
+      page,
+      items.length,
+      fullPageSize: 20,
+      parsed: parseHtmlMaxPage(doc),
+    );
     return {
       'type': type,
       'keyword': keyword,
       'page': page,
-      'items': _parseSearch(parseHtml(res.html)),
+      'max_page': maxPage,
+      'items': items,
     };
   }
 

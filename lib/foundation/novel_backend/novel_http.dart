@@ -62,6 +62,68 @@ String linovelibCoverUrl(String aid) {
 
 Document parseHtml(String source) => html_parser.parse(source);
 
+/// Parse last page number from common Chinese novel site pagers.
+/// Returns null if the HTML has no usable pager.
+int? parseHtmlMaxPage(Document doc) {
+  int? best;
+
+  void consider(int? n) {
+    if (n == null || n < 1) return;
+    if (best == null || n > best!) best = n;
+  }
+
+  // "#pagelink a.last" / class=last
+  for (final a in doc.querySelectorAll(
+    '#pagelink a.last, #pagelink a.Last, a.last, .pagination a.last',
+  )) {
+    final href = a.attributes['href'] ?? '';
+    final m = RegExp(r'[?&]page=(\d+)').firstMatch(href) ??
+        RegExp(r'/(\d+)\.html').firstMatch(href);
+    if (m != null) {
+      consider(int.tryParse(m.group(1)!));
+    } else {
+      consider(int.tryParse(cleanText(a.text)));
+    }
+  }
+
+  // Any pager links with page=
+  for (final a in doc.querySelectorAll(
+    '#pagelink a[href], .pages a[href], .pagination a[href], .pagelink a[href]',
+  )) {
+    final href = a.attributes['href'] ?? '';
+    final m = RegExp(r'[?&]page=(\d+)').firstMatch(href);
+    if (m != null) consider(int.tryParse(m.group(1)!));
+    final m2 = RegExp(r'/(\d+)\.html').firstMatch(href);
+    if (m2 != null) consider(int.tryParse(m2.group(1)!));
+    final t = int.tryParse(cleanText(a.text));
+    if (t != null && t < 100000) consider(t);
+  }
+
+  // "1/42" style
+  for (final el in doc.querySelectorAll('#pagestats, .pagestats, #pagelink')) {
+    final m = RegExp(r'(\d+)\s*/\s*(\d+)').firstMatch(el.text);
+    if (m != null) consider(int.tryParse(m.group(2)!));
+  }
+
+  return best;
+}
+
+/// Infer max page when HTML pager is missing.
+/// Never use "current+1 forever" — that makes 1/2 → 2/3 → 3/4 endless UI.
+int inferMaxPage(int page, int itemCount, {int fullPageSize = 10, int? parsed}) {
+  if (parsed != null && parsed >= 1) {
+    return parsed < page ? page : parsed;
+  }
+  if (itemCount <= 0) {
+    return page <= 1 ? 1 : page - 1;
+  }
+  // Short page ⇒ last page. Full page ⇒ allow one more probe only.
+  if (itemCount < fullPageSize) {
+    return page;
+  }
+  return page + 1;
+}
+
 String decodeHtmlBytes(Uint8List bytes, {bool preferGbk = false}) {
   if (preferGbk) {
     try {

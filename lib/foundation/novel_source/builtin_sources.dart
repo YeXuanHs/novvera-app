@@ -221,8 +221,12 @@ Future<Res<List<Comic>>> _loadRank(String source, String type, int page) async {
         .whereType<Map>()
         .map((e) => _itemToComic(Map<String, dynamic>.from(e), source))
         .toList();
-    // Soft max-page: one HTML page at a time; grow while the page is non-empty.
-    final maxPage = items.isEmpty ? page : page + 1;
+    final maxPage = inferMaxPage(
+      page,
+      items.length,
+      fullPageSize: source == 'linovelib' ? 20 : 10,
+      parsed: int.tryParse('${data['max_page'] ?? ''}'),
+    );
     return Res(items, subData: maxPage);
   } catch (e) {
     return Res.error(e.toString());
@@ -273,17 +277,25 @@ Future<Res<List<Comic>>> _loadSearchAll(
     );
     final seen = <String>{};
     final comics = <Comic>[];
-    var anyNonEmpty = false;
+    var maxPage = 1;
     for (final data in results) {
-      final items = (data['items'] as List? ?? []).whereType<Map>();
-      if (items.isNotEmpty) anyNonEmpty = true;
+      final items = (data['items'] as List? ?? []).whereType<Map>().toList();
+      final mp = inferMaxPage(
+        page,
+        items.length,
+        fullPageSize: source == 'linovelib' ? 20 : 10,
+        parsed: int.tryParse('${data['max_page'] ?? ''}'),
+      );
+      if (mp > maxPage) maxPage = mp;
       for (final e in items) {
         final comic = _itemToComic(Map<String, dynamic>.from(e), source);
         if (comic.id.isEmpty || !seen.add(comic.id)) continue;
         comics.add(comic);
       }
     }
-    final maxPage = anyNonEmpty ? page + 1 : page;
+    if (comics.isEmpty && page > 1) {
+      maxPage = page - 1;
+    }
     return Res(comics, subData: maxPage);
   } catch (e) {
     return Res.error(e.toString());

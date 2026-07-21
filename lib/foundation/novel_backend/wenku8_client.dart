@@ -191,11 +191,19 @@ class Wenku8Client {
         ? '$_base/modules/article/articlelist.php?fullflag=1&page=$page'
         : '$_base/modules/article/toplist.php?sort=$type&page=$page';
     final res = await _http.getHtml(url, preferGbk: true);
-    final items = _parseRank(parseHtml(res.html));
+    final doc = parseHtml(res.html);
+    final items = _parseRank(doc);
+    final maxPage = inferMaxPage(
+      page,
+      items.length,
+      fullPageSize: 10,
+      parsed: parseHtmlMaxPage(doc),
+    );
     return {
       'type': type,
       'type_name': _rankTypes[type] ?? type,
       'page': page,
+      'max_page': maxPage,
       'items': items,
     };
   }
@@ -280,6 +288,7 @@ class Wenku8Client {
           'type': type,
           'keyword': keyword,
           'page': page,
+          'max_page': 1,
           'items': [info],
         };
       }
@@ -302,10 +311,17 @@ class Wenku8Client {
         'cover': cover,
       });
     }
+    final maxPage = inferMaxPage(
+      page,
+      items.length,
+      fullPageSize: 10,
+      parsed: parseHtmlMaxPage(doc),
+    );
     return {
       'type': type,
       'keyword': keyword,
       'page': page,
+      'max_page': maxPage,
       'items': items,
     };
   }
