@@ -134,11 +134,7 @@ Map<String, dynamic> _imageLoadingConfig(String sourceKey, String imageKey) {
   final referer = sourceKey == 'wenku8'
       ? 'https://www.wenku8.net/'
       : 'https://www.linovelib.com/';
-  var url = preferHttps(imageKey);
-  // Legacy pic.wenku8.com host; AppDio follows the CDN redirect.
-  if (url.contains('pic.wenku8.com') || url.contains('img.wenku8.com')) {
-    // keep
-  }
+  final url = normalizeNovelImageUrl(imageKey);
   return {
     'url': url,
     'headers': {

@@ -149,7 +149,7 @@ class _NovelReaderState extends State<NovelReader> {
     final data = res.data;
     final text = (data['content'] ?? '').toString();
     final imgs = (data['images'] as List? ?? [])
-        .map((e) => preferHttps(e.toString()))
+        .map((e) => normalizeNovelImageUrl(e.toString()))
         .where((e) => e.startsWith('http'))
         .toList();
     setState(() {
@@ -199,7 +199,7 @@ class _NovelReaderState extends State<NovelReader> {
         continue;
       }
       if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-        final url = preferHttps(trimmed);
+        final url = normalizeNovelImageUrl(trimmed);
         if (!seenImages.contains(url)) {
           seenImages.add(url);
           blocks.add(_NovelBlock.image(url));

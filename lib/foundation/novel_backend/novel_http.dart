@@ -28,6 +28,22 @@ String preferHttps(String url) {
   return url;
 }
 
+/// Wenku8 chapter illustrations: HTML often uses pic.wenku8.com which 302s to
+/// pic.777743.xyz (path drops the `/pictures/` prefix). Resolve eagerly so
+/// image downloads do not depend on redirect-following.
+String normalizeNovelImageUrl(String url) {
+  var u = preferHttps(url.trim());
+  if (u.isEmpty) return u;
+  final pic = RegExp(
+    r'^https://pic\.wenku8\.com/pictures/(.+)$',
+    caseSensitive: false,
+  ).firstMatch(u);
+  if (pic != null) {
+    return 'https://pic.777743.xyz/${pic.group(1)}';
+  }
+  return u;
+}
+
 /// Wenku8 cover CDN: img.wenku8.com/image/{aid//1000}/{aid}/{aid}s.jpg
 String wenku8CoverUrl(String aid) {
   final id = int.tryParse(aid);

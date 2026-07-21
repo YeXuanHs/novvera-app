@@ -571,7 +571,7 @@ class Wenku8Client {
       }
       for (final div in contentDiv.querySelectorAll('div.divimage')) {
         final img = div.querySelector('img');
-        var src = preferHttps(
+        var src = normalizeNovelImageUrl(
           _pickImgSrc(img) ??
               absUrl(_base, div.querySelector('a')?.attributes['href']),
         );
@@ -584,7 +584,7 @@ class Wenku8Client {
       }
       // Auto-collect every illustration the page embeds (class names vary).
       for (final img in contentDiv.querySelectorAll('img')) {
-        final src = preferHttps(_pickImgSrc(img) ?? '');
+        final src = normalizeNovelImageUrl(_pickImgSrc(img) ?? '');
         if (src.isEmpty) continue;
         if (!images.contains(src)) images.add(src);
         img.replaceWith(Text('\n$src\n'));
