@@ -1,5 +1,6 @@
 import 'package:novvera/foundation/comic_source/comic_source.dart';
 import 'package:novvera/foundation/consts.dart';
+import 'package:novvera/foundation/log.dart';
 import 'package:novvera/foundation/novel_api/novel_api_client.dart';
 import 'package:novvera/foundation/novel_backend/novel_http.dart';
 import 'package:novvera/foundation/novel_source/novel_page_cache.dart';
@@ -249,9 +250,40 @@ String _resolveRankType(String category, String? param, List<String> options) {
   return _rankTypes.keys.first;
 }
 
-const _searchTypes = ['articlename', 'author', 'tag'];
+Future<Map<String, dynamic>?> _searchOne(
+  String source,
+  String keyword,
+  String type,
+  int page,
+) async {
+  try {
+    return await NovelApiClient.instance.get(
+      source,
+      '/search',
+      query: {
+        'keyword': keyword,
+        'type': type,
+        'page': page,
+        'fmt': 'utf8',
+      },
+    );
+  } catch (e) {
+    Log.warning('NovelSource', '$source search/$type: $e');
+    return null;
+  }
+}
 
-/// Search book name / author / tag in parallel, then dedupe by aid.
+bool _searchHasItems(Map<String, dynamic>? data) {
+  final items = data?['items'];
+  return items is List && items.isNotEmpty;
+}
+
+/// Search book name / author / tag, then dedupe by aid.
+///
+/// wenku8 `search.php` only allows one hit per ~5s. Book-title and author both
+/// use that endpoint — parallelizing them makes the slower request return the
+/// rate-limit page. Title-only hits like「艾莉」then show empty if author wins
+/// the race. `tags.php` is a different endpoint and may run with title.
 Future<Res<List<Comic>>> _loadSearchAll(
   String source,
   String keyword,
@@ -262,20 +294,32 @@ Future<Res<List<Comic>>> _loadSearchAll(
     if (kw.isEmpty) {
       return const Res([], subData: 1);
     }
-    final results = await Future.wait(
-      _searchTypes.map(
-        (type) => NovelApiClient.instance.get(
-          source,
-          '/search',
-          query: {
-            'keyword': kw,
-            'type': type,
-            'page': page,
-            'fmt': 'utf8',
-          },
-        ),
-      ),
-    );
+
+    final results = <Map<String, dynamic>>[];
+    if (source == 'wenku8') {
+      final pair = await Future.wait([
+        _searchOne(source, kw, 'articlename', page),
+        _searchOne(source, kw, 'tag', page),
+      ]);
+      for (final r in pair) {
+        if (r != null) results.add(r);
+      }
+      // Author also hits search.php — only when title missed.
+      if (!_searchHasItems(pair[0])) {
+        final author = await _searchOne(source, kw, 'author', page);
+        if (author != null) results.add(author);
+      }
+    } else {
+      final all = await Future.wait([
+        _searchOne(source, kw, 'articlename', page),
+        _searchOne(source, kw, 'author', page),
+        _searchOne(source, kw, 'tag', page),
+      ]);
+      for (final r in all) {
+        if (r != null) results.add(r);
+      }
+    }
+
     final seen = <String>{};
     final comics = <Comic>[];
     final pagerMaxes = <int?>[];
