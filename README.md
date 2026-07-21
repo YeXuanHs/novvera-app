@@ -4,7 +4,7 @@
 
 基于 [Venera](https://github.com/venera-app/venera) 改造，面向 Windows / macOS / Linux。
 
-仓库：https://github.com/YeXuanHs/Novvera-app-desktop
+仓库：https://github.com/YeXuanHs/novvera-app
 
 ## 功能
 

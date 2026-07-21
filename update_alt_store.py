@@ -119,7 +119,7 @@ def update_json_file_release(json_file, latest_release):
         "notify": True,
         "tintColor": "#0784FC",
         "title": f"{full_version} - Novvera  {date_string}",
-        "url": f"https://github.com/YeXuanHs/Novvera-app-desktop/releases/tag/{tag}"
+        "url": f"https://github.com/YeXuanHs/novvera-app/releases/tag/{tag}"
     }
 
     news_entry_exists = any(item["identifier"] == news_identifier for item in data["news"])
@@ -135,7 +135,7 @@ def update_json_file_release(json_file, latest_release):
         raise
 
 def main():
-    repo_url = "YeXuanHs/Novvera-app-desktop"
+    repo_url = "YeXuanHs/novvera-app"
     is_nightly = "NIGHTLY_LINK" in os.environ
 
     try:

@@ -13,7 +13,6 @@ import 'package:novvera/foundation/log.dart';
 import 'package:novvera/foundation/novel_api/novel_api_client.dart';
 import 'package:novvera/network/cookie_jar.dart';
 import 'package:novvera/pages/follow_updates_page.dart';
-import 'package:novvera/pages/settings/settings_page.dart';
 import 'package:novvera/utils/app_links.dart';
 import 'package:novvera/utils/handle_text_share.dart';
 import 'package:novvera/utils/opencc.dart';
@@ -114,21 +113,6 @@ void _checkOldConfigs() {
   }
 }
 
-Future<void> _checkAppUpdates() async {
-  var lastCheck = appdata.implicitData['lastCheckUpdate'] ?? 0;
-  var now = DateTime.now().millisecondsSinceEpoch;
-  if (now - lastCheck < 24 * 60 * 60 * 1000) {
-    return;
-  }
-  appdata.implicitData['lastCheckUpdate'] = now;
-  appdata.writeImplicitData();
-  // Comic source store updates disabled (builtin novel sources only).
-  if (appdata.settings['checkUpdateOnStart']) {
-    await checkUpdateUi(false, true);
-  }
-}
-
 void checkUpdates() {
-  _checkAppUpdates();
   FollowUpdatesService.initChecker();
 }

@@ -4,7 +4,7 @@
 #define MyAppName "Novvera"
 #define MyAppVersion "{{version}}"
 #define MyAppPublisher "YeXuanHs"
-#define MyAppURL "https://github.com/YeXuanHs/Novvera-app-desktop"
+#define MyAppURL "https://github.com/YeXuanHs/novvera-app"
 #define MyAppExeName "novvera.exe"
 #define RootPath "{{root_path}}"
 
