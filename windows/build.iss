@@ -8,35 +8,11 @@
 #define MyAppExeName "novvera.exe"
 #define RootPath "{{root_path}}"
 
-[Code]
-procedure CurStepChanged(CurStep: TSetupStep);
-var
-  OldVersionPath, ShortcutPath: string;
-begin
-  if CurStep = ssInstall then
-  begin
-    OldVersionPath := 'C:\Program Files (x86)\Venera';
-    if DirExists(OldVersionPath) then
-    begin
-      DelTree(OldVersionPath, True, True, True);
-      ShortcutPath := GetEnv('USERPROFILE') + '\Desktop\Venera.lnk';
-      if FileExists(ShortcutPath) then
-      begin
-        DeleteFile(ShortcutPath);
-      end;
-      ShortcutPath := 'C:\Users\Public\Desktop\Venera.lnk';
-      if FileExists(ShortcutPath) then
-      begin
-        DeleteFile(ShortcutPath);
-      end;
-    end;
-  end;
-end;
-
 [Setup]
-; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
+; Unique AppId — must NOT match Venera's, or Inno treats this as an upgrade
+; and reuses / overwrites Venera's install directory.
 ; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
-AppId={{1A39CB64-0A5B-478E-9590-978614C804A8}
+AppId={{1E855672-E2C5-42A2-823D-70E001A09EB5}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 ;AppVerName={#MyAppName} {#MyAppVersion}
@@ -57,6 +33,7 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
+UsePreviousAppDir=no
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

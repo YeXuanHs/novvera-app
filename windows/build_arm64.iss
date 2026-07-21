@@ -11,7 +11,8 @@
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
 ; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
-AppId={{1A39CB64-0A5B-478E-9590-978614C804A8}
+; Unique AppId — must NOT match Venera's installer.
+AppId={{1E855672-E2C5-42A2-823D-70E001A09EB5}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 ;AppVerName={#MyAppName} {#MyAppVersion}
@@ -32,6 +33,7 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesInstallIn64BitMode=arm64
 ArchitecturesAllowed=arm64
+UsePreviousAppDir=no
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

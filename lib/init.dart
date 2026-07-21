@@ -38,11 +38,16 @@ extension _FutureInit<T> on Future<T> {
 Future<void> init() async {
   await App.init().wait();
   await SingleInstanceCookieJar.createInstance();
+  // rhttp (flutter_rust_bridge) must be ready before any AppDio / network use.
+  try {
+    await Rhttp.init();
+  } catch (e, s) {
+    Log.error("init", "Rhttp.init failed: $e\n$s");
+  }
   // In-process Dart novel backends (wenku8 / linovelib); no Python sidecar.
   await NovelApiClient.instance.init().wait();
   try {
     var futures = [
-      Rhttp.init(),
       App.initComponents(),
       SAFTaskWorker().init().wait(),
       AppTranslation.init().wait(),
