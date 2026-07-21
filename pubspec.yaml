@@ -98,6 +98,10 @@ dev_dependencies:
       url: https://github.com/venera-app/flutter_to_debian.git
   archive: any
 
+# rhttp 0.15.1 embeds FRB codegen 2.11.1; a newer transitive runtime breaks Rhttp.init.
+dependency_overrides:
+  flutter_rust_bridge: 2.11.1
+
 flutter:
   uses-material-design: true
   assets:

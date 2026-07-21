@@ -20,13 +20,19 @@ List<ComicSource> createBuiltinNovelSources() {
 }
 
 const _rankTypes = <String, String>{
-  'allvisit': '总点击',
-  'allvote': '总推荐',
-  'monthvisit': '月点击',
+  'allvisit': '总点击榜',
+  'allvote': '总推荐榜',
+  'monthvisit': '月点击榜',
+  'monthvote': '月推荐榜',
+  'weekvisit': '周点击榜',
+  'weekvote': '周推荐榜',
+  'dayvisit': '日点击榜',
+  'dayvote': '日推荐榜',
+  'postdate': '新书一览',
   'lastupdate': '最近更新',
-  'postdate': '新书',
-  'goodnum': '收藏',
-  'done': '完结',
+  'goodnum': '总收藏榜',
+  'size': '字数排行',
+  'done': '完结全本',
 };
 
 ComicSource _buildSource({
@@ -39,16 +45,32 @@ ComicSource _buildSource({
     null,
   );
 
+  // Show every rank type as a tap target on the Categories page (not a single
+  // "排行" chip that hides the options one click deeper).
+  final rankTags = _rankTypes.entries
+      .map(
+        (e) => CategoryItem(
+          e.value,
+          PageJumpTarget(key, 'category', {
+            'category': e.value,
+            'param': e.key,
+          }),
+        ),
+      )
+      .toList();
+
   final categoryData = CategoryData(
     title: name,
     key: key,
-    categories: const [],
-    enableRankingPage: true,
+    categories: [
+      FixedCategoryPart('排行榜', rankTags),
+    ],
+    enableRankingPage: false,
   );
 
   final categoryComicsData = CategoryComicsData(
     load: (category, param, options, page) {
-      final type = options.isNotEmpty ? options.first : _rankTypes.keys.first;
+      final type = _resolveRankType(category, param, options);
       return _loadRank(key, type, page);
     },
     rankingData: ranking,
@@ -200,6 +222,21 @@ Future<Res<List<Comic>>> _loadRank(String source, String type, int page) async {
   } catch (e) {
     return Res.error(e.toString());
   }
+}
+
+String _resolveRankType(String category, String? param, List<String> options) {
+  if (param != null && _rankTypes.containsKey(param)) {
+    return param;
+  }
+  if (options.isNotEmpty && _rankTypes.containsKey(options.first)) {
+    return options.first;
+  }
+  for (final e in _rankTypes.entries) {
+    if (e.value == category || e.key == category) {
+      return e.key;
+    }
+  }
+  return _rankTypes.keys.first;
 }
 
 Future<Res<List<Comic>>> _loadSearch(

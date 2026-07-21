@@ -113,11 +113,6 @@ class _CategoriesPageState extends State<CategoriesPage>
               }
               return Tab(text: title, key: Key(e));
             }).toList(),
-            actionButton: TabActionButton(
-              icon: const Icon(Icons.add),
-              text: "Add".tl,
-              onPressed: addPage,
-            ),
           ).paddingTop(context.padding.top),
           Expanded(
             child: TabBarView(

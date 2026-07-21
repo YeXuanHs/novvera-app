@@ -145,11 +145,6 @@ class _ExplorePageState extends State<ExplorePage>
         key: PageStorageKey(pages.toString()),
         tabs: pages.map((e) => buildTab(e)).toList(),
         controller: controller,
-        actionButton: TabActionButton(
-          icon: const Icon(Icons.add),
-          text: "Add".tl,
-          onPressed: addPage,
-        ),
       ),
     ).paddingTop(context.padding.top);
 
