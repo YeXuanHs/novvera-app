@@ -23,6 +23,7 @@ import 'package:novvera/foundation/image_provider/history_image_provider.dart';
 import 'package:novvera/foundation/image_provider/local_comic_image.dart';
 import 'package:novvera/foundation/local.dart';
 import 'package:novvera/foundation/log.dart';
+import 'package:novvera/foundation/novel_source/builtin_sources.dart';
 import 'package:novvera/foundation/res.dart';
 import 'package:novvera/network/cloudflare.dart';
 import 'package:novvera/pages/comic_details_page/comic_page.dart';

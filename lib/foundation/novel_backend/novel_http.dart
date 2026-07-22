@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:fast_gbk/fast_gbk.dart';
 import 'package:html/dom.dart';
 import 'package:html/parser.dart' as html_parser;
-import 'package:novvera/foundation/log.dart';
 import 'package:novvera/network/app_dio.dart';
 import 'package:novvera/network/cloudflare.dart';
 
@@ -184,39 +183,14 @@ String gbkQueryEncode(String text) {
   return sb.toString();
 }
 
-bool isCloudflareChallenge(String html, int? status) {
-  final challengeMarkers = html.contains('Just a moment') ||
-      html.contains('cf-browser-verification') ||
-      html.contains('challenge-platform') ||
-      html.contains('window._cf_chl_opt') ||
-      html.contains('cf-challenge') ||
-      html.contains('Enable JavaScript and cookies to continue');
-  if (status == 403 || status == 503) {
-    return challengeMarkers;
-  }
-  // Some sites return 200 with challenge interstitial.
-  return html.contains('cf-browser-verification') &&
-      html.contains('challenge-platform');
-}
-
-/// Throws [CloudflareException] so UI (`NetworkError`) can show Verify.
 /// Thin wrapper around AppDio for novel site scraping.
+/// Cloudflare challenges are detected only by [CloudflareInterceptor]
+/// (`403` + `cf-mitigated: challenge`), same as upstream Venera.
 class NovelHttp {
   NovelHttp({this.defaultReferer});
 
   final String? defaultReferer;
   final Dio _dio = AppDio();
-
-  Never _throwCf(String url) {
-    Log.warning('NovelHttp', 'Cloudflare challenge at $url');
-    throw CloudflareException(url);
-  }
-
-  void _ensureNotChallenge(String html, int? status, String url) {
-    if (isCloudflareChallenge(html, status)) {
-      _throwCf(url);
-    }
-  }
 
   Future<T> _guardDio<T>(Future<T> Function() run) async {
     try {
@@ -244,7 +218,6 @@ class NovelHttp {
         options: Options(
           responseType: ResponseType.bytes,
           followRedirects: true,
-          validateStatus: (s) => s != null && s < 600,
           headers: {
             if (defaultReferer != null) 'Referer': defaultReferer!,
             'Accept':
@@ -257,7 +230,6 @@ class NovelHttp {
       final bytes = Uint8List.fromList(res.data ?? const []);
       final html = decodeHtmlBytes(bytes, preferGbk: preferGbk);
       final finalUrl = res.realUri.toString();
-      _ensureNotChallenge(html, res.statusCode, finalUrl);
       return (status: res.statusCode ?? 0, html: html, url: finalUrl);
     });
   }
@@ -276,7 +248,6 @@ class NovelHttp {
           contentType: Headers.formUrlEncodedContentType,
           responseType: ResponseType.bytes,
           followRedirects: true,
-          validateStatus: (s) => s != null && s < 600,
           headers: {
             if (defaultReferer != null) 'Referer': defaultReferer!,
             ...?headers,
@@ -286,7 +257,6 @@ class NovelHttp {
       final bytes = Uint8List.fromList(res.data ?? const []);
       final html = decodeHtmlBytes(bytes, preferGbk: preferGbk);
       final finalUrl = res.realUri.toString();
-      _ensureNotChallenge(html, res.statusCode, finalUrl);
       return (status: res.statusCode ?? 0, html: html, url: finalUrl);
     });
   }

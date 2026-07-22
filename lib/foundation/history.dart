@@ -13,6 +13,7 @@ import 'package:novvera/foundation/comic_type.dart';
 import 'package:novvera/foundation/favorites.dart';
 import 'package:novvera/foundation/image_provider/image_favorites_provider.dart';
 import 'package:novvera/foundation/log.dart';
+import 'package:novvera/foundation/novel_source/builtin_sources.dart';
 import 'package:novvera/utils/channel.dart';
 import 'package:novvera/utils/ext.dart';
 import 'package:novvera/utils/translations.dart';
@@ -148,7 +149,9 @@ class History implements Comic {
       if (ep >= 1) {
         res += " - ";
       }
-      res += "Page @page".tlParams({
+      final pageKey =
+          isNovelSource(sourceKey) ? "Line @page" : "Page @page";
+      res += pageKey.tlParams({
         "page": page,
       });
     }

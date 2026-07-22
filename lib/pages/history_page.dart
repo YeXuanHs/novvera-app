@@ -4,6 +4,7 @@ import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/comic_source/comic_source.dart';
 import 'package:novvera/foundation/comic_type.dart';
 import 'package:novvera/foundation/history.dart';
+import 'package:novvera/foundation/novel_source/builtin_sources.dart';
 import 'package:novvera/utils/translations.dart';
 
 class HistoryPage extends StatefulWidget {
@@ -328,7 +329,9 @@ class _HistoryPageState extends State<HistoryPage> {
       if (h.ep >= 1) {
         res += " - ";
       }
-      res += "Page @page".tlParams({
+      final pageKey =
+          isNovelSource(h.sourceKey) ? "Line @page" : "Page @page";
+      res += pageKey.tlParams({
         "page": h.page,
       });
     }

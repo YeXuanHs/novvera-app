@@ -209,15 +209,9 @@ class _ReaderState extends State<Reader>
         page = 1;
       }
     }
-    // mode = ReaderMode.fromKey(appdata.settings['readerMode']);
     mode = ReaderMode.fromKey(
       appdata.settings.getReaderSetting(cid, type.sourceKey, 'readerMode'),
     );
-    // Novels: text + illustration stream uses continuous vertical scroll so the
-    // existing pull-bar maps to block index (same as Venera continuous comics).
-    if (isNovelSource(type.sourceKey)) {
-      mode = ReaderMode.continuousTopToBottom;
-    }
     history = widget.history;
     if (!appdata.settings.getReaderSetting(
       cid,
@@ -408,6 +402,31 @@ class _ReaderState extends State<Reader>
       }
     }
     return chapter == maxChapter;
+  }
+
+  bool get isNovel => isNovelSource(type.sourceKey);
+
+  /// Comics use P (page); novels use L (line / text block).
+  String get pageUnit => isNovel ? 'L' : 'P';
+
+  /// App-bar chapter line: include volume name when chapters are grouped.
+  String? get chapterTitleWithVolume {
+    final chapters = widget.chapters;
+    if (chapters == null) return null;
+    final epName = chapters.titles.elementAtOrNull(chapter - 1);
+    if (epName == null) return null;
+    if (!chapters.isGrouped) return epName;
+    var g = 0;
+    var c = chapter;
+    while (g < chapters.groups.length &&
+        c > chapters.getGroupByIndex(g).length) {
+      c -= chapters.getGroupByIndex(g).length;
+      g++;
+    }
+    if (g >= chapters.groups.length) return epName;
+    final groupName = chapters.groups.elementAt(g);
+    if (groupName.isEmpty) return epName;
+    return '$groupName · $epName';
   }
 
   /// Get the size of the reader.

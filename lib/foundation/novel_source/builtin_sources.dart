@@ -148,14 +148,24 @@ ComicSource _buildSource({
     null,
     null,
     null,
-    // wenku8 tags cloud uses tags.php; linovelib just keyword-searches the tag text.
-    (namespace, tag) => PageJumpTarget(
-      key,
-      'search',
-      key == 'wenku8'
-          ? {'text': tag, 'options': ['tag']}
-          : {'text': tag},
-    ),
+    // Tag chips open search on the **same** source as the book.
+    // 分类 / 状态 / 更新时间 are metadata only (no jump).
+    // wenku8: 作者 → searchtype=author; 标签 → tags.php; else 书名.
+    (namespace, tag) {
+      const nonSearch = {'分类', '状态', '更新时间', 'Upload Time', 'Update Time'};
+      if (nonSearch.contains(namespace)) return null;
+      final attrs = <String, dynamic>{'text': tag};
+      if (key == 'wenku8') {
+        if (namespace == '作者') {
+          attrs['options'] = ['author'];
+        } else if (namespace == '标签') {
+          attrs['options'] = ['tag'];
+        } else {
+          attrs['options'] = ['articlename'];
+        }
+      }
+      return PageJumpTarget(key, 'search', attrs);
+    },
     null,
     null,
     false,

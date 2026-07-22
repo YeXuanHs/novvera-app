@@ -22,7 +22,7 @@ class CloudflareException implements DioException {
   }
 
   static CloudflareException? fromString(String message) {
-    var match = RegExp(r"CloudflareException:\s*(\S+)").firstMatch(message);
+    var match = RegExp(r"CloudflareException: (.+)").firstMatch(message);
     if (match == null) return null;
     return CloudflareException(match.group(1)!);
   }
@@ -60,54 +60,18 @@ class CloudflareException implements DioException {
   DioExceptionReadableStringBuilder? stringBuilder;
 }
 
-/// Prefer site homepage for challenges. Never open loopback / asset URLs.
-/// Mobile WebViews that inherit Clash PROXY_OVERRIDE otherwise land on
-/// `https://127.0.0.1/` (ERR_CONNECTION_REFUSED).
-String _challengeLaunchUrl(String raw) {
-  var s = raw.trim();
-  final cut = s.indexOf(RegExp(r'[\s\n]'));
-  if (cut > 0) s = s.substring(0, cut);
-  Uri? uri;
-  try {
-    uri = Uri.parse(s);
-  } catch (_) {}
-  if (uri == null ||
-      uri.host.isEmpty ||
-      uri.host == 'localhost' ||
-      uri.host == '127.0.0.1' ||
-      uri.host == '[::1]' ||
-      uri.host.endsWith('.localhost')) {
-    return 'https://www.linovelib.com/';
-  }
-  if (uri.host.contains('linovelib') || uri.host.contains('readpai')) {
-    return 'https://www.linovelib.com/';
-  }
-  if (uri.host.contains('wenku8')) {
-    return 'https://www.wenku8.net/';
-  }
-  return '${uri.scheme}://${uri.host}/';
-}
-
 class CloudflareInterceptor extends Interceptor {
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
-    final ua = appdata.implicitData['ua'];
-    final cookie = options.headers['cookie']?.toString() ?? '';
-    // cf_clearance is bound to the WebView UA — reuse it when present.
-    if (ua is String &&
-        ua.isNotEmpty &&
-        (cookie.contains('cf_clearance') ||
-            options.uri.host.contains('linovelib') ||
-            options.uri.host.contains('readpai'))) {
-      options.headers['user-agent'] = ua;
-      options.headers['User-Agent'] = ua;
+    if (options.headers['cookie'].toString().contains('cf_clearance')) {
+      options.headers['user-agent'] = appdata.implicitData['ua'] ?? webUA;
     }
     handler.next(options);
   }
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
-    if (err.response?.statusCode == 403 || err.response?.statusCode == 503) {
+    if (err.response?.statusCode == 403) {
       handler.next(_check(err.response!) ?? err);
     } else {
       handler.next(err);
@@ -116,21 +80,10 @@ class CloudflareInterceptor extends Interceptor {
 
   @override
   void onResponse(Response response, ResponseInterceptorHandler handler) {
-    if (response.statusCode == 403 || response.statusCode == 503) {
+    if (response.statusCode == 403) {
       var err = _check(response);
       if (err != null) {
         handler.reject(err);
-        return;
-      }
-      // Streamed cover/image responses may not expose HTML body here; treat
-      // text/html 403 from protected hosts as Cloudflare.
-      final ct = response.headers.value('content-type') ?? '';
-      final host = response.requestOptions.uri.host;
-      if (ct.contains('text/html') &&
-          (host.contains('linovelib') || host.contains('readpai'))) {
-        handler.reject(CloudflareException(
-          _challengeLaunchUrl(response.requestOptions.uri.toString()),
-        ));
         return;
       }
     }
@@ -138,37 +91,15 @@ class CloudflareInterceptor extends Interceptor {
   }
 
   CloudflareException? _check(Response response) {
-    final launch = _challengeLaunchUrl(
-      response.realUri.toString().isNotEmpty
-          ? response.realUri.toString()
-          : response.requestOptions.uri.toString(),
-    );
     if (response.headers['cf-mitigated']?.firstOrNull == "challenge") {
-      return CloudflareException(launch);
-    }
-    // Fallback: classic challenge pages without cf-mitigated header.
-    final status = response.statusCode;
-    if (status == 403 || status == 503) {
-      final data = response.data;
-      String html = '';
-      if (data is String) {
-        html = data;
-      } else if (data is List<int>) {
-        html = String.fromCharCodes(data.take(4096));
-      }
-      if (html.contains('challenge-platform') ||
-          html.contains('Just a moment') ||
-          html.contains('cf-browser-verification') ||
-          html.contains('window._cf_chl_opt')) {
-        return CloudflareException(launch);
-      }
+      return CloudflareException(response.requestOptions.uri.toString());
     }
     return null;
   }
 }
 
 void passCloudflare(CloudflareException e, void Function() onFinished) async {
-  var url = _challengeLaunchUrl(e.url);
+  var url = e.url;
   var uri = Uri.parse(url);
 
   void saveCookies(Map<String, String> cookies) {
@@ -177,7 +108,6 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
     if (splits.length > 1) {
       domain = ".${splits[splits.length - 2]}.${splits[splits.length - 1]}";
     }
-    // Also store under apex domain variants used by CDN paths.
     SingleInstanceCookieJar.instance!.saveFromResponse(
       uri,
       List<io.Cookie>.generate(cookies.length, (index) {
@@ -270,7 +200,6 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
       () => AppWebview(
         initialUrl: url,
         singlePage: true,
-        forceDirectProxy: true,
         onTitleChange: (title, controller) async {
           check(controller);
         },

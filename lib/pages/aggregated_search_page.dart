@@ -159,9 +159,8 @@ class _SliverSearchResultState extends State<_SliverSearchResult>
 
   @override
   Widget build(BuildContext context) {
-    if (error != null && error!.startsWith("CloudflareException")) {
-      error = "Cloudflare verification required".tl;
-    }
+    // Keep the raw `CloudflareException: <url>` string — rewriting it to the
+    // translated label drops the URL that [passCloudflare] / Verify need.
     super.build(context);
     return InkWell(
       onTap: () {

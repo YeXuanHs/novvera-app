@@ -73,9 +73,8 @@ class LinovelibClient {
   bool _sessionReady = false;
   DateTime? _sessionAt;
 
-  /// Warm homepage cookies (`cf_clearance` etc). Covers on `/files/article/`
-  /// are CF-gated — Referer alone is not enough (browser works because it
-  /// already has clearance from navigating the site).
+  /// Warm homepage cookies. Real CF challenges are raised by
+  /// [CloudflareInterceptor] (`cf-mitigated: challenge`), not HTML heuristics.
   Future<bool> ensureSession({bool force = false}) async {
     if (!force &&
         _sessionReady &&
@@ -83,18 +82,9 @@ class LinovelibClient {
         DateTime.now().difference(_sessionAt!) < const Duration(minutes: 25)) {
       return true;
     }
-    final res = await _http.getHtml('$_base/');
-    final blocked = res.status == 403 ||
-        res.status == 503 ||
-        res.html.contains('Attention Required') ||
-        res.html.contains('cf-browser-verification') ||
-        res.html.contains('challenge-platform');
-    if (blocked) {
-      throw CloudflareException('https://www.linovelib.com/');
-    }
+    await _http.getHtml('$_base/');
     _sessionReady = true;
     _sessionAt = DateTime.now();
-    // Best-effort search tickets; ignore failures (covers mainly need CF).
     try {
       await passSearchGuard();
     } catch (_) {}

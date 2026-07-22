@@ -5,8 +5,6 @@ import 'package:flutter_qjs/flutter_qjs.dart';
 import 'package:novvera/foundation/cache_manager.dart';
 import 'package:novvera/foundation/comic_source/comic_source.dart';
 import 'package:novvera/foundation/consts.dart';
-import 'package:novvera/foundation/novel_backend/linovelib_client.dart';
-import 'package:novvera/network/cloudflare.dart';
 import 'package:novvera/utils/image.dart';
 
 import 'app_dio.dart';
@@ -52,38 +50,14 @@ abstract class ImageDownloader {
       headers: Map<String, dynamic>.from(configs['headers']),
       method: configs['method'] ?? 'GET',
       responseType: ResponseType.stream,
-      validateStatus: (status) => status != null && status < 600,
     ));
 
     String requestUrl = configs['url'] ?? url;
     if (requestUrl.startsWith('//')) {
       requestUrl = 'https:$requestUrl';
     }
-
-    Future<Response<ResponseBody>> send() =>
-        dio.request<ResponseBody>(requestUrl, data: configs['data']);
-
-    var req = await send();
-    // Linovelib covers need cf_clearance — warm session once and retry.
-    if ((req.statusCode == 403 || req.statusCode == 503) &&
-        sourceKey == 'linovelib') {
-      try {
-        await LinovelibClient.instance.ensureSession(force: true);
-        req = await send();
-      } on CloudflareException {
-        rethrow;
-      } catch (_) {}
-    }
-    if (req.statusCode == 403 || req.statusCode == 503) {
-      final ct = req.headers.value('content-type') ?? '';
-      if (ct.contains('text/html') || ct.isEmpty) {
-        throw CloudflareException(
-          requestUrl.contains('linovelib') || requestUrl.contains('readpai')
-              ? 'https://www.linovelib.com/'
-              : requestUrl,
-        );
-      }
-    }
+    var req = await dio.request<ResponseBody>(requestUrl,
+        data: configs['data']);
     var stream = req.data?.stream ?? (throw "Error: Empty response body.");
     int? expectedBytes = req.data!.contentLength;
     if (expectedBytes == -1) {
@@ -96,21 +70,6 @@ abstract class ImageDownloader {
         yield ImageDownloadProgress(
           currentBytes: buffer.length,
           totalBytes: expectedBytes,
-        );
-      }
-    }
-
-    // CF challenge HTML sometimes returns 200 with small HTML body.
-    if (buffer.length < 8000) {
-      final head = String.fromCharCodes(buffer.take(512));
-      if (head.contains('challenge-platform') ||
-          head.contains('Just a moment') ||
-          head.contains('cf-browser-verification') ||
-          head.contains('window._cf_chl_opt')) {
-        throw CloudflareException(
-          requestUrl.contains('linovelib') || requestUrl.contains('readpai')
-              ? 'https://www.linovelib.com/'
-              : requestUrl,
         );
       }
     }
@@ -207,31 +166,10 @@ abstract class ImageDownloader {
           headers: configs['headers'],
           method: configs['method'] ?? 'GET',
           responseType: ResponseType.stream,
-          validateStatus: (status) => status != null && status < 600,
         ));
 
         final imageUrl = configs['url'] ?? imageKey;
         var req = await dio.request<ResponseBody>(imageUrl, data: configs['data']);
-        if ((req.statusCode == 403 || req.statusCode == 503) &&
-            sourceKey == 'linovelib') {
-          try {
-            await LinovelibClient.instance.ensureSession(force: true);
-            req = await dio.request<ResponseBody>(imageUrl, data: configs['data']);
-          } on CloudflareException {
-            rethrow;
-          } catch (_) {}
-        }
-        if (req.statusCode == 403 || req.statusCode == 503) {
-          final ct = req.headers.value('content-type') ?? '';
-          if (ct.contains('text/html') || ct.isEmpty) {
-            throw CloudflareException(
-              (imageUrl.toString().contains('linovelib') ||
-                      imageUrl.toString().contains('readpai'))
-                  ? 'https://www.linovelib.com/'
-                  : imageUrl.toString(),
-            );
-          }
-        }
         var stream = req.data?.stream ?? (throw "Error: Empty response body.");
         int? expectedBytes = req.data!.contentLength;
         if (expectedBytes == -1) {

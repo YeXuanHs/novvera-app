@@ -18,6 +18,7 @@ import 'package:novvera/foundation/history.dart';
 import 'package:novvera/foundation/image_provider/cached_image.dart';
 import 'package:novvera/foundation/local.dart';
 import 'package:novvera/foundation/res.dart';
+import 'package:novvera/foundation/novel_source/builtin_sources.dart';
 import 'package:novvera/network/download.dart';
 import 'package:novvera/network/cache.dart';
 import 'package:novvera/pages/favorites/favorites_page.dart';
@@ -484,10 +485,11 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
                           // ignore
                         }
                         text = groupName == null
-                            ? "${"Last Reading".tl}: $epName P$page"
-                            : "${"Last Reading".tl}: $groupName $epName P$page";
+                            ? "${"Last Reading".tl}: $epName ${isNovelSource(comic.sourceKey) ? 'L' : 'P'}$page"
+                            : "${"Last Reading".tl}: $groupName $epName ${isNovelSource(comic.sourceKey) ? 'L' : 'P'}$page";
                       } else {
-                        text = "${"Last Reading".tl}: P$page";
+                        text =
+                            "${"Last Reading".tl}: ${isNovelSource(comic.sourceKey) ? 'L' : 'P'}$page";
                       }
                       return Text(text);
                     },
@@ -656,7 +658,11 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
                             e.key.toLowerCase(),
                           )
                         : tag,
-                    onTap: () => onTapTag(tag, e.key),
+                    onTap: comicSource.handleClickTagEvent
+                                ?.call(e.key, tag) !=
+                            null
+                        ? () => onTapTag(tag, e.key)
+                        : null,
                   ),
               ],
             ),
