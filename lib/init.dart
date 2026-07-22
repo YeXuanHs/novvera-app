@@ -39,7 +39,7 @@ Future<void> init() async {
   await SingleInstanceCookieJar.createInstance();
   // rhttp (flutter_rust_bridge) must be ready before any AppDio / network use.
   await Rhttp.init();
-  // In-process Dart novel backends (wenku8 / linovelib); no Python sidecar.
+  // In-process Dart novel backends (wenku8 / linovelib / huanmeng); no Python sidecar.
   await NovelApiClient.instance.init().wait();
   try {
     var futures = [

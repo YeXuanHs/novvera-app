@@ -87,13 +87,15 @@ int? parseHtmlMaxPage(Document doc) {
 
   // Any pager links with page=
   for (final a in doc.querySelectorAll(
-    '#pagelink a[href], .pages a[href], .pagination a[href], .pagelink a[href]',
+    '#pagelink a[href], .pages a[href], .pagination a[href], .pagelink a[href], a[href*="/page/"]',
   )) {
     final href = a.attributes['href'] ?? '';
     final m = RegExp(r'[?&]page=(\d+)').firstMatch(href);
     if (m != null) consider(int.tryParse(m.group(1)!));
     final m2 = RegExp(r'/(\d+)\.html').firstMatch(href);
     if (m2 != null) consider(int.tryParse(m2.group(1)!));
+    final m3 = RegExp(r'/page/(\d+)').firstMatch(href);
+    if (m3 != null) consider(int.tryParse(m3.group(1)!));
     final t = int.tryParse(cleanText(a.text));
     if (t != null && t < 100000) consider(t);
   }

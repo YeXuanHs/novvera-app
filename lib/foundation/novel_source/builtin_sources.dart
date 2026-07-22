@@ -8,7 +8,7 @@ import 'package:novvera/foundation/novel_backend/novel_http.dart';
 import 'package:novvera/foundation/novel_source/novel_page_cache.dart';
 import 'package:novvera/foundation/res.dart';
 
-const kNovelSourceKeys = {'wenku8', 'linovelib'};
+const kNovelSourceKeys = {'wenku8', 'linovelib', 'huanmeng'};
 
 bool isNovelSource(String? key) => key != null && kNovelSourceKeys.contains(key);
 
@@ -20,6 +20,7 @@ List<ComicSource> createBuiltinNovelSources() {
   return [
     _buildSource(name: '轻小说文库', key: 'wenku8'),
     _buildSource(name: '哔哩轻小说', key: 'linovelib'),
+    _buildSource(name: '幻梦轻小说', key: 'huanmeng'),
   ];
 }
 
@@ -176,9 +177,11 @@ ComicSource _buildSource({
 }
 
 Map<String, dynamic> _imageLoadingConfig(String sourceKey, String imageKey) {
-  final referer = sourceKey == 'wenku8'
-      ? 'https://www.wenku8.net/'
-      : 'https://www.linovelib.com/';
+  final referer = switch (sourceKey) {
+    'wenku8' => 'https://www.wenku8.net/',
+    'huanmeng' => 'https://www.huanmengacg.com/',
+    _ => 'https://www.linovelib.com/',
+  };
   final url = normalizeNovelImageUrl(imageKey);
   final ua = appdata.implicitData['ua'];
   return {
@@ -191,14 +194,21 @@ Map<String, dynamic> _imageLoadingConfig(String sourceKey, String imageKey) {
   };
 }
 
+String _fallbackCover(String sourceKey, String aid) {
+  if (aid.isEmpty) return '';
+  return switch (sourceKey) {
+    'wenku8' => wenku8CoverUrl(aid),
+    'linovelib' => linovelibCoverUrl(aid),
+    _ => '',
+  };
+}
+
 Comic _itemToComic(Map<String, dynamic> item, String sourceKey) {
   final aid = '${item['aid'] ?? ''}';
   final title = (item['name'] ?? item['title'] ?? '').toString();
   var cover = preferHttps((item['cover'] ?? '').toString());
   if (cover.isEmpty && aid.isNotEmpty) {
-    cover = sourceKey == 'wenku8'
-        ? wenku8CoverUrl(aid)
-        : linovelibCoverUrl(aid);
+    cover = _fallbackCover(sourceKey, aid);
   }
   final authorRaw = (item['author_raw'] ?? '').toString();
   final author = authorRaw.isNotEmpty
@@ -270,7 +280,11 @@ Future<Res<List<Comic>>> _loadRank(String source, String type, int page) async {
     final maxPage = inferMaxPage(
       page,
       items.length,
-      fullPageSize: source == 'linovelib' ? 20 : 10,
+      fullPageSize: source == 'linovelib'
+          ? 20
+          : source == 'huanmeng'
+              ? 30
+              : 10,
       parsed: pagerMax ?? int.tryParse('${data['max_page'] ?? ''}'),
     );
     return Res(items, subData: maxPage);
@@ -327,7 +341,11 @@ Future<Res<List<Comic>>> _loadSearch(
     final maxPage = inferMaxPage(
       page,
       items.length,
-      fullPageSize: source == 'linovelib' ? 20 : 10,
+      fullPageSize: source == 'linovelib'
+          ? 20
+          : source == 'huanmeng'
+              ? 50
+              : 10,
       parsed: pagerMax ?? int.tryParse('${data['max_page'] ?? ''}'),
     );
     return Res(items, subData: maxPage);
@@ -352,9 +370,7 @@ Future<Res<ComicDetails>> _loadComicInfo(String source, String id) async {
     final title = (info['name'] ?? catalog['title'] ?? '').toString();
     var cover = preferHttps((info['cover'] ?? '').toString());
     if (cover.isEmpty) {
-      cover = source == 'wenku8'
-          ? wenku8CoverUrl(id)
-          : linovelibCoverUrl(id);
+      cover = _fallbackCover(source, id);
     }
     final authorRaw = (info['author_raw'] ?? '').toString();
     final category = (info['category'] ?? '').toString();
