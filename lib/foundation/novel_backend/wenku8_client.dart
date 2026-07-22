@@ -6,6 +6,7 @@ import 'package:html/dom.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/log.dart';
 import 'package:novvera/foundation/novel_backend/novel_http.dart';
+import 'package:novvera/network/cloudflare.dart';
 import 'package:novvera/utils/io.dart';
 
 const _base = 'https://www.wenku8.net';
@@ -84,22 +85,27 @@ class Wenku8Client {
         DateTime.now().difference(_lastLoginAt!) < _loginRefreshInterval) {
       return true;
     }
-    if (username != null &&
-        password != null &&
-        username!.isNotEmpty &&
-        password!.isNotEmpty) {
-      if (await _login(username!, password!)) return true;
-    }
-    // Try auto-register a few times
-    for (var i = 0; i < 3; i++) {
-      final u = _randUser();
-      final p = _randPass();
-      if (await _register(u, p) && await _login(u, p)) {
-        username = u;
-        password = p;
-        await _saveAccount();
-        return true;
+    try {
+      if (username != null &&
+          password != null &&
+          username!.isNotEmpty &&
+          password!.isNotEmpty) {
+        if (await _login(username!, password!)) return true;
       }
+      // Try auto-register a few times
+      for (var i = 0; i < 3; i++) {
+        final u = _randUser();
+        final p = _randPass();
+        if (await _register(u, p) && await _login(u, p)) {
+          username = u;
+          password = p;
+          await _saveAccount();
+          return true;
+        }
+      }
+    } on CloudflareException catch (e) {
+      Log.warning('Wenku8', 'ensureAccount blocked by Cloudflare (${e.url})');
+      rethrow;
     }
     Log.warning('Wenku8', 'ensureAccount failed; continuing without login');
     return _lastLoginAt != null;
@@ -144,6 +150,8 @@ class Wenku8Client {
           res.html.contains('用户面板');
       Log.info('Wenku8', 'register $user -> $ok');
       return ok;
+    } on CloudflareException {
+      rethrow;
     } catch (e) {
       Log.warning('Wenku8', 'register: $e');
       return false;
@@ -179,6 +187,8 @@ class Wenku8Client {
         Log.warning('Wenku8', 'login failed ($user)');
       }
       return ok;
+    } on CloudflareException {
+      rethrow;
     } catch (e) {
       Log.warning('Wenku8', 'login: $e');
       return false;

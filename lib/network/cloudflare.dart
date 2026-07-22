@@ -91,11 +91,35 @@ class CloudflareInterceptor extends Interceptor {
   }
 
   CloudflareException? _check(Response response) {
+    final url = response.requestOptions.uri.toString();
     if (response.headers['cf-mitigated']?.firstOrNull == "challenge") {
-      return CloudflareException(response.requestOptions.uri.toString());
+      return CloudflareException(url);
+    }
+    // wenku8 often returns a hard CF block page (Attention Required) without
+    // cf-mitigated — still need WebView Verify / cf_clearance.
+    if (response.statusCode == 403) {
+      final html = _peekBody(response);
+      if (html.contains('Attention Required') ||
+          html.contains('Just a moment') ||
+          html.contains('cf-browser-verification') ||
+          html.contains('challenge-platform') ||
+          html.contains('window._cf_chl_opt')) {
+        return CloudflareException(url);
+      }
     }
     return null;
   }
+}
+
+String _peekBody(Response response) {
+  final data = response.data;
+  if (data is String) {
+    return data.length > 4096 ? data.substring(0, 4096) : data;
+  }
+  if (data is List<int>) {
+    return String.fromCharCodes(data.take(4096));
+  }
+  return '';
 }
 
 void passCloudflare(CloudflareException e, void Function() onFinished) async {

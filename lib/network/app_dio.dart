@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:rhttp/rhttp.dart' as rhttp;
 import 'package:novvera/foundation/appdata.dart';
+import 'package:novvera/foundation/consts.dart';
 import 'package:novvera/foundation/log.dart';
 import 'package:novvera/network/cache.dart';
 import 'package:novvera/network/proxy.dart';
@@ -224,7 +225,10 @@ class RHttpAdapter implements HttpClientAdapter {
   ) async {
     if (options.headers['User-Agent'] == null &&
         options.headers['user-agent'] == null) {
-      options.headers['User-Agent'] = "novvera/v${App.version}";
+      final ua = appdata.implicitData['ua'];
+      // Browser UA — `novvera/v*` is hard-blocked by wenku8 Cloudflare.
+      options.headers['User-Agent'] =
+          (ua is String && ua.isNotEmpty) ? ua : webUA;
     }
 
     var res = await rhttp.Rhttp.request(
