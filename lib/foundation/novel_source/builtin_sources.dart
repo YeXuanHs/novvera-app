@@ -228,9 +228,14 @@ Comic _itemToComic(Map<String, dynamic> item, String sourceKey) {
       tagStr.split(RegExp(r'[\s,/|]+')).where((e) => e.trim().isNotEmpty),
     );
   }
-  final status = item['status']?.toString();
-  if (status != null && status.isNotEmpty) {
-    tags.add(status);
+  // Huanmeng cards: title + author only — hide 连载/完结 status chips.
+  if (sourceKey != 'huanmeng') {
+    final status = item['status']?.toString();
+    if (status != null && status.isNotEmpty) {
+      tags.add(status);
+    }
+  } else {
+    tags.removeWhere((t) => t == '连载' || t == '完结' || t == '連載' || t == '完結');
   }
   // Cards show title + author only; synopsis belongs on the detail page.
   return Comic(

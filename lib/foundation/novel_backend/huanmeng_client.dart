@@ -106,17 +106,112 @@ class HuanmengClient {
     return null;
   }
 
-  String _coverOf(Element? root, String? fallbackHref) {
-    final img = root?.querySelector('img');
+  String _imgSrc(Element? img) {
+    if (img == null) return '';
     var cover = preferHttps(absUrl(
       _base,
-      img?.attributes['data-original'] ?? img?.attributes['src'],
+      img.attributes['data-original'] ?? img.attributes['src'],
     ));
-    if (cover.isEmpty && fallbackHref != null) {
-      cover = preferHttps(absUrl(_base, fallbackHref));
-    }
-    if (cover.contains('/template/')) return '';
+    if (cover.isEmpty || cover.contains('/template/')) return '';
     return cover;
+  }
+
+  /// Cover must come from this card only — never climb to a section parent.
+  String _coverInCard(Element card, String aid) {
+    for (final a in card.querySelectorAll('a[href*="/book/info/"]')) {
+      if (_extractAid(a.attributes['href'] ?? '') != aid) continue;
+      final c = _imgSrc(a.querySelector('img'));
+      if (c.isNotEmpty) return c;
+    }
+    final aids = <String>{};
+    for (final a in card.querySelectorAll('a[href*="/book/info/"]')) {
+      final id = _extractAid(a.attributes['href'] ?? '');
+      if (id.isNotEmpty) aids.add(id);
+    }
+    if (aids.length == 1 && aids.contains(aid)) {
+      return _imgSrc(card.querySelector('img'));
+    }
+    return '';
+  }
+
+  String _authorInCard(Element card) {
+    final labeled = card.querySelector(
+      '.book-author, .dg-booka2, .author, .author-text',
+    );
+    if (labeled != null) {
+      final t = cleanText(labeled.text);
+      if (t.isNotEmpty) return t;
+    }
+    final dd = card.querySelector('dd');
+    final scope = dd ?? card;
+    for (final p in scope.querySelectorAll('p')) {
+      final t = cleanText(p.text);
+      if (t.isEmpty || t.length > 40) continue;
+      if (p.classes.contains('big-book-info')) continue;
+      if (p.querySelector('.red-lx, .red-lxa, .red-2x, .fa-heart') != null) {
+        continue;
+      }
+      if (RegExp(r'^[\d.]+$').hasMatch(t)) continue;
+      if (t == '连载' || t == '完结') continue;
+      return t;
+    }
+    return '';
+  }
+
+  /// Page-wide aid → cover from any `a[href*=book/info/N] img`.
+  Map<String, String> _buildCoverIndex(Document doc) {
+    final map = <String, String>{};
+    for (final a in doc.querySelectorAll('a[href*="/book/info/"]')) {
+      final aid = _extractAid(a.attributes['href'] ?? '');
+      if (aid.isEmpty || map.containsKey(aid)) continue;
+      final c = _imgSrc(a.querySelector('img'));
+      if (c.isNotEmpty) map[aid] = c;
+    }
+    return map;
+  }
+
+  Map<String, String> _buildAuthorIndex(Document doc) {
+    final map = <String, String>{};
+
+    void put(String aid, String author) {
+      if (aid.isEmpty || author.isEmpty || map.containsKey(aid)) return;
+      map[aid] = author;
+    }
+
+    for (final el in doc.querySelectorAll('.book-author, .dg-booka2')) {
+      final author = cleanText(el.text);
+      Element? host = el.parent;
+      for (var i = 0; i < 6 && host != null; i++) {
+        final a = host.querySelector('a[href*="/book/info/"]');
+        if (a != null) {
+          put(_extractAid(a.attributes['href'] ?? ''), author);
+          break;
+        }
+        host = host.parent;
+      }
+    }
+
+    for (final li in doc.querySelectorAll('li')) {
+      final a = li.querySelector(
+            'h3 a[href*="/book/info/"], a.book-name, a.bigpic-book-name',
+          ) ??
+          li.querySelector('a[href*="/book/info/"]');
+      if (a == null) continue;
+      final aid = _extractAid(a.attributes['href'] ?? '');
+      if (aid.isEmpty || map.containsKey(aid)) continue;
+      final author = _authorInCard(li);
+      put(aid, author);
+    }
+
+    for (final dl in doc.querySelectorAll('dl')) {
+      final a = dl.querySelector(
+        'a.bigpic-book-name, a.book-name, a[href*="/book/info/"]',
+      );
+      if (a == null) continue;
+      put(_extractAid(a.attributes['href'] ?? ''), _authorInCard(dl));
+    }
+
+    return map;
   }
 
   bool _isWatermark(String text) {
@@ -132,6 +227,8 @@ class HuanmengClient {
   List<Map<String, dynamic>> _parseBookCards(Document doc) {
     final items = <Map<String, dynamic>>[];
     final seen = <String>{};
+    final coverIndex = _buildCoverIndex(doc);
+    final authorIndex = _buildAuthorIndex(doc);
 
     for (final a in doc.querySelectorAll('a.bigpic-book-name')) {
       final href = a.attributes['href'] ?? '';
@@ -141,33 +238,18 @@ class HuanmengClient {
 
       Element? block = a.parent;
       for (var i = 0; i < 6 && block != null; i++) {
-        if (block.localName == 'dl' ||
-            block.classes.contains('so-book') ||
-            block.querySelector('img') != null) {
-          break;
-        }
+        if (block.localName == 'dl') break;
         block = block.parent;
       }
+      block ??= a.parent;
 
-      var author = '';
-      final dd = block?.querySelector('dd');
-      if (dd != null) {
-        for (final p in dd.querySelectorAll('p')) {
-          final t = cleanText(p.text);
-          if (t.isEmpty) continue;
-          if (p.querySelector('.red-lx, .red-lxa') != null) continue;
-          if (p.classes.contains('big-book-info')) continue;
-          if (t.length <= 40) {
-            author = t;
-            break;
-          }
-        }
-      }
+      var author = _authorInCard(block!);
+      if (author.isEmpty) author = authorIndex[aid] ?? '';
 
-      final status = cleanText(block?.querySelector('.red-lxa')?.text);
-      final tags = cleanText(block?.querySelector('.red-lx')?.text);
-      final intro = cleanText(block?.querySelector('.big-book-info')?.text);
-      final cover = _coverOf(block, null);
+      final status = cleanText(block.querySelector('.red-lxa')?.text);
+      final tags = cleanText(block.querySelector('.red-lx')?.text);
+      var cover = _coverInCard(block, aid);
+      if (cover.isEmpty) cover = coverIndex[aid] ?? '';
 
       items.add({
         'aid': aid,
@@ -177,7 +259,6 @@ class HuanmengClient {
         'cover': cover,
         'status': status,
         'tags': tags,
-        'intro': intro,
       });
     }
 
@@ -192,15 +273,20 @@ class HuanmengClient {
       if (name == '书籍详情' || name == '立刻阅读' || name == '立即阅读') continue;
       Element? block = a.parent;
       for (var i = 0; i < 5 && block != null; i++) {
-        if (block.querySelector('img') != null) break;
+        if (block.localName == 'li' || block.localName == 'dl') break;
         block = block.parent;
       }
+      block ??= a.parent;
+      var cover = block != null ? _coverInCard(block, aid) : '';
+      if (cover.isEmpty) cover = coverIndex[aid] ?? '';
+      var author = block != null ? _authorInCard(block) : '';
+      if (author.isEmpty) author = authorIndex[aid] ?? '';
       items.add({
         'aid': aid,
         'name': name,
-        'author': '',
-        'author_raw': '',
-        'cover': _coverOf(block, null),
+        'author': author,
+        'author_raw': author,
+        'cover': cover,
       });
     }
     return items;
@@ -244,51 +330,108 @@ class HuanmengClient {
     await ensureSession();
     final res = await _http.getHtml('$_base/');
     final doc = parseHtml(res.html);
+    final coverIndex = _buildCoverIndex(doc);
+    final authorIndex = _buildAuthorIndex(doc);
     final sections = <Map<String, dynamic>>[];
     final seenTitles = <String>{};
+
+    Element? _sectionBox(Element h2) {
+      // Prefer known section containers over climbing too far.
+      Element? el = h2.parent;
+      for (var i = 0; i < 8 && el != null; i++) {
+        final cls = el.className;
+        if (cls.contains('listBook3') ||
+            cls.contains('alone2') ||
+            cls.contains('swiper3') ||
+            cls.contains('listTab') ||
+            cls.contains('list-book') ||
+            cls.contains('bk-book') ||
+            cls.contains('ruku-book') ||
+            cls.contains('gexin-book') ||
+            cls.contains('book-jp') ||
+            cls.contains('listBook')) {
+          return el;
+        }
+        el = el.parent;
+      }
+      Element? box = h2.parent;
+      for (var i = 0; i < 6 && box != null; i++) {
+        if (box.querySelectorAll('a[href*="/book/info/"]').length >= 3) {
+          return box;
+        }
+        box = box.parent;
+      }
+      return null;
+    }
+
+    Map<String, dynamic>? _itemFromCard(
+      Element card,
+      String aid,
+      String name,
+    ) {
+      if (name.length < 2 ||
+          name == '书籍详情' ||
+          name == '立刻阅读' ||
+          name == '立即阅读') {
+        return null;
+      }
+      var cover = _coverInCard(card, aid);
+      if (cover.isEmpty) cover = coverIndex[aid] ?? '';
+      var author = _authorInCard(card);
+      if (author.isEmpty) author = authorIndex[aid] ?? '';
+      return {
+        'aid': aid,
+        'name': name,
+        'cover': cover,
+        'author': author,
+        'author_raw': author,
+      };
+    }
 
     for (final h2 in doc.querySelectorAll('h2')) {
       final title = cleanText(h2.text);
       if (title.isEmpty || title.length > 24) continue;
       if (!seenTitles.add(title)) continue;
-
-      Element? box = h2.parent;
-      for (var i = 0; i < 6 && box != null; i++) {
-        if (box.querySelectorAll('a[href*="/book/info/"]').length >= 3) break;
-        box = box.parent;
-      }
+      final box = _sectionBox(h2);
       if (box == null) continue;
 
       final items = <Map<String, dynamic>>[];
       final seen = <String>{};
-      for (final a in box.querySelectorAll('a[href*="/book/info/"]')) {
+
+      // Carousel cards (限时免费): title attr is often wrong; use .dg-booka1.
+      for (final a in box.querySelectorAll('.dg-wrapper > a')) {
         final href = a.attributes['href'] ?? '';
         final aid = _extractAid(href);
         if (aid.isEmpty || !seen.add(aid)) continue;
-        var name = cleanText(a.attributes['title'] ?? a.text);
+        var name = cleanText(a.querySelector('.dg-booka1')?.text);
         if (name.length < 2) {
-          final img = a.querySelector('img');
-          name = cleanText(img?.attributes['alt']);
+          name = cleanText(a.attributes['title'] ?? a.text);
         }
-        if (name.length < 2 ||
-            name == '书籍详情' ||
-            name == '立刻阅读' ||
-            name == '立即阅读') {
-          continue;
-        }
-        Element? card = a.parent;
-        for (var i = 0; i < 4 && card != null; i++) {
-          if (card.querySelector('img') != null) break;
-          card = card.parent;
-        }
-        items.add({
-          'aid': aid,
-          'name': name,
-          'cover': _coverOf(card ?? a, null),
-          'author': '',
-          'author_raw': '',
-        });
+        final item = _itemFromCard(a, aid, name);
+        if (item != null) items.add(item);
       }
+
+      // Normal cards: li / dl units (do not climb past card for cover).
+      for (final card in box.querySelectorAll(
+        'li, dl.book-block, dl.listBook1, dl',
+      )) {
+        // Prefer title link over cover-only link.
+        final titleA = card.querySelector(
+              'a.book-name, a.bigpic-book-name, a.shelf-box, a.book-list-f, h3 a',
+            ) ??
+            card.querySelector('a[href*="/book/info/"]');
+        if (titleA == null) continue;
+        final href = titleA.attributes['href'] ?? '';
+        final aid = _extractAid(href);
+        if (aid.isEmpty || !seen.add(aid)) continue;
+        var name = cleanText(titleA.attributes['title'] ?? titleA.text);
+        if (name.length < 2) {
+          name = cleanText(card.querySelector('img')?.attributes['alt']);
+        }
+        final item = _itemFromCard(card, aid, name);
+        if (item != null) items.add(item);
+      }
+
       if (items.length < 3) continue;
       sections.add({'title': title, 'items': items});
     }
