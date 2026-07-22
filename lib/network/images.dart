@@ -5,6 +5,7 @@ import 'package:flutter_qjs/flutter_qjs.dart';
 import 'package:novvera/foundation/cache_manager.dart';
 import 'package:novvera/foundation/comic_source/comic_source.dart';
 import 'package:novvera/foundation/consts.dart';
+import 'package:novvera/network/cloudflare.dart';
 import 'package:novvera/utils/image.dart';
 
 import 'app_dio.dart';
@@ -58,6 +59,16 @@ abstract class ImageDownloader {
     }
     var req = await dio.request<ResponseBody>(requestUrl,
         data: configs['data']);
+    if (req.statusCode == 403 || req.statusCode == 503) {
+      final ct = req.headers.value('content-type') ?? '';
+      if (ct.contains('text/html') || ct.isEmpty) {
+        throw CloudflareException(
+          requestUrl.contains('linovelib') || requestUrl.contains('readpai')
+              ? 'https://www.linovelib.com/'
+              : requestUrl,
+        );
+      }
+    }
     var stream = req.data?.stream ?? (throw "Error: Empty response body.");
     int? expectedBytes = req.data!.contentLength;
     if (expectedBytes == -1) {
@@ -70,6 +81,21 @@ abstract class ImageDownloader {
         yield ImageDownloadProgress(
           currentBytes: buffer.length,
           totalBytes: expectedBytes,
+        );
+      }
+    }
+
+    // CF challenge HTML sometimes returns 200 with small HTML body.
+    if (buffer.length < 8000) {
+      final head = String.fromCharCodes(buffer.take(512));
+      if (head.contains('challenge-platform') ||
+          head.contains('Just a moment') ||
+          head.contains('cf-browser-verification') ||
+          head.contains('window._cf_chl_opt')) {
+        throw CloudflareException(
+          requestUrl.contains('linovelib') || requestUrl.contains('readpai')
+              ? 'https://www.linovelib.com/'
+              : requestUrl,
         );
       }
     }

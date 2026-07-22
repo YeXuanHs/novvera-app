@@ -1,5 +1,6 @@
 import 'dart:collection';
 
+import 'package:novvera/foundation/appdata.dart';
 import 'package:novvera/foundation/comic_source/comic_source.dart';
 import 'package:novvera/foundation/consts.dart';
 import 'package:novvera/foundation/novel_api/novel_api_client.dart';
@@ -169,10 +170,11 @@ Map<String, dynamic> _imageLoadingConfig(String sourceKey, String imageKey) {
       ? 'https://www.wenku8.net/'
       : 'https://www.linovelib.com/';
   final url = normalizeNovelImageUrl(imageKey);
+  final ua = appdata.implicitData['ua'];
   return {
     'url': url,
     'headers': {
-      'user-agent': webUA,
+      'user-agent': (ua is String && ua.isNotEmpty) ? ua : webUA,
       'Referer': referer,
       'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
     },

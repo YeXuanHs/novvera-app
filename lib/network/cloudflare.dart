@@ -22,7 +22,7 @@ class CloudflareException implements DioException {
   }
 
   static CloudflareException? fromString(String message) {
-    var match = RegExp(r"CloudflareException: (.+)").firstMatch(message);
+    var match = RegExp(r"CloudflareException:\s*(\S+)").firstMatch(message);
     if (match == null) return null;
     return CloudflareException(match.group(1)!);
   }
@@ -60,11 +60,54 @@ class CloudflareException implements DioException {
   DioExceptionReadableStringBuilder? stringBuilder;
 }
 
+/// Open the site origin for challenges — never a .jpg/.js asset URL.
+/// Loading CF HTML on a static-file URL often breaks the challenge WebView
+/// (blank page / odd redirects that look like 127.0.0.1 on some devices).
+String _challengeLaunchUrl(String raw) {
+  var s = raw.trim();
+  final cut = s.indexOf(RegExp(r'[\s\n]'));
+  if (cut > 0) s = s.substring(0, cut);
+  Uri? uri;
+  try {
+    uri = Uri.parse(s);
+  } catch (_) {}
+  if (uri == null ||
+      uri.host.isEmpty ||
+      uri.host == 'localhost' ||
+      uri.host == '127.0.0.1' ||
+      uri.host.endsWith('.localhost')) {
+    return 'https://www.linovelib.com/';
+  }
+  final path = uri.path.toLowerCase();
+  final isAsset = path.endsWith('.jpg') ||
+      path.endsWith('.jpeg') ||
+      path.endsWith('.png') ||
+      path.endsWith('.webp') ||
+      path.endsWith('.gif') ||
+      path.endsWith('.css') ||
+      path.endsWith('.js') ||
+      path.contains('/files/article/') ||
+      path.contains('/cover/');
+  if (isAsset || path.isEmpty || path == '/') {
+    return '${uri.scheme}://${uri.host}/';
+  }
+  // Prefer host root so Turnstile can complete cleanly.
+  return '${uri.scheme}://${uri.host}/';
+}
+
 class CloudflareInterceptor extends Interceptor {
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
-    if (options.headers['cookie'].toString().contains('cf_clearance')) {
-      options.headers['user-agent'] = appdata.implicitData['ua'] ?? webUA;
+    final ua = appdata.implicitData['ua'];
+    final cookie = options.headers['cookie']?.toString() ?? '';
+    // cf_clearance is bound to the WebView UA — reuse it when present.
+    if (ua is String &&
+        ua.isNotEmpty &&
+        (cookie.contains('cf_clearance') ||
+            options.uri.host.contains('linovelib') ||
+            options.uri.host.contains('readpai'))) {
+      options.headers['user-agent'] = ua;
+      options.headers['User-Agent'] = ua;
     }
     handler.next(options);
   }
@@ -86,13 +129,29 @@ class CloudflareInterceptor extends Interceptor {
         handler.reject(err);
         return;
       }
+      // Streamed cover/image responses may not expose HTML body here; treat
+      // text/html 403 from protected hosts as Cloudflare.
+      final ct = response.headers.value('content-type') ?? '';
+      final host = response.requestOptions.uri.host;
+      if (ct.contains('text/html') &&
+          (host.contains('linovelib') || host.contains('readpai'))) {
+        handler.reject(CloudflareException(
+          _challengeLaunchUrl(response.requestOptions.uri.toString()),
+        ));
+        return;
+      }
     }
     handler.next(response);
   }
 
   CloudflareException? _check(Response response) {
+    final launch = _challengeLaunchUrl(
+      response.realUri.toString().isNotEmpty
+          ? response.realUri.toString()
+          : response.requestOptions.uri.toString(),
+    );
     if (response.headers['cf-mitigated']?.firstOrNull == "challenge") {
-      return CloudflareException(response.requestOptions.uri.toString());
+      return CloudflareException(launch);
     }
     // Fallback: classic challenge pages without cf-mitigated header.
     final status = response.statusCode;
@@ -108,11 +167,7 @@ class CloudflareInterceptor extends Interceptor {
           html.contains('Just a moment') ||
           html.contains('cf-browser-verification') ||
           html.contains('window._cf_chl_opt')) {
-        return CloudflareException(
-          response.realUri.toString().isNotEmpty
-              ? response.realUri.toString()
-              : response.requestOptions.uri.toString(),
-        );
+        return CloudflareException(launch);
       }
     }
     return null;
@@ -120,7 +175,7 @@ class CloudflareInterceptor extends Interceptor {
 }
 
 void passCloudflare(CloudflareException e, void Function() onFinished) async {
-  var url = e.url;
+  var url = _challengeLaunchUrl(e.url);
   var uri = Uri.parse(url);
 
   void saveCookies(Map<String, String> cookies) {
@@ -129,6 +184,7 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
     if (splits.length > 1) {
       domain = ".${splits[splits.length - 2]}.${splits[splits.length - 1]}";
     }
+    // Also store under apex domain variants used by CDN paths.
     SingleInstanceCookieJar.instance!.saveFromResponse(
       uri,
       List<io.Cookie>.generate(cookies.length, (index) {

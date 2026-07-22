@@ -224,7 +224,9 @@ class RHttpAdapter implements HttpClientAdapter {
   ) async {
     if (options.headers['User-Agent'] == null &&
         options.headers['user-agent'] == null) {
-      options.headers['User-Agent'] = "novvera/v${App.version}";
+      final ua = appdata.implicitData['ua'];
+      options.headers['User-Agent'] =
+          (ua is String && ua.isNotEmpty) ? ua : "novvera/v${App.version}";
     }
 
     var res = await rhttp.Rhttp.request(
