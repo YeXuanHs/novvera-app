@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher_string.dart';
 import 'package:novvera/components/components.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/appdata.dart';
+import 'package:novvera/foundation/log.dart';
 import 'package:novvera/network/proxy.dart';
 import 'package:novvera/utils/ext.dart';
 import 'package:novvera/utils/translations.dart';
@@ -54,6 +55,7 @@ class AppWebview extends StatefulWidget {
       this.singlePage = false,
       this.onStarted,
       this.onLoadStop,
+      this.forceDirectProxy = false,
       super.key});
 
   final String initialUrl;
@@ -70,6 +72,11 @@ class AppWebview extends StatefulWidget {
 
   final bool singlePage;
 
+  /// Cloudflare / login WebViews must not inherit a stale Android
+  /// PROXY_OVERRIDE (often `127.0.0.1:7890` from Clash). Desktop is fine;
+  /// mobile WebView then opens `https://127.0.0.1/` with ERR_CONNECTION_REFUSED.
+  final bool forceDirectProxy;
+
   static WebViewEnvironment? webViewEnvironment;
 
   @override
@@ -85,15 +92,29 @@ class _AppWebviewState extends State<AppWebview> {
 
   late var future = _createWebviewEnvironment();
 
+  bool _isLoopbackProxy(String proxy) {
+    final p = proxy.toLowerCase().replaceAll('http://', '').replaceAll('https://', '');
+    return p.startsWith('127.0.0.1') ||
+        p.startsWith('localhost') ||
+        p.startsWith('[::1]');
+  }
+
   Future<bool> _createWebviewEnvironment() async {
-    var proxy = appdata.settings['proxy'].toString();
-    if (proxy != "system" && proxy != "direct") {
-      var proxyAvailable = await WebViewFeature.isFeatureSupported(
-        WebViewFeature.PROXY_OVERRIDE,
-      );
-      if (proxyAvailable) {
-        ProxyController proxyController = ProxyController.instance();
-        await proxyController.clearProxyOverride();
+    final proxyAvailable = await WebViewFeature.isFeatureSupported(
+      WebViewFeature.PROXY_OVERRIDE,
+    );
+    if (proxyAvailable) {
+      final proxyController = ProxyController.instance();
+      // Always clear first — otherwise a previous Clash override sticks
+      // after the user switches back to system/direct.
+      await proxyController.clearProxyOverride();
+
+      var proxy = appdata.settings['proxy'].toString();
+      final useCustom = !widget.forceDirectProxy &&
+          proxy != "system" &&
+          proxy != "direct" &&
+          !_isLoopbackProxy(proxy);
+      if (useCustom) {
         if (!proxy.contains("://")) {
           proxy = "http://$proxy";
         }
@@ -203,9 +224,19 @@ class _AppWebviewState extends State<AppWebview> {
         widget.onTitleChange?.call(title, controller!);
       },
       shouldOverrideUrlLoading: (c, r) async {
-        var res =
-            widget.onNavigation?.call(r.request.url?.toString() ?? "", c) ??
-                false;
+        final next = r.request.url?.toString() ?? '';
+        final host = r.request.url?.host ?? '';
+        if (host == '127.0.0.1' ||
+            host == 'localhost' ||
+            host == '[::1]' ||
+            host.endsWith('.localhost')) {
+          Log.info('Webview', 'Blocked loopback navigation: $next');
+          await c.loadUrl(
+            urlRequest: URLRequest(url: WebUri(widget.initialUrl)),
+          );
+          return NavigationActionPolicy.CANCEL;
+        }
+        var res = widget.onNavigation?.call(next, c) ?? false;
         if (res) {
           return NavigationActionPolicy.CANCEL;
         } else {

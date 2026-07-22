@@ -60,9 +60,9 @@ class CloudflareException implements DioException {
   DioExceptionReadableStringBuilder? stringBuilder;
 }
 
-/// Open the site origin for challenges — never a .jpg/.js asset URL.
-/// Loading CF HTML on a static-file URL often breaks the challenge WebView
-/// (blank page / odd redirects that look like 127.0.0.1 on some devices).
+/// Prefer site homepage for challenges. Never open loopback / asset URLs.
+/// Mobile WebViews that inherit Clash PROXY_OVERRIDE otherwise land on
+/// `https://127.0.0.1/` (ERR_CONNECTION_REFUSED).
 String _challengeLaunchUrl(String raw) {
   var s = raw.trim();
   final cut = s.indexOf(RegExp(r'[\s\n]'));
@@ -75,23 +75,16 @@ String _challengeLaunchUrl(String raw) {
       uri.host.isEmpty ||
       uri.host == 'localhost' ||
       uri.host == '127.0.0.1' ||
+      uri.host == '[::1]' ||
       uri.host.endsWith('.localhost')) {
     return 'https://www.linovelib.com/';
   }
-  final path = uri.path.toLowerCase();
-  final isAsset = path.endsWith('.jpg') ||
-      path.endsWith('.jpeg') ||
-      path.endsWith('.png') ||
-      path.endsWith('.webp') ||
-      path.endsWith('.gif') ||
-      path.endsWith('.css') ||
-      path.endsWith('.js') ||
-      path.contains('/files/article/') ||
-      path.contains('/cover/');
-  if (isAsset || path.isEmpty || path == '/') {
-    return '${uri.scheme}://${uri.host}/';
+  if (uri.host.contains('linovelib') || uri.host.contains('readpai')) {
+    return 'https://www.linovelib.com/';
   }
-  // Prefer host root so Turnstile can complete cleanly.
+  if (uri.host.contains('wenku8')) {
+    return 'https://www.wenku8.net/';
+  }
   return '${uri.scheme}://${uri.host}/';
 }
 
@@ -277,6 +270,7 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
       () => AppWebview(
         initialUrl: url,
         singlePage: true,
+        forceDirectProxy: true,
         onTitleChange: (title, controller) async {
           check(controller);
         },

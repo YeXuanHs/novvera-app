@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:rhttp/rhttp.dart' as rhttp;
 import 'package:novvera/foundation/appdata.dart';
+import 'package:novvera/foundation/consts.dart';
 import 'package:novvera/foundation/log.dart';
 import 'package:novvera/network/cache.dart';
 import 'package:novvera/network/proxy.dart';
@@ -198,7 +199,7 @@ class RHttpAdapter implements HttpClientAdapter {
   }
 
   static Map<String, List<String>> _getOverrides() {
-    if (!appdata.settings['enableDnsOverrides'] == true) {
+    if (appdata.settings['enableDnsOverrides'] != true) {
       return {};
     }
     var config = appdata.settings["dnsOverrides"];
@@ -225,8 +226,9 @@ class RHttpAdapter implements HttpClientAdapter {
     if (options.headers['User-Agent'] == null &&
         options.headers['user-agent'] == null) {
       final ua = appdata.implicitData['ua'];
+      // Prefer a real browser UA — `novvera/v*` is often CF-blocked on mobile IPs.
       options.headers['User-Agent'] =
-          (ua is String && ua.isNotEmpty) ? ua : "novvera/v${App.version}";
+          (ua is String && ua.isNotEmpty) ? ua : webUA;
     }
 
     var res = await rhttp.Rhttp.request(
