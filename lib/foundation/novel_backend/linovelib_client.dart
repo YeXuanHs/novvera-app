@@ -58,7 +58,7 @@ class LinovelibClient {
 
   Future<void> init() async {
     try {
-      await _http.getHtml('$_base/');
+      await ensureSession();
       Log.info('Linovelib', 'HTTP session ready');
     } on CloudflareException catch (e) {
       Log.warning(
@@ -68,6 +68,37 @@ class LinovelibClient {
     } catch (e) {
       Log.warning('Linovelib', 'bootstrap: $e');
     }
+  }
+
+  bool _sessionReady = false;
+  DateTime? _sessionAt;
+
+  /// Warm homepage cookies (`cf_clearance` etc). Covers on `/files/article/`
+  /// are CF-gated — Referer alone is not enough (browser works because it
+  /// already has clearance from navigating the site).
+  Future<bool> ensureSession({bool force = false}) async {
+    if (!force &&
+        _sessionReady &&
+        _sessionAt != null &&
+        DateTime.now().difference(_sessionAt!) < const Duration(minutes: 25)) {
+      return true;
+    }
+    final res = await _http.getHtml('$_base/');
+    final blocked = res.status == 403 ||
+        res.status == 503 ||
+        res.html.contains('Attention Required') ||
+        res.html.contains('cf-browser-verification') ||
+        res.html.contains('challenge-platform');
+    if (blocked) {
+      throw CloudflareException('https://www.linovelib.com/');
+    }
+    _sessionReady = true;
+    _sessionAt = DateTime.now();
+    // Best-effort search tickets; ignore failures (covers mainly need CF).
+    try {
+      await passSearchGuard();
+    } catch (_) {}
+    return true;
   }
 
   String _extractAid(String href) {
@@ -92,7 +123,7 @@ class LinovelibClient {
     final jar = SingleInstanceCookieJar.instance;
     if (jar == null) return;
     final c = Cookie(name, value)
-      ..domain = 'www.linovelib.com'
+      ..domain = '.linovelib.com'
       ..path = '/';
     jar.saveFromResponse(Uri.parse('$_base/'), [c]);
   }
@@ -123,6 +154,7 @@ class LinovelibClient {
   }
 
   Future<Map<String, dynamic>> rank(String type, int page) async {
+    await ensureSession();
     final path =
         (_rankPaths[type] ?? _rankPaths['monthvisit']!).replaceAll('{page}', '$page');
     final res = await _http.getHtml('$_base$path');
@@ -147,6 +179,7 @@ class LinovelibClient {
 
   /// Homepage recommendation blocks (.top-title / .top-title-two).
   Future<Map<String, dynamic>> home() async {
+    await ensureSession();
     final res = await _http.getHtml('$_base/');
     final doc = parseHtml(res.html);
     final sections = <Map<String, dynamic>>[];
@@ -244,6 +277,7 @@ class LinovelibClient {
     String type,
     int page,
   ) async {
+    await ensureSession();
     if (type == 'author') {
       final url =
           '$_base/authorarticle/${Uri.encodeComponent(keyword)}.html';

@@ -5,6 +5,7 @@ import 'package:flutter_qjs/flutter_qjs.dart';
 import 'package:novvera/foundation/cache_manager.dart';
 import 'package:novvera/foundation/comic_source/comic_source.dart';
 import 'package:novvera/foundation/consts.dart';
+import 'package:novvera/foundation/novel_backend/linovelib_client.dart';
 import 'package:novvera/network/cloudflare.dart';
 import 'package:novvera/utils/image.dart';
 
@@ -51,14 +52,28 @@ abstract class ImageDownloader {
       headers: Map<String, dynamic>.from(configs['headers']),
       method: configs['method'] ?? 'GET',
       responseType: ResponseType.stream,
+      validateStatus: (status) => status != null && status < 600,
     ));
 
     String requestUrl = configs['url'] ?? url;
     if (requestUrl.startsWith('//')) {
       requestUrl = 'https:$requestUrl';
     }
-    var req = await dio.request<ResponseBody>(requestUrl,
-        data: configs['data']);
+
+    Future<Response<ResponseBody>> send() =>
+        dio.request<ResponseBody>(requestUrl, data: configs['data']);
+
+    var req = await send();
+    // Linovelib covers need cf_clearance — warm session once and retry.
+    if ((req.statusCode == 403 || req.statusCode == 503) &&
+        sourceKey == 'linovelib') {
+      try {
+        await LinovelibClient.instance.ensureSession(force: true);
+        req = await send();
+      } on CloudflareException {
+        rethrow;
+      } catch (_) {}
+    }
     if (req.statusCode == 403 || req.statusCode == 503) {
       final ct = req.headers.value('content-type') ?? '';
       if (ct.contains('text/html') || ct.isEmpty) {
@@ -192,10 +207,31 @@ abstract class ImageDownloader {
           headers: configs['headers'],
           method: configs['method'] ?? 'GET',
           responseType: ResponseType.stream,
+          validateStatus: (status) => status != null && status < 600,
         ));
 
-        var req = await dio.request<ResponseBody>(configs['url'] ?? imageKey,
-            data: configs['data']);
+        final imageUrl = configs['url'] ?? imageKey;
+        var req = await dio.request<ResponseBody>(imageUrl, data: configs['data']);
+        if ((req.statusCode == 403 || req.statusCode == 503) &&
+            sourceKey == 'linovelib') {
+          try {
+            await LinovelibClient.instance.ensureSession(force: true);
+            req = await dio.request<ResponseBody>(imageUrl, data: configs['data']);
+          } on CloudflareException {
+            rethrow;
+          } catch (_) {}
+        }
+        if (req.statusCode == 403 || req.statusCode == 503) {
+          final ct = req.headers.value('content-type') ?? '';
+          if (ct.contains('text/html') || ct.isEmpty) {
+            throw CloudflareException(
+              (imageUrl.toString().contains('linovelib') ||
+                      imageUrl.toString().contains('readpai'))
+                  ? 'https://www.linovelib.com/'
+                  : imageUrl.toString(),
+            );
+          }
+        }
         var stream = req.data?.stream ?? (throw "Error: Empty response body.");
         int? expectedBytes = req.data!.contentLength;
         if (expectedBytes == -1) {
