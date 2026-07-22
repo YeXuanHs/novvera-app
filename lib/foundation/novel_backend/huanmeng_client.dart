@@ -339,8 +339,27 @@ class HuanmengClient {
     if (cover.contains('/template/')) cover = '';
     var intro = _meta(doc, ['og:description', 'description']) ?? '';
     if (intro.isEmpty) {
-      final dec = doc.querySelector('.book-intro, .intro, .book-dec, #intro');
+      final dec = doc.querySelector(
+        '.book-intro, .intro, .book-dec, #intro, .big-book-info, .book-info',
+      );
       intro = cleanText(dec?.text);
+    }
+    // Prefer longer on-page blurb if meta is truncated.
+    for (final sel in [
+      '.book-intro',
+      '.intro',
+      '.book-dec',
+      '#intro',
+      '.big-book-info',
+    ]) {
+      final el = doc.querySelector(sel);
+      final t = cleanText(el?.text);
+      if (t.length > intro.length) intro = t;
+    }
+    intro = intro.replaceFirst(RegExp(r'^.*?内容简介[：:]'), '').trim();
+    // Drop site keyword stuffing from meta description.
+    if (intro.contains('小说是作者') && intro.length < 80) {
+      intro = '';
     }
     final data = <String, dynamic>{
       'aid': aid,

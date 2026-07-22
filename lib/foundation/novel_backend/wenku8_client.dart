@@ -316,10 +316,11 @@ class Wenku8Client {
       final ps = div.querySelectorAll('p');
       final aid = _extractAid(a.attributes['href'] ?? '') ?? '';
       final cover = _coverFromCard(div, aid);
+      final author = _cleanAuthor(ps.isNotEmpty ? ps.first.text : '');
       items.add({
         'name': cleanText(a.attributes['title'] ?? a.text),
-        'author': ps.isNotEmpty ? cleanText(ps.first.text) : '',
-        'author_raw': ps.isNotEmpty ? cleanText(ps.first.text) : '',
+        'author': author,
+        'author_raw': author,
         'aid': aid,
         'cover': cover,
       });
@@ -351,15 +352,26 @@ class Wenku8Client {
       final ps = div.querySelectorAll('p');
       final aid = _extractAid(a.attributes['href'] ?? '') ?? '';
       final cover = _coverFromCard(div, aid);
+      final author = _cleanAuthor(ps.isNotEmpty ? ps.first.text : '');
       items.add({
         'name': cleanText(a.attributes['title'] ?? a.text),
-        'author': ps.isNotEmpty ? cleanText(ps.first.text) : '',
-        'author_raw': ps.isNotEmpty ? cleanText(ps.first.text) : '',
+        'author': author,
+        'author_raw': author,
         'aid': aid,
         'cover': cover,
       });
     }
     return items;
+  }
+
+  String _cleanAuthor(String? raw) {
+    var author = cleanText(raw);
+    author = author.replaceFirst(RegExp(r'^作者[:：]\s*'), '');
+    // Cards sometimes use "作者名 / 分类"
+    if (author.contains('/')) {
+      author = author.split('/').first.trim();
+    }
+    return author;
   }
 
   String? _extractAid(String href) {
@@ -447,11 +459,14 @@ class Wenku8Client {
         data['tags'] = t.replaceFirst(RegExp(r'作品Tags[：:]'), '').trim();
       }
     }
-    // intro
+    // intro: 「内容简介：」</span><br><span style="font-size:14px;">…</span>
     for (final sp in doc.querySelectorAll('span')) {
       final t = cleanText(sp.text);
       if (t.startsWith('内容简介') || t.startsWith('內容簡介')) {
-        final next = sp.nextElementSibling;
+        Element? next = sp.nextElementSibling;
+        while (next != null && next.localName == 'br') {
+          next = next.nextElementSibling;
+        }
         if (next != null && next.localName == 'span') {
           data['intro'] = cleanText(next.text);
         }

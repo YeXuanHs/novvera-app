@@ -186,15 +186,25 @@ class LinovelibClient {
       if (section == null) continue;
       final items = <Map<String, dynamic>>[];
       final seen = <String>{};
-      for (final a in section.querySelectorAll('a[href*="/novel/"]')) {
-        final href = a.attributes['href'] ?? '';
+
+      // Rank-style lists: <li><a class="title">…</a><a class="author">…</a>
+      for (final li in section.querySelectorAll('li')) {
+        final titleA = li.querySelector('a.title') ??
+            li.querySelector("a[href*='/novel/']");
+        if (titleA == null) continue;
+        final href = titleA.attributes['href'] ?? '';
         final aid = _extractAid(href);
         if (aid.isEmpty || !seen.add(aid)) continue;
-        final name = cleanText(a.attributes['title'] ?? a.text);
+        var name = cleanText(titleA.attributes['title'] ?? titleA.text);
+        if (name.length < 2) {
+          name = cleanText(li.querySelector('img')?.attributes['alt']);
+        }
         if (name.length < 2) continue;
-        final book = a.parent;
-        final img = book?.querySelector('img') ??
-            a.querySelector('img');
+        final authorA = li.querySelector('a.author, a.author2');
+        final author = cleanText(
+          authorA?.attributes['title'] ?? authorA?.text,
+        );
+        final img = li.querySelector('img');
         var cover = absUrl(
           _base,
           img?.attributes['data-original'] ?? img?.attributes['src'],
@@ -208,9 +218,89 @@ class LinovelibClient {
           'aid': aid,
           'name': name,
           'cover': cover,
-          'author': '',
-          'author_raw': '',
+          'author': author,
+          'author_raw': author,
         });
+      }
+
+      // Featured cards: .mind-book / .book-info
+      if (items.length < 3) {
+        for (final card in section.querySelectorAll(
+          '.mind-book, .book-info, .book-info1, .img-book',
+        )) {
+          final titleA = card.querySelector(
+                'a.bookname, a.title, a[href*="/novel/"]',
+              ) ??
+              card.querySelector('a[href*="/novel/"]');
+          if (titleA == null) continue;
+          final href = titleA.attributes['href'] ?? '';
+          final aid = _extractAid(href);
+          if (aid.isEmpty || !seen.add(aid)) continue;
+          var name = cleanText(titleA.attributes['title'] ?? titleA.text);
+          if (name.length < 2) continue;
+          final authorA = card.querySelector(
+            'a.author, a.author2, .author-text a, .author-text',
+          );
+          var author = cleanText(
+            authorA?.attributes['title'] ?? authorA?.text,
+          );
+          author = author.replaceFirst(RegExp(r'^作者[:：]?'), '').trim();
+          final img = card.querySelector('img');
+          var cover = absUrl(
+            _base,
+            img?.attributes['data-original'] ?? img?.attributes['src'],
+          );
+          if (cover.isEmpty) {
+            cover = linovelibCoverUrl(aid);
+          } else {
+            cover = preferHttps(cover);
+          }
+          items.add({
+            'aid': aid,
+            'name': name,
+            'cover': cover,
+            'author': author,
+            'author_raw': author,
+          });
+        }
+      }
+
+      // Last resort: bare novel links
+      if (items.length < 3) {
+        for (final a in section.querySelectorAll('a[href*="/novel/"]')) {
+          final href = a.attributes['href'] ?? '';
+          final aid = _extractAid(href);
+          if (aid.isEmpty || !seen.add(aid)) continue;
+          final name = cleanText(a.attributes['title'] ?? a.text);
+          if (name.length < 2) continue;
+          Element? host = a.parent;
+          String author = '';
+          for (var i = 0; i < 4 && host != null; i++) {
+            final authorA = host.querySelector('a.author, a.author2');
+            if (authorA != null) {
+              author = cleanText(authorA.attributes['title'] ?? authorA.text);
+              break;
+            }
+            host = host.parent;
+          }
+          final img = a.querySelector('img') ?? a.parent?.querySelector('img');
+          var cover = absUrl(
+            _base,
+            img?.attributes['data-original'] ?? img?.attributes['src'],
+          );
+          if (cover.isEmpty) {
+            cover = linovelibCoverUrl(aid);
+          } else {
+            cover = preferHttps(cover);
+          }
+          items.add({
+            'aid': aid,
+            'name': name,
+            'cover': cover,
+            'author': author,
+            'author_raw': author,
+          });
+        }
       }
       if (items.length < 3) continue;
       sections.add({'title': title, 'items': items});
@@ -236,7 +326,14 @@ class LinovelibClient {
         intro = intro.parent;
       }
       final cate = intro?.querySelector('.rank_d_b_cate');
-      if (cate != null) author = cleanText(cate.text);
+      if (cate != null) {
+        final authorA = cate.querySelector('a[href*="authorarticle"]') ??
+            cate.querySelector('a');
+        author = cleanText(authorA?.text);
+        if (author.isEmpty) {
+          author = cleanText(cate.text).split('|').first.trim();
+        }
+      }
       Element? book = a.parent;
       while (book != null && !book.classes.contains('rank_d_book_intro') &&
           !book.classes.contains('rank_d_list')) {
@@ -364,16 +461,28 @@ class LinovelibClient {
       final name = cleanText(titleA.text);
       if (aid.isEmpty || name.isEmpty || seen.contains(aid)) continue;
       seen.add(aid);
-      final infoEl = block.querySelector(
-        '.bookinfo, .se-result-infos p, .se-result-infos',
-      );
       var author = '';
-      if (infoEl != null) {
-        final info = cleanText(infoEl.text);
-        if (info.contains('|')) {
-          author = cleanText(info.split('|').first);
+      final authorA = block.querySelector(
+        'a[href*="authorarticle"], a.author, a.author2',
+      );
+      if (authorA != null) {
+        author = cleanText(authorA.attributes['title'] ?? authorA.text);
+      }
+      if (author.isEmpty) {
+        final infoEl = block.querySelector(
+          '.bookinfo, .se-result-infos p, .se-result-infos',
+        );
+        if (infoEl != null) {
+          final info = cleanText(infoEl.text);
+          if (info.contains('|')) {
+            author = cleanText(info.split('|').first);
+          } else {
+            final m = RegExp(r'作者[:：]\s*([^\s|/]+)').firstMatch(info);
+            if (m != null) author = cleanText(m.group(1));
+          }
         }
       }
+      author = author.replaceFirst(RegExp(r'^作者[:：]?'), '').trim();
       final img = block.querySelector('img');
       var cover = preferHttps(absUrl(
         _base,
@@ -430,11 +539,27 @@ class LinovelibClient {
     if (cover.isEmpty) {
       cover = linovelibCoverUrl(aid);
     }
-    var intro = _meta(doc, ['og:description', 'description']) ?? '';
-    if (intro.isEmpty) {
-      final dec = doc.querySelector('.book-dec p') ?? doc.querySelector('.book-dec');
-      intro = cleanText(dec?.text);
+    var intro = '';
+    final dec = doc.querySelector('.book-dec');
+    if (dec != null) {
+      final parts = <String>[];
+      for (final p in dec.querySelectorAll('p')) {
+        if (p.classes.contains('backupname')) continue;
+        final t = cleanText(p.text);
+        if (t.isNotEmpty) parts.add(t);
+      }
+      if (parts.isEmpty) {
+        final t = cleanText(dec.text);
+        if (t.isNotEmpty) parts.add(t);
+      }
+      intro = parts.join('\n');
     }
+    if (intro.isEmpty) {
+      intro = _meta(doc, ['og:description', 'description']) ?? '';
+    }
+    intro = intro
+        .replaceFirst(RegExp(r'^.*?内容简介[：:]'), '')
+        .trim();
     String? wordCount;
     String? hotText;
     final nums = doc.querySelector('.nums');

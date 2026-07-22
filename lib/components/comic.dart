@@ -321,9 +321,19 @@ class ComicTile extends StatelessWidget {
                       child: (() {
                         final subtitle =
                             comic.subtitle?.replaceAll('\n', '').trim();
-                        final text = comic.description.isNotEmpty
-                            ? comic.description.split('|').join('\n')
-                            : (subtitle?.isNotEmpty == true ? subtitle : null);
+                        // Novels: card overlay shows author (subtitle), never synopsis.
+                        final String? text;
+                        if (isNovelSource(comic.sourceKey)) {
+                          text = (subtitle != null && subtitle.isNotEmpty)
+                              ? subtitle
+                              : null;
+                        } else if (comic.description.isNotEmpty) {
+                          text = comic.description.split('|').join('\n');
+                        } else if (subtitle?.isNotEmpty == true) {
+                          text = subtitle;
+                        } else {
+                          text = null;
+                        }
                         final fortSize = constraints.maxWidth < 80
                             ? 8.0
                             : constraints.maxWidth < 150
@@ -625,14 +635,15 @@ class _ComicDescription extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (rating != null) StarRating(value: rating!, size: 18),
-                  Text(
-                    description,
-                    style: const TextStyle(
-                      fontSize: 12.0,
+                  if (description.trim().isNotEmpty)
+                    Text(
+                      description,
+                      style: const TextStyle(
+                        fontSize: 12.0,
+                      ),
+                      maxLines: (tags == null || tags!.isEmpty) ? 3 : 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    maxLines: (tags == null || tags!.isEmpty) ? 3 : 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
                 ],
               ),
             ),

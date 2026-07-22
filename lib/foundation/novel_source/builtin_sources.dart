@@ -210,10 +210,17 @@ Comic _itemToComic(Map<String, dynamic> item, String sourceKey) {
   if (cover.isEmpty && aid.isNotEmpty) {
     cover = _fallbackCover(sourceKey, aid);
   }
-  final authorRaw = (item['author_raw'] ?? '').toString();
-  final author = authorRaw.isNotEmpty
-      ? authorRaw
-      : (item['author'] ?? '').toString();
+  var author = (item['author_raw'] ?? '').toString().trim();
+  if (author.isEmpty) {
+    author = (item['author'] ?? '').toString().trim();
+  }
+  // Flatten "作者:xxx/分类:yyy" from detail payloads reused in lists.
+  final authorM = RegExp(r'^作者[:：]\s*([^/]+)').firstMatch(author);
+  if (authorM != null) {
+    author = authorM.group(1)!.trim();
+  }
+  author = author.replaceFirst(RegExp(r'^作者[:：]\s*'), '').trim();
+
   final tags = <String>[];
   final tagStr = item['tags']?.toString();
   if (tagStr != null && tagStr.isNotEmpty) {
@@ -225,15 +232,14 @@ Comic _itemToComic(Map<String, dynamic> item, String sourceKey) {
   if (status != null && status.isNotEmpty) {
     tags.add(status);
   }
-  final desc = (item['last_chapter'] ?? item['intro'] ?? item['hot_text'] ?? '')
-      .toString();
+  // Cards show title + author only; synopsis belongs on the detail page.
   return Comic(
     title,
     cover,
     aid,
     author,
     tags.isEmpty ? null : tags,
-    desc,
+    '',
     sourceKey,
     null,
     null,
@@ -374,7 +380,11 @@ Future<Res<ComicDetails>> _loadComicInfo(String source, String id) async {
     }
     final authorRaw = (info['author_raw'] ?? '').toString();
     final category = (info['category'] ?? '').toString();
-    final intro = (info['intro'] ?? '').toString();
+    var intro = (info['intro'] ?? '').toString().trim();
+    if (intro.isEmpty) {
+      intro = (info['description'] ?? '').toString().trim();
+    }
+    intro = intro.replaceFirst(RegExp(r'^.*?内容简介[：:]'), '').trim();
     final status = (info['status'] ?? '').toString();
     final updateTime = info['update_time']?.toString();
     final tags = <String, List<String>>{};
@@ -382,7 +392,13 @@ Future<Res<ComicDetails>> _loadComicInfo(String source, String id) async {
       tags['作者'] = [authorRaw];
     }
     if (category.isNotEmpty) {
-      tags['分类'] = [category];
+      tags['分类'] = category
+          .split(RegExp(r'[\s,/|]+'))
+          .where((e) => e.trim().isNotEmpty)
+          .toList();
+      if (tags['分类']!.isEmpty) {
+        tags['分类'] = [category];
+      }
     }
     if (status.isNotEmpty) {
       tags['状态'] = [status];
