@@ -100,29 +100,37 @@ class _AppWebviewState extends State<AppWebview> {
   }
 
   Future<bool> _createWebviewEnvironment() async {
-    final proxyAvailable = await WebViewFeature.isFeatureSupported(
-      WebViewFeature.PROXY_OVERRIDE,
-    );
-    if (proxyAvailable) {
-      final proxyController = ProxyController.instance();
-      // Always clear first — otherwise a previous Clash override sticks
-      // after the user switches back to system/direct.
-      await proxyController.clearProxyOverride();
-
-      var proxy = appdata.settings['proxy'].toString();
-      final useCustom = !widget.forceDirectProxy &&
-          proxy != "system" &&
-          proxy != "direct" &&
-          !_isLoopbackProxy(proxy);
-      if (useCustom) {
-        if (!proxy.contains("://")) {
-          proxy = "http://$proxy";
-        }
-        await proxyController.setProxyOverride(
-          settings: ProxySettings(
-            proxyRules: [ProxyRule(url: proxy)],
-          ),
+    // PROXY_OVERRIDE / WebViewFeature only exist on Android. Calling them on
+    // Windows throws: createPlatformWebViewFeatureStatic is not implemented.
+    if (App.isAndroid) {
+      try {
+        final proxyAvailable = await WebViewFeature.isFeatureSupported(
+          WebViewFeature.PROXY_OVERRIDE,
         );
+        if (proxyAvailable) {
+          final proxyController = ProxyController.instance();
+          // Always clear first — otherwise a previous Clash override sticks
+          // after the user switches back to system/direct.
+          await proxyController.clearProxyOverride();
+
+          var proxy = appdata.settings['proxy'].toString();
+          final useCustom = !widget.forceDirectProxy &&
+              proxy != "system" &&
+              proxy != "direct" &&
+              !_isLoopbackProxy(proxy);
+          if (useCustom) {
+            if (!proxy.contains("://")) {
+              proxy = "http://$proxy";
+            }
+            await proxyController.setProxyOverride(
+              settings: ProxySettings(
+                proxyRules: [ProxyRule(url: proxy)],
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        Log.warning('Webview', 'proxy override skipped: $e');
       }
     }
     if (!App.isWindows) {
