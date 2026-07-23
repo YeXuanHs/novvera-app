@@ -207,6 +207,114 @@ class DeviceArch {
     return null;
   }
 
+  /// Pick a GitHub Release asset browser_download_url for this device.
+  ///
+  /// Expected names (case-insensitive), e.g.:
+  /// - `novvera-1.0.0-arm64-v8a.apk`
+  /// - `Novvera-1.0.0-windows-installer.exe`
+  /// - `Novvera-1.0.0-macos.dmg`
+  /// Returns `(archKey, url, assetName)`.
+  static (String archKey, String url, String name)? pickReleaseAsset(
+    List assets,
+    DeviceArch arch,
+    String version,
+  ) {
+    final items = <({String name, String url})>[];
+    for (final a in assets) {
+      if (a is! Map) continue;
+      final name = (a['name'] ?? '').toString();
+      final url = (a['browser_download_url'] ?? '').toString();
+      if (name.isEmpty || url.isEmpty) continue;
+      items.add((name: name, url: url));
+    }
+    if (items.isEmpty) return null;
+
+    bool match(String name, RegExp re) => re.hasMatch(name);
+    ({String name, String url})? find(RegExp re) {
+      for (final it in items) {
+        if (match(it.name, re)) return it;
+      }
+      return null;
+    }
+
+    final ver = RegExp.escape(version);
+    switch (arch.platform) {
+      case 'android':
+        for (final key in arch.candidates) {
+          if (key == 'universal') {
+            final exact = find(RegExp(
+              r'^novvera[-_]' + ver + r'\.apk$',
+              caseSensitive: false,
+            ));
+            if (exact != null) return (key, exact.url, exact.name);
+            continue;
+          }
+          final archEsc = RegExp.escape(key);
+          final hit = find(RegExp(
+            r'^novvera[-_]' + ver + r'[-_]' + archEsc + r'\.apk$',
+            caseSensitive: false,
+          ));
+          if (hit != null) return (key, hit.url, hit.name);
+        }
+        final anyApk = find(RegExp(r'\.apk$', caseSensitive: false));
+        if (anyApk != null) return (arch.primary, anyApk.url, anyApk.name);
+        break;
+      case 'windows':
+        final installer = find(RegExp(
+          r'^novvera[-_]' + ver + r'[-_]windows[-_]installer\.exe$',
+          caseSensitive: false,
+        ));
+        if (installer != null) {
+          return ('installer', installer.url, installer.name);
+        }
+        final zip = find(RegExp(
+          r'^novvera[-_]' + ver + r'[-_]windows\.zip$',
+          caseSensitive: false,
+        ));
+        if (zip != null) return ('zip', zip.url, zip.name);
+        final anyExe = find(RegExp(r'\.exe$', caseSensitive: false));
+        if (anyExe != null) return ('exe', anyExe.url, anyExe.name);
+        break;
+      case 'macos':
+        final dmg = find(RegExp(
+          r'^novvera[-_]' + ver + r'[-_]macos\.dmg$',
+          caseSensitive: false,
+        ));
+        if (dmg != null) return ('universal', dmg.url, dmg.name);
+        final anyDmg = find(RegExp(r'\.dmg$', caseSensitive: false));
+        if (anyDmg != null) return ('dmg', anyDmg.url, anyDmg.name);
+        break;
+      case 'linux':
+        for (final key in arch.candidates) {
+          final archEsc = RegExp.escape(key);
+          final tar = find(RegExp(
+            r'^novvera[-_]' + ver + r'[-_]linux[-_]' + archEsc + r'\.tar\.gz$',
+            caseSensitive: false,
+          ));
+          if (tar != null) return (key, tar.url, tar.name);
+          final debArch = key == 'x64' ? 'amd64' : key;
+          final deb = find(RegExp(
+            r'^novvera[_-]' +
+                ver +
+                r'[_-]' +
+                RegExp.escape(debArch) +
+                r'\.deb$',
+            caseSensitive: false,
+          ));
+          if (deb != null) return (key, deb.url, deb.name);
+        }
+        break;
+      case 'ios':
+        final ipa = find(RegExp(
+          r'^novvera[-_]' + ver + r'[-_]ios\.ipa$',
+          caseSensitive: false,
+        ));
+        if (ipa != null) return ('arm64', ipa.url, ipa.name);
+        break;
+    }
+    return null;
+  }
+
   static String? _asUrl(Object? v) {
     if (v == null) return null;
     final s = v.toString().trim();

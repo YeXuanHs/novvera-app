@@ -887,6 +887,185 @@ class _ActionButton extends StatelessWidget {
   }
 }
 
+class _NovelChapterPick {
+  const _NovelChapterPick({
+    required this.volume,
+    required this.id,
+    required this.title,
+  });
+  final String volume;
+  final String id;
+  final String title;
+}
+
+class _NovelDownloadVolume {
+  const _NovelDownloadVolume({required this.name, required this.chapters});
+  final String name;
+  final List<_NovelChapterPick> chapters;
+}
+
+class _SelectNovelEpubDownload extends StatefulWidget {
+  const _SelectNovelEpubDownload({
+    required this.volumes,
+    required this.onConfirm,
+  });
+
+  final List<_NovelDownloadVolume> volumes;
+  final void Function(List<_NovelChapterPick>) onConfirm;
+
+  @override
+  State<_SelectNovelEpubDownload> createState() =>
+      _SelectNovelEpubDownloadState();
+}
+
+class _SelectNovelEpubDownloadState extends State<_SelectNovelEpubDownload> {
+  late final Set<String> selectedIds;
+
+  @override
+  void initState() {
+    super.initState();
+    selectedIds = {};
+  }
+
+  Iterable<_NovelChapterPick> get _allChapters sync* {
+    for (final v in widget.volumes) {
+      yield* v.chapters;
+    }
+  }
+
+  bool _volumeFullySelected(_NovelDownloadVolume vol) {
+    if (vol.chapters.isEmpty) return false;
+    return vol.chapters.every((c) => selectedIds.contains(c.id));
+  }
+
+  bool _volumePartiallySelected(_NovelDownloadVolume vol) {
+    final n = vol.chapters.where((c) => selectedIds.contains(c.id)).length;
+    return n > 0 && n < vol.chapters.length;
+  }
+
+  void _toggleVolume(_NovelDownloadVolume vol, bool? checked) {
+    setState(() {
+      if (checked == true) {
+        for (final c in vol.chapters) {
+          selectedIds.add(c.id);
+        }
+      } else {
+        for (final c in vol.chapters) {
+          selectedIds.remove(c.id);
+        }
+      }
+    });
+  }
+
+  List<_NovelChapterPick> _selectedPicks() {
+    final map = {for (final c in _allChapters) c.id: c};
+    return [
+      for (final c in _allChapters)
+        if (selectedIds.contains(c.id)) map[c.id]!,
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: Appbar(
+        title: Text("Download".tl),
+        backgroundColor: context.colorScheme.surfaceContainerLow,
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView.builder(
+              padding: EdgeInsets.zero,
+              itemCount: widget.volumes.length,
+              itemBuilder: (context, vi) {
+                final vol = widget.volumes[vi];
+                final full = _volumeFullySelected(vol);
+                final partial = _volumePartiallySelected(vol);
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CheckboxListTile(
+                      title: Text(
+                        vol.name,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: Text(
+                        '${vol.chapters.length} ${"Chapters".tl}',
+                      ),
+                      value: full
+                          ? true
+                          : (partial ? null : false),
+                      tristate: true,
+                      onChanged: (_) {
+                        _toggleVolume(vol, !full);
+                      },
+                    ),
+                    for (final chap in vol.chapters)
+                      CheckboxListTile(
+                        contentPadding: const EdgeInsets.only(
+                          left: 36,
+                          right: 16,
+                        ),
+                        title: Text(chap.title),
+                        value: selectedIds.contains(chap.id),
+                        onChanged: (v) {
+                          setState(() {
+                            if (v == true) {
+                              selectedIds.add(chap.id);
+                            } else {
+                              selectedIds.remove(chap.id);
+                            }
+                          });
+                        },
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
+          Container(
+            height: 50,
+            decoration: BoxDecoration(
+              border: Border(
+                top: BorderSide(color: context.colorScheme.outlineVariant),
+              ),
+            ),
+            child: Row(
+              children: [
+                const SizedBox(width: 16),
+                Expanded(
+                  child: TextButton(
+                    onPressed: () {
+                      widget.onConfirm(_allChapters.toList());
+                      context.pop();
+                    },
+                    child: Text("Download All".tl),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: selectedIds.isEmpty
+                        ? null
+                        : () {
+                            widget.onConfirm(_selectedPicks());
+                            context.pop();
+                          },
+                    child: Text("Download Selected".tl),
+                  ),
+                ),
+                const SizedBox(width: 16),
+              ],
+            ),
+          ),
+          SizedBox(height: MediaQuery.of(context).padding.bottom),
+        ],
+      ),
+    );
+  }
+}
+
 class _SelectDownloadChapter extends StatefulWidget {
   const _SelectDownloadChapter(this.eps, this.finishSelect, this.downloadedEps);
 

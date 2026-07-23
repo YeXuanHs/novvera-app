@@ -4,7 +4,7 @@ publish_to: 'none'
 homepage: https://github.com/YeXuanHs/novvera-app
 repository: https://github.com/YeXuanHs/novvera-app
 
-version: 1.0.0+100
+version: 1.1.0+110
 
 environment:
   sdk: '>=3.8.0 <4.0.0'
@@ -56,6 +56,7 @@ dependencies:
   flutter_file_dialog: ^3.0.3
   file_selector: ^1.1.0
   zip_flutter: ^0.0.13
+  archive: ^4.0.9
   lodepng_flutter:
     git:
       url: https://github.com/venera-app/lodepng_flutter
@@ -96,7 +97,6 @@ dev_dependencies:
   flutter_to_debian: 
     git:
       url: https://github.com/venera-app/flutter_to_debian.git
-  archive: any
 
 # rhttp 0.15.1 embeds FRB codegen 2.11.1; a newer transitive runtime breaks Rhttp.init.
 dependency_overrides:

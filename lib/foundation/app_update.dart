@@ -43,18 +43,29 @@ class AppUpdateProgress {
   final int bytesPerSecond;
 
   String get display {
-    return '${percent.toStringAsFixed(2)}% - '
-        '${_fmt(transferred)}/${_fmt(total)} - '
-        '${_fmt(bytesPerSecond)}/s';
+    final pct = percent.isFinite ? percent.round().clamp(0, 100) : 0;
+    return '$pct%（${_fmt(transferred)}/${_fmt(total)}）';
   }
 
+  /// Under 1024MB keep MB; at/above that use GB.
   static String _fmt(int n) {
-    if (n < 1024) return '$n B';
-    if (n < 1024 * 1024) return '${(n / 1024).toStringAsFixed(1)} KB';
-    if (n < 1024 * 1024 * 1024) {
-      return '${(n / (1024 * 1024)).toStringAsFixed(2)} MB';
+    const mb = 1024 * 1024;
+    const gbCut = 1024 * mb;
+    if (n >= gbCut) {
+      final g = n / (1024 * mb);
+      if ((g * 10).round() % 10 == 0) {
+        return '${g.round()}GB';
+      }
+      return '${g.toStringAsFixed(1)}GB';
     }
-    return '${(n / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+    final m = n / mb;
+    if (m >= 10 || (m - m.round()).abs() < 0.05) {
+      return '${m.round()}MB';
+    }
+    if (m < 0.1 && n > 0) {
+      return '${(n / 1024).round()}KB';
+    }
+    return '${m.toStringAsFixed(1)}MB';
   }
 }
 
@@ -77,7 +88,7 @@ class AppUpdateInfo {
   final String? archKey;
 }
 
-/// In-app updater: version.json (meta + per-arch URLs) → download.
+/// In-app updater: GitHub Releases API (primary) → version.json fallback.
 class AppUpdateService extends ChangeNotifier {
   AppUpdateService._();
   static final AppUpdateService instance = AppUpdateService._();
@@ -175,8 +186,40 @@ class AppUpdateService extends ChangeNotifier {
     }
   }
 
-  Future<AppUpdateInfo> _fetchVersionJson() async {
+  Future<AppUpdateInfo> _fetchFromReleasesApi() async {
     final arch = await DeviceArch.detect();
+    deviceArch = arch;
+
+    return _getWithFallback(appReleasesApiUrl, appReleasesApiUrlDirect, (res) {
+      final raw = res.data;
+      final map = raw is Map
+          ? Map<String, dynamic>.from(raw)
+          : jsonDecode(raw is String ? raw : raw.toString())
+              as Map<String, dynamic>;
+      var tag = (map['tag_name'] ?? map['name'] ?? '').toString().trim();
+      if (tag.toLowerCase().startsWith('v')) {
+        tag = tag.substring(1);
+      }
+      if (tag.isEmpty) throw StateError('empty release tag');
+      final desc = (map['body'] ?? '').toString().trim();
+      final assets = map['assets'];
+      final picked = DeviceArch.pickReleaseAsset(
+        assets is List ? assets : const [],
+        arch,
+        tag,
+      );
+      return AppUpdateInfo(
+        version: tag.split('+').first,
+        desc: desc,
+        downloadUrl: picked?.$2,
+        assetName: picked?.$3,
+        archKey: picked?.$1,
+      );
+    });
+  }
+
+  Future<AppUpdateInfo> _fetchVersionJson() async {
+    final arch = deviceArch ?? await DeviceArch.detect();
     deviceArch = arch;
 
     return _getWithFallback(appVersionJsonUrl, appVersionJsonUrlDirect, (res) {
@@ -228,14 +271,19 @@ class AppUpdateService extends ChangeNotifier {
 
   String _defaultAssetName(String version, String? archKey) {
     final arch = archKey ?? 'unknown';
-    if (Platform.isWindows) return 'Novvera-$version-$arch.exe';
-    if (Platform.isAndroid) return 'Novvera-$version-$arch.apk';
-    if (Platform.isMacOS) return 'Novvera-$version-$arch.dmg';
-    if (Platform.isLinux) return 'Novvera-$version-$arch.tar.gz';
+    if (Platform.isWindows) {
+      return 'Novvera-$version-windows-installer.exe';
+    }
+    if (Platform.isAndroid) {
+      if (arch == 'universal') return 'novvera-$version.apk';
+      return 'novvera-$version-$arch.apk';
+    }
+    if (Platform.isMacOS) return 'Novvera-$version-macos.dmg';
+    if (Platform.isLinux) return 'Novvera-$version-linux-$arch.tar.gz';
     return 'Novvera-$version-$arch.bin';
   }
 
-  /// Version-only fallback when version.json is unreachable.
+  /// Version-only fallback when release API / version.json are unreachable.
   Future<AppUpdateInfo> _fetchFromPubspec() async {
     return _getWithFallback(appRepoPubspecUrl, appRepoPubspecUrlDirect, (res) {
       final data = loadYaml(res.data.toString());
@@ -245,6 +293,11 @@ class AppUpdateService extends ChangeNotifier {
   }
 
   Future<AppUpdateInfo> fetchRemoteInfo() async {
+    try {
+      return await _fetchFromReleasesApi();
+    } catch (e) {
+      Log.warning('AppUpdate', 'releases api: $e');
+    }
     try {
       return await _fetchVersionJson();
     } catch (e) {
@@ -312,7 +365,7 @@ class AppUpdateService extends ChangeNotifier {
     if (url == null || url.isEmpty) {
       final arch = deviceArch ?? await DeviceArch.detect();
       errorMessage =
-          'No download URL for ${arch.platform}/${arch.primary} in version.json';
+          'No download asset for ${arch.platform}/${arch.primary} in latest release';
       status = AppUpdateStatus.available;
       notifyListeners();
       return;

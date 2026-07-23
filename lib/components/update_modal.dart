@@ -193,15 +193,6 @@ class _UpdateModalDialogState extends State<_UpdateModalDialog> {
               color: context.colorScheme.primary,
             ),
           ),
-          if (_svc.progress != null) ...[
-            const SizedBox(height: 6),
-            LinearProgressIndicator(
-              value: _svc.progress!.total > 0
-                  ? (_svc.progress!.transferred / _svc.progress!.total)
-                      .clamp(0.0, 1.0)
-                  : null,
-            ),
-          ],
         ],
         if (_svc.status == AppUpdateStatus.downloaded) ...[
           const SizedBox(height: 10),

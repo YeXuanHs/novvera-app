@@ -302,42 +302,44 @@ abstract mixin class _ComicPageActions {
     update();
   }
 
-  /// Fetch selected chapters and save a text EPUB (not comic image packs).
+  /// Save EPUB as `{folder}/{书名}/{卷名}/{章节名}.epub`.
   Future<void> _downloadNovelAsEpub() async {
     if (comic.chapters == null || comic.chapters!.length == 0) {
       App.rootContext.showMessage(message: "No chapters".tl);
       return;
     }
 
-    List<int>? selected;
+    final volumes = _novelDownloadVolumes(comic.chapters!);
+    List<_NovelChapterPick>? selected;
     await showSideBar(
       App.rootContext,
-      _SelectDownloadChapter(
-        comic.chapters!.titles.toList(),
-        (v) => selected = v,
-        const [],
+      _SelectNovelEpubDownload(
+        volumes: volumes,
+        onConfirm: (v) => selected = v,
       ),
     );
     if (selected == null || selected!.isEmpty) return;
 
-    final chapterIds = selected!
-        .map((i) => comic.chapters!.ids.elementAt(i))
-        .toList();
-    final chapterTitles = selected!
-        .map((i) => comic.chapters!.titles.elementAt(i))
-        .toList();
+    final picker = DirectoryPicker();
+    final rootDir = await picker.pickDirectory();
+    if (rootDir == null) return;
+
+    final bookDir = Directory(FilePath.join(
+      rootDir.path,
+      sanitizeFileName(comic.title, maxLength: 80),
+    ));
+    bookDir.createSync(recursive: true);
 
     var canceled = false;
     final loading = showLoadingDialog(
       App.rootContext,
       allowCancel: true,
-      message: "${"Exporting".tl} 0/${chapterIds.length}",
+      message: "${"Exporting".tl} 0/${selected!.length}",
       withProgress: true,
       onCancel: () => canceled = true,
     );
 
     try {
-      // Cover
       List<int>? coverBytes;
       var coverExt = 'jpg';
       try {
@@ -355,126 +357,148 @@ abstract mixin class _ComicPageActions {
         }
       } catch (_) {}
 
-      final chaptersHtml = <String, String>{};
-      final imageCache = <String, String>{};
-      var imgIndex = 0;
-      final pendingImages = <({String url, String rel})>[];
-
-      for (var i = 0; i < chapterIds.length; i++) {
+      final author = comic.findAuthor() ?? comic.subTitle ?? '';
+      var done = 0;
+      for (final pick in selected!) {
         if (canceled) {
           loading.close();
           return;
         }
         loading.setMessage(
-          "${"Exporting".tl} ${i + 1}/${chapterIds.length}",
+          "${"Exporting".tl} ${done + 1}/${selected!.length}",
         );
-        loading.setProgress((i + 1) / (chapterIds.length + 1));
+        loading.setProgress((done + 1) / (selected!.length + 1));
 
-        final epId = chapterIds[i];
-        final title = chapterTitles[i];
-        final res = await loadNovelChapter(comic.sourceKey, comic.id, epId);
-        if (res.error) {
-          chaptersHtml[title] =
-              '<p>${_xmlEsc(res.errorMessage ?? "load failed")}</p>';
-          continue;
-        }
-        final data = res.data;
-        final text = (data['content'] ?? '').toString();
-        final trailing = (data['images'] as List? ?? [])
-            .map((e) => e.toString())
-            .where((e) => e.startsWith('http'))
-            .toList();
-        final blocks = parseNovelBlocks(text, trailingImages: trailing);
+        final res =
+            await loadNovelChapter(comic.sourceKey, comic.id, pick.id);
+        final imageCache = <String, String>{};
+        var imgIndex = 0;
+        final pendingImages = <({String url, String rel})>[];
         final body = StringBuffer();
-        for (final b in blocks) {
-          if (b is NovelTextBlock) {
-            for (final para in b.text.split(RegExp(r'\n+'))) {
-              final t = para.trim();
-              if (t.isEmpty) continue;
-              body.writeln('    <p>${_xmlEsc(t)}</p>');
+
+        if (res.error) {
+          body.writeln(
+            '    <p>${_xmlEsc(res.errorMessage ?? "load failed")}</p>',
+          );
+        } else {
+          final data = res.data;
+          final text = (data['content'] ?? '').toString();
+          final trailing = (data['images'] as List? ?? [])
+              .map((e) => e.toString())
+              .where((e) => e.startsWith('http'))
+              .toList();
+          final blocks = parseNovelBlocks(text, trailingImages: trailing);
+          for (final b in blocks) {
+            if (b is NovelTextBlock) {
+              for (final para in b.text.split(RegExp(r'\n+'))) {
+                final t = para.trim();
+                if (t.isEmpty) continue;
+                body.writeln('    <p>${_xmlEsc(t)}</p>');
+              }
+            } else if (b is NovelImageBlock) {
+              final url = normalizeNovelImageUrl(b.url);
+              if (!url.startsWith('http')) continue;
+              var rel = imageCache[url];
+              if (rel == null) {
+                final ext = _guessImageExt(url);
+                rel = 'images/img$imgIndex.$ext';
+                imageCache[url] = rel;
+                pendingImages.add((url: url, rel: rel));
+                imgIndex++;
+              }
+              body.writeln(
+                '    <p><img src="$rel" alt="illustration"/></p>',
+              );
             }
-          } else if (b is NovelImageBlock) {
-            final url = normalizeNovelImageUrl(b.url);
-            if (!url.startsWith('http')) continue;
-            var rel = imageCache[url];
-            if (rel == null) {
-              final ext = _guessImageExt(url);
-              rel = 'images/img$imgIndex.$ext';
-              imageCache[url] = rel;
-              pendingImages.add((url: url, rel: rel));
-              imgIndex++;
-            }
-            body.writeln('    <p><img src="$rel" alt="illustration"/></p>');
           }
         }
         if (body.isEmpty) {
           body.writeln('    <p>（本章无内容）</p>');
         }
-        var key = title;
-        var n = 2;
-        while (chaptersHtml.containsKey(key)) {
-          key = '$title ($n)';
-          n++;
-        }
-        chaptersHtml[key] = body.toString();
-      }
 
-      if (canceled) {
-        loading.close();
-        return;
-      }
-      loading.setMessage("Building EPUB…".tl);
-      loading.setProgress(0.95);
-
-      final embedded = <String, List<int>>{};
-      for (final item in pendingImages) {
-        if (canceled) {
-          loading.close();
-          return;
-        }
-        try {
-          await for (final p in ImageDownloader.loadComicImage(
-            item.url,
-            comic.sourceKey,
-            comic.id,
-            '',
-          )) {
-            if (p.imageBytes != null) {
-              embedded[item.rel] = p.imageBytes!;
-              break;
-            }
+        final embedded = <String, List<int>>{};
+        for (final item in pendingImages) {
+          if (canceled) {
+            loading.close();
+            return;
           }
-        } catch (_) {}
+          try {
+            await for (final p in ImageDownloader.loadComicImage(
+              item.url,
+              comic.sourceKey,
+              comic.id,
+              '',
+            )) {
+              if (p.imageBytes != null) {
+                embedded[item.rel] = p.imageBytes!;
+                break;
+              }
+            }
+          } catch (_) {}
+        }
+
+        final volDir = Directory(FilePath.join(
+          bookDir.path,
+          sanitizeFileName(pick.volume, maxLength: 60),
+        ));
+        volDir.createSync(recursive: true);
+        final outName =
+            '${sanitizeFileName(pick.title, maxLength: 80)}.epub';
+        final outPath = FilePath.join(volDir.path, outName);
+
+        await createNovelEpubWithImages(
+          NovelEpubData(
+            title: '${comic.title} - ${pick.title}',
+            author: author,
+            chapters: {pick.title: body.toString()},
+            coverBytes: coverBytes,
+            coverExt: coverExt,
+          ),
+          embedded,
+          App.cachePath,
+          outPath,
+        );
+        done++;
       }
-
-      final outName =
-          '${sanitizeFileName(comic.title, maxLength: 80)}.epub';
-      final outPath = FilePath.join(App.cachePath, outName);
-
-      await createNovelEpubWithImages(
-        NovelEpubData(
-          title: comic.title,
-          author: comic.findAuthor() ?? comic.subTitle ?? '',
-          chapters: chaptersHtml,
-          coverBytes: coverBytes,
-          coverExt: coverExt,
-        ),
-        embedded,
-        App.cachePath,
-        outPath,
-      );
 
       loading.close();
-      await saveFile(file: File(outPath), filename: outName);
-      try {
-        File(outPath).deleteSync();
-      } catch (_) {}
-      App.rootContext.showMessage(message: "Saved".tl);
+      App.rootContext.showMessage(
+        message: "${"Saved".tl}: ${bookDir.path}",
+      );
     } catch (e, s) {
       Log.error('NovelEpub', '$e\n$s');
       loading.close();
       App.rootContext.showMessage(message: e.toString());
     }
+  }
+
+  List<_NovelDownloadVolume> _novelDownloadVolumes(ComicChapters chapters) {
+    if (chapters.isGrouped) {
+      return [
+        for (final g in chapters.groups)
+          _NovelDownloadVolume(
+            name: g,
+            chapters: [
+              for (final e in chapters.getGroup(g).entries)
+                _NovelChapterPick(volume: g, id: e.key, title: e.value),
+            ],
+          ),
+      ];
+    }
+    const vol = '全一卷';
+    return [
+      _NovelDownloadVolume(
+        name: vol,
+        chapters: [
+          for (var i = 0; i < chapters.length; i++)
+            _NovelChapterPick(
+              volume: vol,
+              id: chapters.ids.elementAt(i),
+              title: chapters.titles.elementAt(i),
+            ),
+        ],
+      ),
+    ];
   }
 
   String _xmlEsc(String s) => s
