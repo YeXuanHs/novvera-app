@@ -33,6 +33,15 @@ class _ReaderImagesState extends State<_ReaderImages> {
   /// Handle jumping to last page when _jumpToLastPageOnLoad is true
   void _handleJumpToLastPage() {
     if (reader._jumpToLastPageOnLoad) {
+      if (reader.isNovel) {
+        // Gallery mode finishes layout via NovelIncrementalPager.ensureAll;
+        // keep the flag until then. Continuous mode uses block count as pages.
+        if (reader.mode.isContinuous) {
+          reader._page = reader.maxPage;
+          reader._jumpToLastPageOnLoad = false;
+        }
+        return;
+      }
       reader._page = reader.maxPage;
       reader._jumpToLastPageOnLoad = false;
     }
@@ -165,7 +174,10 @@ class _GalleryModeState extends State<_GalleryMode>
   late _ReaderState reader;
 
   Size? _lastNovelViewport;
+  NovelIncrementalPager? _novelPager;
+  int _novelChapterEpoch = -1;
   bool _novelPaging = false;
+  static const _novelPreloadPages = 3;
 
   bool get showChapterCommentsAtEnd {
     if (reader.mode != ReaderMode.galleryLeftToRight &&
@@ -288,32 +300,88 @@ class _GalleryModeState extends State<_GalleryMode>
     );
   }
 
-  /// Fill-viewport gallery pages for novels; images get exclusive pages.
-  /// Heavy TextPainter work runs off the build path to avoid UI freezes.
-  void _ensureNovelGalleryPages(Size viewport) {
-    if (!reader.isNovel || _novelPaging) return;
-    if (NovelPageCache.blocks.isEmpty) return;
-    if (_lastNovelViewport != null &&
-        (_lastNovelViewport!.width - viewport.width).abs() < 1 &&
-        (_lastNovelViewport!.height - viewport.height).abs() < 1) {
-      return;
-    }
-    final style = TextStyle(
-      fontSize: 17,
-      height: 1.75,
-      color: Theme.of(context).colorScheme.onSurface,
-    );
+  EdgeInsets _novelGalleryPadding(Size viewport) {
     final hPad =
         viewport.width > 720 ? (viewport.width - 720) / 2 + 24.0 : 24.0;
-    final padding = EdgeInsets.fromLTRB(
+    return EdgeInsets.fromLTRB(
       hPad,
       20,
       hPad,
       _kNovelReaderBottomInset + MediaQuery.paddingOf(context).bottom,
     );
+  }
+
+  TextStyle _novelGalleryStyle() {
+    return TextStyle(
+      fontSize: 17,
+      height: 1.75,
+      color: Theme.of(context).colorScheme.onSurface,
+    );
+  }
+
+  List<String> _keysFromNovelPages(List<NovelGalleryPage> pages) {
+    final keys = <String>[];
+    for (final p in pages) {
+      if (p is NovelGalleryImagePage) {
+        keys.add(p.url);
+      } else if (p is NovelGalleryTextPage) {
+        keys.add(NovelPageCache.put(p.text));
+      }
+    }
+    return keys;
+  }
+
+  /// Apply [keys] to the comic-shell image list; preserve page when possible.
+  void _applyNovelGalleryKeys(List<String> keys, {int? preferPage}) {
+    if (keys.isEmpty) return;
+    final page = (preferPage ?? reader.page).clamp(1, keys.length);
+    reader.images = keys;
+    reader.setPage(page);
+    if (controller.hasClients) {
+      final cur = controller.page?.round() ?? page;
+      if (cur != page) {
+        controller.jumpToPage(page);
+      }
+    }
+    context.readerScaffold.update();
+  }
+
+  /// MewX-style: only layout pages as needed (never full-chapter upfront).
+  void _ensureNovelGalleryPages(
+    Size viewport, {
+    int? throughPage,
+    bool fromSentinel = false,
+  }) {
+    if (!reader.isNovel || _novelPaging) return;
+    if (NovelPageCache.blocks.isEmpty) return;
+
+    final chapterChanged =
+        _novelChapterEpoch != NovelPageCache.chapterEpoch;
+    final viewportChanged = _lastNovelViewport == null ||
+        (_lastNovelViewport!.width - viewport.width).abs() >= 1 ||
+        (_lastNovelViewport!.height - viewport.height).abs() >= 1;
+    final rebuild = chapterChanged || viewportChanged || _novelPager == null;
+
+    final wantThrough = math.max(
+      (throughPage ?? reader.page) - 1 + _novelPreloadPages,
+      _novelPreloadPages,
+    );
+
+    if (!rebuild &&
+        (_novelPager!.isComplete || _novelPager!.pageCount > wantThrough)) {
+      return;
+    }
+
+    final style = _novelGalleryStyle();
+    final padding = _novelGalleryPadding(viewport);
     final blocks = List<NovelBlock>.from(NovelPageCache.blocks);
     final oldLen = reader.images?.length ?? 0;
     final oldPage = reader.page;
+    final resumeCursor = (!chapterChanged &&
+            viewportChanged &&
+            _novelPager != null)
+        ? _novelPager!.startOf((oldPage - 1).clamp(0, math.max(0, oldLen - 1)))
+        : null;
 
     _novelPaging = true;
     Future(() {
@@ -321,60 +389,113 @@ class _GalleryModeState extends State<_GalleryMode>
         _novelPaging = false;
         return;
       }
-      List<NovelGalleryPage> galleryPages;
       try {
-        galleryPages = paginateNovelGallery(
-          blocks: blocks,
-          viewport: viewport,
-          style: style,
-          padding: padding,
-        );
-      } catch (e, s) {
-        Log.error('Reader', 'novel gallery paginate failed\n$e\n$s');
-        _novelPaging = false;
-        return;
-      }
-      if (!mounted) {
-        _novelPaging = false;
-        return;
-      }
-
-      NovelPageCache.clearTexts();
-      final keys = <String>[];
-      for (final p in galleryPages) {
-        if (p is NovelGalleryImagePage) {
-          keys.add(p.url);
-        } else if (p is NovelGalleryTextPage) {
-          keys.add(NovelPageCache.put(p.text));
+        if (rebuild) {
+          _novelPager = NovelIncrementalPager(
+            blocks: blocks,
+            viewport: viewport,
+            style: style,
+            padding: padding,
+          );
+          _lastNovelViewport = viewport;
+          _novelChapterEpoch = NovelPageCache.chapterEpoch;
         }
-      }
-      if (keys.isEmpty) {
-        _novelPaging = false;
-        return;
-      }
 
-      final ratio = oldLen <= 1 ? 0.0 : (oldPage - 1) / (oldLen - 1);
-      final newPage = (ratio * (keys.length - 1)).round() + 1;
+        final pager = _novelPager!;
+        final prevCount = pager.pageCount;
+        var target = wantThrough;
 
-      _lastNovelViewport = viewport;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) {
+        if (resumeCursor != null && rebuild) {
+          pager.ensureThrough(0);
+          var i = 0;
+          while (!pager.isComplete) {
+            final start = pager.startOf(i);
+            if (start == null) break;
+            if (start.blockIndex > resumeCursor.blockIndex ||
+                (start.blockIndex == resumeCursor.blockIndex &&
+                    start.charIndex >= resumeCursor.charIndex)) {
+              break;
+            }
+            i++;
+            pager.ensureThrough(i);
+          }
+          target = math.max(target, i + _novelPreloadPages);
+        }
+
+        if (reader._jumpToLastPageOnLoad) {
+          pager.ensureAll();
+        } else {
+          pager.ensureThrough(target);
+        }
+
+        late final List<String> keys;
+        late final int newPage;
+
+        if (rebuild) {
+          NovelPageCache.clearTexts();
+          keys = _keysFromNovelPages(pager.pages);
+          if (reader._jumpToLastPageOnLoad) {
+            newPage = keys.length;
+            reader._jumpToLastPageOnLoad = false;
+          } else if (viewportChanged && !chapterChanged && oldLen > 1) {
+            final ratio = (oldPage - 1) / (oldLen - 1);
+            newPage = (ratio * (keys.length - 1)).round() + 1;
+          } else {
+            // Keep history / current page (clamped to laid-out range).
+            newPage = oldPage.clamp(1, math.max(1, keys.length));
+          }
+        } else {
+          // Append only — do not invalidate existing noveltxt:// keys.
+          final existing = List<String>.from(reader.images ?? const []);
+          final added = <String>[];
+          for (var i = prevCount; i < pager.pageCount; i++) {
+            final p = pager.pageAt(i)!;
+            if (p is NovelGalleryImagePage) {
+              added.add(p.url);
+            } else if (p is NovelGalleryTextPage) {
+              added.add(NovelPageCache.put(p.text));
+            }
+          }
+          keys = existing..addAll(added);
+          if (fromSentinel && added.isNotEmpty) {
+            newPage = prevCount + 1;
+          } else {
+            newPage = oldPage.clamp(1, keys.length);
+          }
+        }
+
+        if (keys.isEmpty) {
           _novelPaging = false;
           return;
         }
-        reader.images = keys;
-        reader.setPage(newPage.clamp(1, keys.length));
-        if (controller.hasClients) {
-          final target = newPage.clamp(1, keys.length);
-          if ((controller.page?.round() ?? reader.page) != target) {
-            controller.jumpToPage(target);
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) {
+            _novelPaging = false;
+            return;
           }
-        }
+          _applyNovelGalleryKeys(keys, preferPage: newPage);
+          _novelPaging = false;
+          setState(() {});
+        });
+      } catch (e, s) {
+        Log.error('Reader', 'novel gallery paginate failed\n$e\n$s');
         _novelPaging = false;
-        setState(() {});
-        context.readerScaffold.update();
-      });
+      }
     });
+  }
+
+  /// Grow known gallery pages when the user nears the end of the laid-out set.
+  void _maybeExtendNovelGallery(int page1Based) {
+    if (!reader.isNovel) return;
+    final pager = _novelPager;
+    if (pager == null || pager.isComplete) return;
+    if (page1Based + _novelPreloadPages < pager.pageCount) return;
+    final size = MediaQuery.sizeOf(context);
+    _ensureNovelGalleryPages(
+      size,
+      throughPage: page1Based + _novelPreloadPages,
+    );
   }
 
   @override
@@ -503,12 +624,24 @@ class _GalleryModeState extends State<_GalleryMode>
               controller.jumpToPage(1);
             }
           } else if (i == totalPages + 1) {
-            if (reader.isLastChapterOfGroup || !reader.toNextChapter()) {
+            // Novel: more pages may still be undiscovered — extend instead of
+            // jumping to the next chapter.
+            if (reader.isNovel &&
+                _novelPager != null &&
+                !_novelPager!.isComplete) {
+              controller.jumpToPage(totalPages);
+              _ensureNovelGalleryPages(
+                MediaQuery.sizeOf(context),
+                throughPage: totalPages + _novelPreloadPages,
+                fromSentinel: true,
+              );
+            } else if (reader.isLastChapterOfGroup || !reader.toNextChapter()) {
               controller.jumpToPage(totalPages);
             }
           } else {
             reader.setPage(i);
             context.readerScaffold.update();
+            _maybeExtendNovelGallery(i);
             // Auto close toolbar when entering chapter comments page
             if (isChapterCommentsPage(i) && context.readerScaffold.isOpen) {
               context.readerScaffold.openOrClose();
@@ -1254,7 +1387,7 @@ class _ContinuousModeState extends State<_ContinuousMode>
         }
         final text = b is NovelTextBlock ? b.text : '';
         return Padding(
-          padding: const EdgeInsets.only(bottom: 4),
+          padding: const EdgeInsets.only(bottom: 14),
           child: Text(
             text,
             style: style,

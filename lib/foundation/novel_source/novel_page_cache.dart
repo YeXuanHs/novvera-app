@@ -12,6 +12,7 @@ class NovelPageCache {
   static final Map<String, String> _map = {};
   static int _seq = 0;
   static List<NovelBlock> _blocks = const [];
+  static int _chapterEpoch = 0;
 
   static const prefix = 'noveltxt://';
 
@@ -19,8 +20,12 @@ class NovelPageCache {
 
   static List<NovelBlock> get blocks => List.unmodifiable(_blocks);
 
+  /// Bumps when chapter blocks are replaced (gallery pager must reset).
+  static int get chapterEpoch => _chapterEpoch;
+
   static void setBlocks(List<NovelBlock> blocks) {
     _blocks = List<NovelBlock>.from(blocks);
+    _chapterEpoch++;
   }
 
   static String put(String text) {
@@ -35,6 +40,7 @@ class NovelPageCache {
     _map.clear();
     _blocks = const [];
     _seq = 0;
+    _chapterEpoch++;
   }
 
   /// Drop text page keys only (keep chapter [blocks] for re-pagination).
