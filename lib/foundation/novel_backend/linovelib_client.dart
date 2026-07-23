@@ -131,8 +131,14 @@ class LinovelibClient {
           _setCookie(part.substring(0, eq), part.substring(eq + 1));
         }
       }
+      // Site JS redeems at 120ms / 800ms / 2000ms; one immediate redeem is often
+      // too early for POST /S6/ to accept the ticket.
       final ts = DateTime.now().millisecondsSinceEpoch;
       await _http.getHtml('$_base/S6/?search_guard=redeem&r=$ts');
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      await _http.getHtml(
+        '$_base/S6/?search_guard=redeem&r=${DateTime.now().millisecondsSinceEpoch}',
+      );
       final jar = SingleInstanceCookieJar.instance;
       if (jar == null) return false;
       final cookies = jar.loadForRequest(Uri.parse('$_base/'));
@@ -530,10 +536,8 @@ class LinovelibClient {
       name = cleanText(h1?.text);
     }
     final authorRaw = _meta(doc, ['og:novel:author', 'author']) ?? '';
-    var category = _meta(doc, ['og:novel:category']) ?? '';
     final status = _meta(doc, ['og:novel:status']) ?? '';
     final updateTime = _meta(doc, ['og:novel:update_time', 'update']);
-    final lastChapter = _meta(doc, ['og:novel:latest_chapter_name']);
     final tags = _meta(doc, ['og:novel:tags']);
     var cover = preferHttps(absUrl(_base, _meta(doc, ['og:image', 'pic'])));
     if (cover.isEmpty) {
@@ -560,36 +564,14 @@ class LinovelibClient {
     intro = intro
         .replaceFirst(RegExp(r'^.*?内容简介[：:]'), '')
         .trim();
-    String? wordCount;
-    String? hotText;
-    final nums = doc.querySelector('.nums');
-    if (nums != null) {
-      final text = cleanText(nums.text);
-      final wm = RegExp(r'字数[:：]\s*([^\s]+)').firstMatch(text);
-      if (wm != null) wordCount = wm.group(1);
-      final hm = RegExp(r'总推荐[:：]\s*([^\s]+)').firstMatch(text);
-      if (hm != null) hotText = '总推荐：${hm.group(1)}';
-    }
-    var anime = '否';
-    final label = doc.querySelector('.book-label');
-    if (label != null && label.text.contains('动画')) anime = '是';
-    if (category.contains(' ')) {
-      final parts = category.split(RegExp(r'\s+'));
-      category = parts.isNotEmpty ? parts.last : category;
-    }
+    // Only fields consumed by _loadComicInfo / cards. No 分类.
     final data = <String, dynamic>{
       'aid': aid,
       'name': name.isEmpty ? '小说_$aid' : name,
-      'category': category,
       'author_raw': authorRaw,
-      'author': '作者:$authorRaw/分类:$category',
       'status': status,
       'update_time': updateTime,
-      'word_count': wordCount,
-      'last_chapter': lastChapter,
-      'anime': anime,
       'tags': tags,
-      'hot_text': hotText,
       'cover': cover,
       'intro': intro,
     };

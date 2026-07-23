@@ -13,8 +13,12 @@ import 'cookie_jar.dart';
 
 class CloudflareException implements DioException {
   final String url;
+  final RequestOptions? _requestOptions;
+  final Response? _response;
 
-  CloudflareException(this.url);
+  CloudflareException(this.url, {RequestOptions? requestOptions, Response? response})
+      : _requestOptions = requestOptions,
+        _response = response;
 
   @override
   String toString() {
@@ -45,10 +49,11 @@ class CloudflareException implements DioException {
   String? get message => toString();
 
   @override
-  RequestOptions get requestOptions => RequestOptions();
+  RequestOptions get requestOptions =>
+      _requestOptions ?? RequestOptions(path: url);
 
   @override
-  Response? get response => null;
+  Response? get response => _response;
 
   @override
   StackTrace get stackTrace => StackTrace.empty;
@@ -91,9 +96,23 @@ class CloudflareInterceptor extends Interceptor {
   }
 
   CloudflareException? _check(Response response) {
-    final url = response.requestOptions.uri.toString();
+    final req = response.requestOptions;
+    final url = req.uri.toString();
+    CloudflareException fail(String reason) {
+      Log.warning(
+        'Cloudflare',
+        'challenge on ${req.method} $url '
+        '(status=${response.statusCode}, $reason)',
+      );
+      return CloudflareException(
+        url,
+        requestOptions: req,
+        response: response,
+      );
+    }
+
     if (response.headers['cf-mitigated']?.firstOrNull == "challenge") {
-      return CloudflareException(url);
+      return fail('cf-mitigated=challenge');
     }
     // wenku8 often returns a hard CF block page (Attention Required) without
     // cf-mitigated — still need WebView Verify / cf_clearance.
@@ -104,7 +123,7 @@ class CloudflareInterceptor extends Interceptor {
           html.contains('cf-browser-verification') ||
           html.contains('challenge-platform') ||
           html.contains('window._cf_chl_opt')) {
-        return CloudflareException(url);
+        return fail('challenge html');
       }
     }
     return null;
@@ -122,9 +141,59 @@ String _peekBody(Response response) {
   return '';
 }
 
+/// POST/API paths (e.g. linovelib `/S6/`) usually do not render a CF
+/// challenge page on GET — opening them makes Verify look like a no-op.
+String _challengeBrowseUrl(String url) {
+  final uri = Uri.tryParse(url);
+  if (uri == null || uri.host.isEmpty) return url;
+  final path = uri.path;
+  final isSearchPost = path == '/S6' || path == '/S6/' || path.startsWith('/S6/');
+  final looksLikeAsset = RegExp(
+    r'\.(jpe?g|png|gif|webp|css|js|ico|woff2?|mp3|mp4)(\?|$)',
+    caseSensitive: false,
+  ).hasMatch(path);
+  if (isSearchPost || looksLikeAsset) {
+    return '${uri.scheme}://${uri.host}/';
+  }
+  return url;
+}
+
+void _purgeJarCfClearance(Uri uri) {
+  final jar = SingleInstanceCookieJar.instance;
+  if (jar == null) return;
+  final root = Uri.parse('${uri.scheme}://${uri.host}/');
+  jar.delete(root, 'cf_clearance');
+  jar.delete(uri, 'cf_clearance');
+}
+
+Future<void> _purgeWebViewCfClearance(String url) async {
+  try {
+    final cm = CookieManager.instance(
+      webViewEnvironment: AppWebview.webViewEnvironment,
+    );
+    final uri = WebUri(url);
+    await cm.deleteCookies(url: uri, name: 'cf_clearance');
+    final host = uri.host;
+    if (host.isNotEmpty) {
+      await cm.deleteCookies(
+        url: WebUri('${uri.scheme}://$host/'),
+        name: 'cf_clearance',
+      );
+    }
+  } catch (e) {
+    Log.warning('Cloudflare', 'purge webview cf_clearance: $e');
+  }
+}
+
 void passCloudflare(CloudflareException e, void Function() onFinished) async {
-  var url = e.url;
+  var url = _challengeBrowseUrl(e.url);
   var uri = Uri.parse(url);
+  Log.info('Cloudflare', 'Verify open $url (from ${e.url})');
+
+  // Drop stale clearance so WebView must obtain a fresh one. Keeping an
+  // expired cf_clearance makes "no challenge css" look like success while
+  // Dio POSTs still get 403.
+  _purgeJarCfClearance(uri);
 
   void saveCookies(Map<String, String> cookies) {
     var domain = uri.host;
@@ -160,7 +229,9 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
             head.contains("#challenge-error-text") ||
             head.contains("#challenge-form") ||
             body.contains("challenge-platform") ||
-            body.contains("window._cf_chl_opt");
+            body.contains("window._cf_chl_opt") ||
+            title.contains('Just a moment') ||
+            title.contains('Attention Required');
         if (!isChallenging) {
           Log.info(
             "Cloudflare",
@@ -185,17 +256,21 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
     webview.open();
   } else {
     bool success = false;
+    var clearedWebView = false;
     void check(InAppWebViewController controller) async {
       var head = await controller.evaluateJavascript(
           source: "document.head.innerHTML") as String;
       var body = await controller.evaluateJavascript(
           source: "document.body.innerHTML") as String;
+      final title = await controller.getTitle() ?? '';
       Log.info("Cloudflare", "Checking head: $head");
       var isChallenging = head.contains('#challenge-success-text') ||
           head.contains("#challenge-error-text") ||
           head.contains("#challenge-form") ||
           body.contains("challenge-platform") ||
-          body.contains("window._cf_chl_opt");
+          body.contains("window._cf_chl_opt") ||
+          title.contains('Just a moment') ||
+          title.contains('Attention Required');
       if (!isChallenging) {
         Log.info(
           "Cloudflare",
@@ -231,6 +306,13 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
           check(controller);
         },
         onStarted: (controller) async {
+          if (!clearedWebView) {
+            clearedWebView = true;
+            await _purgeWebViewCfClearance(url);
+            // Reload so CF sees missing clearance and (if needed) shows challenge.
+            await controller.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
+            return;
+          }
           var ua = await controller.getUA();
           if (ua != null) {
             appdata.implicitData['ua'] = ua;

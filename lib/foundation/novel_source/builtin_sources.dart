@@ -6,6 +6,7 @@ import 'package:novvera/foundation/consts.dart';
 import 'package:novvera/foundation/novel_api/novel_api_client.dart';
 import 'package:novvera/foundation/novel_backend/novel_http.dart';
 import 'package:novvera/foundation/novel_source/novel_page_cache.dart';
+import 'package:novvera/foundation/novel_source/novel_paginator.dart';
 import 'package:novvera/foundation/res.dart';
 
 const kNovelSourceKeys = {'wenku8', 'linovelib', 'huanmeng'};
@@ -94,19 +95,20 @@ ComicSource _buildSource({
     ),
   ];
 
-  // wenku8 site search only offers 小说标题 / 作者名称 (no tag in the form).
-  // linovelib is a single keyword box — no type selector.
+  // wenku8 App search: homepage is mixed (title+author merge). Keep explicit
+  // 书名 / 作者; detail-page author chip must use `author`, not mixed.
   final List<SearchOptions>? searchOptions;
   if (key == 'wenku8') {
     searchOptions = [
       SearchOptions(
         LinkedHashMap.from({
+          'mixed': '综合',
           'articlename': '书名',
           'author': '作者',
         }),
         '搜索类型',
         'select',
-        'articlename',
+        'mixed',
       ),
     ];
   } else {
@@ -127,7 +129,9 @@ ComicSource _buildSource({
         key,
         keyword,
         page,
-        options.isNotEmpty ? options.first : 'articlename',
+        options.isNotEmpty
+            ? options.first
+            : (key == 'wenku8' ? 'mixed' : 'articlename'),
       ),
       null,
     ),
@@ -150,10 +154,9 @@ ComicSource _buildSource({
     null,
     null,
     // Tag chips open search on the **same** source as the book.
-    // 分类 / 状态 / 更新时间 are metadata only (no jump).
-    // wenku8: 作者 → searchtype=author; 标签 → tags.php; else 书名.
+    // 状态 / 更新时间 are metadata only (no jump). 分类 is not shown.
     (namespace, tag) {
-      const nonSearch = {'分类', '状态', '更新时间', 'Upload Time', 'Update Time'};
+      const nonSearch = {'状态', '更新时间', 'Upload Time', 'Update Time', '分类'};
       if (nonSearch.contains(namespace)) return null;
       final attrs = <String, dynamic>{'text': tag};
       if (key == 'wenku8') {
@@ -162,7 +165,7 @@ ComicSource _buildSource({
         } else if (namespace == '标签') {
           attrs['options'] = ['tag'];
         } else {
-          attrs['options'] = ['articlename'];
+          attrs['options'] = ['mixed'];
         }
       }
       return PageJumpTarget(key, 'search', attrs);
@@ -330,9 +333,9 @@ Future<Res<List<Comic>>> _loadSearch(
     if (kw.isEmpty) {
       return const Res([], subData: 1);
     }
-    final searchType = const {'articlename', 'author', 'tag'}.contains(type)
+    final searchType = const {'mixed', 'articlename', 'author'}.contains(type)
         ? type
-        : 'articlename';
+        : (source == 'wenku8' ? 'mixed' : 'articlename');
     final data = await NovelApiClient.instance.get(
       source,
       '/search',
@@ -384,7 +387,6 @@ Future<Res<ComicDetails>> _loadComicInfo(String source, String id) async {
       cover = _fallbackCover(source, id);
     }
     final authorRaw = (info['author_raw'] ?? '').toString();
-    final category = (info['category'] ?? '').toString();
     var intro = (info['intro'] ?? '').toString().trim();
     if (intro.isEmpty) {
       intro = (info['description'] ?? '').toString().trim();
@@ -395,15 +397,6 @@ Future<Res<ComicDetails>> _loadComicInfo(String source, String id) async {
     final tags = <String, List<String>>{};
     if (authorRaw.isNotEmpty) {
       tags['作者'] = [authorRaw];
-    }
-    if (category.isNotEmpty) {
-      tags['分类'] = category
-          .split(RegExp(r'[\s,/|]+'))
-          .where((e) => e.trim().isNotEmpty)
-          .toList();
-      if (tags['分类']!.isEmpty) {
-        tags['分类'] = [category];
-      }
     }
     if (status.isNotEmpty) {
       tags['状态'] = [status];
@@ -480,7 +473,11 @@ Future<Res<Map<String, dynamic>>> loadNovelChapter(
   }
 }
 
-/// Build Venera Reader pages: text blocks as `noveltxt://` keys, images as URLs.
+/// Build Venera Reader pages for novels: ordered text/image blocks.
+///
+/// Returns an initial key list (paragraph-level text + images) so the comic
+/// reader shell has something to show before gallery re-paginates to fill the
+/// viewport. Continuous mode ignores per-line keys and uses [NovelPageCache.blocks].
 Future<Res<List<String>>> _loadChapterPages(
   String source,
   String aid,
@@ -495,29 +492,37 @@ Future<Res<List<String>>> _loadChapterPages(
     NovelPageCache.clear();
     final data = res.data;
     final text = (data['content'] ?? '').toString();
-    final images = (data['images'] as List? ?? [])
+    final trailingImages = (data['images'] as List? ?? [])
         .map((e) => normalizeNovelImageUrl(e.toString()))
         .where((e) => e.startsWith('http'))
         .toList();
 
-    final pages = <String>[];
-    final seenImages = <String>{};
-    for (final raw in text.split('\n')) {
-      final line = raw.trimRight();
-      final trimmed = line.trim();
-      if (trimmed.isEmpty) continue;
-      if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-        final url = normalizeNovelImageUrl(trimmed);
-        if (url.startsWith('http') && seenImages.add(url)) {
-          pages.add(url);
+    final blocks = parseNovelBlocks(
+      text,
+      trailingImages: trailingImages,
+    );
+    // Normalize image URLs in blocks.
+    final normalized = <NovelBlock>[];
+    for (final b in blocks) {
+      if (b is NovelImageBlock) {
+        final url = normalizeNovelImageUrl(b.url);
+        if (url.startsWith('http')) {
+          normalized.add(NovelImageBlock(url));
         }
-        continue;
+      } else {
+        normalized.add(b);
       }
-      pages.add(NovelPageCache.put(line));
     }
-    for (final url in images) {
-      if (seenImages.add(url)) {
-        pages.add(url);
+    NovelPageCache.setBlocks(normalized);
+
+    // Seed reader.images: one key per block (text paragraphs / images).
+    // Gallery mode will replace this with viewport-fill pages on layout.
+    final pages = <String>[];
+    for (final b in normalized) {
+      if (b is NovelImageBlock) {
+        pages.add(b.url);
+      } else if (b is NovelTextBlock) {
+        pages.add(NovelPageCache.put(b.text));
       }
     }
     if (pages.isEmpty) {

@@ -161,6 +161,9 @@ class _GalleryModeState extends State<_GalleryMode>
 
   late _ReaderState reader;
 
+  Size? _lastNovelViewport;
+  bool _novelPaging = false;
+
   bool get showChapterCommentsAtEnd {
     if (reader.mode != ReaderMode.galleryLeftToRight &&
         reader.mode != ReaderMode.galleryRightToLeft) {
@@ -282,8 +285,66 @@ class _GalleryModeState extends State<_GalleryMode>
     );
   }
 
+  /// Fill-viewport gallery pages for novels; images get exclusive pages.
+  void _ensureNovelGalleryPages(Size viewport) {
+    if (!reader.isNovel || _novelPaging) return;
+    if (NovelPageCache.blocks.isEmpty) return;
+    if (_lastNovelViewport != null &&
+        (_lastNovelViewport!.width - viewport.width).abs() < 1 &&
+        (_lastNovelViewport!.height - viewport.height).abs() < 1) {
+      return;
+    }
+    final style = TextStyle(
+      fontSize: 17,
+      height: 1.75,
+      color: Theme.of(context).colorScheme.onSurface,
+    );
+    final galleryPages = paginateNovelGallery(
+      blocks: NovelPageCache.blocks,
+      viewport: viewport,
+      style: style,
+    );
+    NovelPageCache.clearTexts();
+    final keys = <String>[];
+    for (final p in galleryPages) {
+      if (p is NovelGalleryImagePage) {
+        keys.add(p.url);
+      } else if (p is NovelGalleryTextPage) {
+        keys.add(NovelPageCache.put(p.text));
+      }
+    }
+    if (keys.isEmpty) return;
+
+    // Map old page → approximate new page by ratio.
+    final oldLen = reader.images?.length ?? keys.length;
+    final oldPage = reader.page;
+    final ratio = oldLen <= 1 ? 0.0 : (oldPage - 1) / (oldLen - 1);
+    final newPage = (ratio * (keys.length - 1)).round() + 1;
+
+    _lastNovelViewport = viewport;
+    _novelPaging = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      reader.images = keys;
+      reader.setPage(newPage.clamp(1, keys.length));
+      // Recreate page controller if item count changed drastically.
+      if (controller.hasClients) {
+        final target = newPage.clamp(1, keys.length);
+        if ((controller.page?.round() ?? reader.page) != target) {
+          controller.jumpToPage(target);
+        }
+      }
+      _novelPaging = false;
+      setState(() {});
+      context.readerScaffold.update();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    _ensureNovelGalleryPages(size);
+
     return Listener(
       onPointerDown: (event) {
         fingers++;
@@ -333,11 +394,20 @@ class _GalleryModeState extends State<_GalleryMode>
             if (reader.imagesPerPage == 1 || pageImages.length == 1) {
               final key = pageImages[0];
               if (NovelPageCache.isTextKey(key)) {
+                final vp = MediaQuery.of(context).size;
                 return PhotoViewGalleryPageOptions.customChild(
                   controller: photoViewControllers[index],
-                  child: _buildNovelTextPage(
-                    context,
-                    NovelPageCache.get(key) ?? '',
+                  childSize: vp,
+                  initialScale: PhotoViewComputedScale.contained,
+                  minScale: PhotoViewComputedScale.contained,
+                  maxScale: PhotoViewComputedScale.contained,
+                  child: SizedBox(
+                    width: vp.width,
+                    height: vp.height,
+                    child: _buildNovelTextPage(
+                      context,
+                      NovelPageCache.get(key) ?? '',
+                    ),
                   ),
                 );
               }
@@ -729,6 +799,8 @@ class _ContinuousModeState extends State<_ContinuousMode>
   @override
   void dispose() {
     itemPositionsListener.itemPositions.removeListener(onPositionChanged);
+    _novelScrollController?.removeListener(_onNovelScroll);
+    _novelScrollController?.dispose();
     super.dispose();
   }
 
@@ -845,6 +917,12 @@ class _ContinuousModeState extends State<_ContinuousMode>
 
   @override
   Widget build(BuildContext context) {
+    // Novels: continuous mode = one vertical scroll of paragraphs + images.
+    // Do not use per-line list items or comic limitImageWidth.
+    if (reader.isNovel) {
+      return _buildNovelContinuous(context);
+    }
+
     Widget widget = ScrollablePositionedList.builder(
       initialScrollIndex: reader.page,
       itemScrollController: itemScrollController,
@@ -1041,7 +1119,8 @@ class _ContinuousModeState extends State<_ContinuousMode>
     );
     var width = reader.size.width;
     var height = reader.size.height;
-    if (appdata.settings['limitImageWidth'] &&
+    if (!reader.isNovel &&
+        appdata.settings['limitImageWidth'] &&
         width / height > 0.7 &&
         reader.mode == ReaderMode.continuousTopToBottom) {
       width = height * 0.7;
@@ -1057,6 +1136,141 @@ class _ContinuousModeState extends State<_ContinuousMode>
       onScaleUpdate: onScaleUpdate,
       child: SizedBox(width: width, height: height, child: widget),
     );
+  }
+
+  /// Continuous novel reading: full-width paragraphs stacked vertically.
+  Widget _buildNovelContinuous(BuildContext context) {
+    final blocks = NovelPageCache.blocks;
+    final mq = MediaQuery.sizeOf(context);
+    final pad = mq.width > 720 ? (mq.width - 720) / 2 + 24.0 : 24.0;
+    final style = TextStyle(
+      fontSize: 17,
+      height: 1.75,
+      color: context.colorScheme.onSurface,
+    );
+
+    // Ensure images list length matches blocks for progress (1 block ≈ 1 L).
+    if (blocks.isNotEmpty &&
+        (reader.images == null || reader.images!.length != blocks.length)) {
+      NovelPageCache.clearTexts();
+      final keys = <String>[];
+      for (final b in blocks) {
+        if (b is NovelImageBlock) {
+          keys.add(b.url);
+        } else if (b is NovelTextBlock) {
+          keys.add(NovelPageCache.put(b.text));
+        }
+      }
+      if (keys.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          final cur = reader.page.clamp(1, keys.length);
+          reader.images = keys;
+          reader.setPage(cur);
+          reader.update();
+        });
+      }
+    }
+
+    final controller = _novelScrollController ??= ScrollController(
+      initialScrollOffset: 0,
+    );
+    if (!_novelScrollAttached) {
+      _novelScrollAttached = true;
+      controller.addListener(_onNovelScroll);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _jumpNovelScrollToPage(controller);
+      });
+    }
+
+    Widget list = ListView.builder(
+      controller: controller,
+      padding: EdgeInsets.fromLTRB(pad, 20, pad, 48),
+      itemCount: blocks.length,
+      itemBuilder: (context, index) {
+        final b = blocks[index];
+        if (b is NovelImageBlock) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: ComicImage(
+              filterQuality: FilterQuality.medium,
+              image: _createImageProviderFromKey(b.url, context, index + 1),
+              width: double.infinity,
+              fit: BoxFit.contain,
+            ),
+          );
+        }
+        final text = b is NovelTextBlock ? b.text : '';
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(text, style: style),
+        );
+      },
+    );
+
+    list = GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTapUp: (d) {
+        final w = mq.width;
+        if (d.localPosition.dx < w / 3) {
+          // prev — scroll up a bit
+          final target = (controller.offset - mq.height * 0.85)
+              .clamp(0.0, controller.position.maxScrollExtent);
+          controller.animateTo(
+            target,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
+        } else if (d.localPosition.dx > w * 2 / 3) {
+          final target = (controller.offset + mq.height * 0.85)
+              .clamp(0.0, controller.position.maxScrollExtent);
+          controller.animateTo(
+            target,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
+        } else {
+          context.readerScaffold.openOrClose();
+        }
+      },
+      child: list,
+    );
+
+    return ColoredBox(
+      color: context.colorScheme.surface,
+      child: list,
+    );
+  }
+
+  ScrollController? _novelScrollController;
+  bool _novelScrollAttached = false;
+
+  void _onNovelScroll() {
+    final c = _novelScrollController;
+    if (c == null || !c.hasClients) return;
+    final blocks = NovelPageCache.blocks;
+    if (blocks.isEmpty) return;
+    final max = c.position.maxScrollExtent;
+    if (max <= 0) {
+      reader.setPage(1);
+      return;
+    }
+    final ratio = (c.offset / max).clamp(0.0, 1.0);
+    final page = (ratio * (blocks.length - 1)).round() + 1;
+    if (page != reader.page) {
+      reader.setPage(page);
+      context.readerScaffold.update();
+    }
+  }
+
+  void _jumpNovelScrollToPage(ScrollController c) {
+    final blocks = NovelPageCache.blocks;
+    if (blocks.isEmpty || !c.hasClients) return;
+    final max = c.position.maxScrollExtent;
+    if (max <= 0) return;
+    final denom = (blocks.length - 1).clamp(1, 1 << 30);
+    final ratio = ((reader.page - 1) / denom).clamp(0.0, 1.0);
+    c.jumpTo(ratio * max);
   }
 
   Widget buildBackground(BuildContext context) {
@@ -1081,6 +1295,20 @@ class _ContinuousModeState extends State<_ContinuousMode>
 
   @override
   Future<void> animateToPage(int page) {
+    if (reader.isNovel && _novelScrollController != null) {
+      final c = _novelScrollController!;
+      if (!c.hasClients) return Future.value();
+      final blocks = NovelPageCache.blocks;
+      final max = c.position.maxScrollExtent;
+      if (blocks.isEmpty || max <= 0) return Future.value();
+      final denom = (blocks.length - 1).clamp(1, 1 << 30);
+      final ratio = ((page - 1) / denom).clamp(0.0, 1.0);
+      return c.animateTo(
+        ratio * max,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.ease,
+      );
+    }
     return itemScrollController.scrollTo(
       index: page,
       duration: const Duration(milliseconds: 200),
@@ -1257,9 +1485,8 @@ Widget _buildNovelTextPage(BuildContext context, String text) {
   final pad = width > 720 ? (width - 720) / 2 + 24.0 : 24.0;
   return ColoredBox(
     color: context.colorScheme.surface,
-    child: SizedBox(
-      width: double.infinity,
-      child: Padding(
+    child: SizedBox.expand(
+      child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(pad, 20, pad, 20),
         child: Text(
           text,

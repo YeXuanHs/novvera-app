@@ -112,8 +112,19 @@ class HuanmengClient {
       _base,
       img.attributes['data-original'] ?? img.attributes['src'],
     ));
-    if (cover.isEmpty || cover.contains('/template/')) return '';
+    if (cover.isEmpty || cover.contains('/template/') || _isJunkCover(cover)) {
+      return '';
+    }
     return cover;
+  }
+
+  /// Site-wide decoy / CF-bait assets that are not book covers.
+  bool _isJunkCover(String url) {
+    final u = url.toLowerCase();
+    if (u.contains('/img/48028.')) return true;
+    // Bare /img/<digits>.(jpg|jpeg|png|webp) — shared assets, not /image/zijian/.
+    if (RegExp(r'/img/\d+\.(jpe?g|png|webp)(\?|$)').hasMatch(u)) return true;
+    return false;
   }
 
   /// Cover must come from this card only — never climb to a section parent.
@@ -474,12 +485,36 @@ class HuanmengClient {
       name = cleanText(doc.querySelector('h1')?.text);
     }
     final authorRaw = _meta(doc, ['og:novel:author', 'author']) ?? '';
-    final category = _meta(doc, ['og:novel:category']) ?? '';
+    // Site exposes genre via og:novel:category; show as 标签 (not 分类).
+    final tags = _meta(doc, ['og:novel:category']) ?? '';
     final status = _meta(doc, ['og:novel:status']) ?? '';
     final updateTime = _meta(doc, ['og:novel:update_time']);
-    final lastChapter = _meta(doc, ['og:novel:latest_chapter_name']);
-    var cover = preferHttps(absUrl(_base, _meta(doc, ['og:image'])));
-    if (cover.contains('/template/')) cover = '';
+    // og:image is often a shared junk asset (e.g. /img/48028.jpeg) behind CF.
+    // Prefer the real cover on the page (.pic-img), same as search cards.
+    var cover = '';
+    for (final sel in [
+      '.pic-img img',
+      '.pic img',
+      'dt img',
+      '.book-img img',
+    ]) {
+      cover = _imgSrc(doc.querySelector(sel));
+      if (cover.isNotEmpty) break;
+    }
+    if (cover.isEmpty) {
+      for (final a in doc.querySelectorAll('a[href*="/book/info/$aid"]')) {
+        cover = _imgSrc(a.querySelector('img'));
+        if (cover.isNotEmpty) break;
+      }
+    }
+    if (cover.isEmpty) {
+      final og = preferHttps(absUrl(_base, _meta(doc, ['og:image'])));
+      if (og.isNotEmpty &&
+          !og.contains('/template/') &&
+          !_isJunkCover(og)) {
+        cover = og;
+      }
+    }
     var intro = _meta(doc, ['og:description', 'description']) ?? '';
     if (intro.isEmpty) {
       final dec = doc.querySelector(
@@ -504,16 +539,14 @@ class HuanmengClient {
     if (intro.contains('小说是作者') && intro.length < 80) {
       intro = '';
     }
+    // Only fields consumed by _loadComicInfo / cards. No 分类.
     final data = <String, dynamic>{
       'aid': aid,
       'name': name.isEmpty ? '小说_$aid' : name,
-      'category': category,
       'author_raw': authorRaw,
-      'author': '作者:$authorRaw/分类:$category',
       'status': status,
       'update_time': updateTime,
-      'last_chapter': lastChapter,
-      'tags': category,
+      'tags': tags.isEmpty ? null : tags,
       'cover': cover,
       'intro': intro,
     };

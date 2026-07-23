@@ -1,16 +1,25 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:html/dom.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/log.dart';
 import 'package:novvera/foundation/novel_backend/novel_http.dart';
+import 'package:novvera/network/app_dio.dart';
 import 'package:novvera/network/cloudflare.dart';
 import 'package:novvera/utils/io.dart';
 
 const _base = 'https://www.wenku8.net';
+const _relay = 'https://wenku8-relay.mewx.org/';
+const _apiAppVer = '1.29';
+const _apiAppCode = 'digital-bento';
+const _apiUa =
+    'Dalvik/2.1.0 (Linux; U; Android 13; Pixel 6 Build/TQ3A.230805.001)';
 const _loginRefreshInterval = Duration(hours: 1);
+const _searchPageSize = 10;
 
 const _rankTypes = <String, String>{
   'allvisit': '总点击榜',
@@ -34,12 +43,17 @@ const _watermark = [
   '最新最全的日本動漫輕小說',
 ];
 
-/// Dart-side wenku8.net client (replaces Python sidecar).
+/// Dart-side wenku8 client.
+///
+/// Official App relay API for rankings / book meta / catalog / chapter text /
+/// title·author·tag search. Homepage discover still uses website HTML
+/// (with auto-register). Only fields consumed by the UI are returned.
 class Wenku8Client {
   Wenku8Client._();
   static final Wenku8Client instance = Wenku8Client._();
 
   final _http = NovelHttp(defaultReferer: '$_base/');
+  final _dio = AppDio();
   final _bookCache = <String, Map<String, dynamic>>{};
   final _catalogCache = <String, Map<String, dynamic>>{};
 
@@ -47,6 +61,7 @@ class Wenku8Client {
   String? password;
   DateTime? _lastLoginAt;
   Timer? _refreshTimer;
+  String? _phpSessionId;
 
   File get _accountFile => File('${App.dataPath}/wenku8_account.json');
 
@@ -92,7 +107,6 @@ class Wenku8Client {
           password!.isNotEmpty) {
         if (await _login(username!, password!)) return true;
       }
-      // Try auto-register a few times
       for (var i = 0; i < 3; i++) {
         final u = _randUser();
         final p = _randPass();
@@ -195,15 +209,149 @@ class Wenku8Client {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Official App relay API (MewX APK protocol)
+  // ---------------------------------------------------------------------------
+
+  String _buildAppVer() {
+    final bucket = DateTime.now().millisecondsSinceEpoch ~/ 1000 ~/ 60;
+    final msg = '$_apiAppVer|$_apiAppCode|$bucket';
+    final digest = Hmac(sha256, utf8.encode(_apiAppCode))
+        .convert(utf8.encode(msg))
+        .toString();
+    return '$_apiAppVer-$_apiAppCode-${digest.substring(12, 20)}';
+  }
+
+  Future<String> _appApi(String plain) async {
+    final request = base64.encode(utf8.encode(plain));
+    final body =
+        '&appver=${_buildAppVer()}&request=$request&timetoken=${DateTime.now().millisecondsSinceEpoch}';
+    try {
+      final res = await _dio.post<List<int>>(
+        _relay,
+        data: body,
+        options: Options(
+          responseType: ResponseType.bytes,
+          contentType: 'application/x-www-form-urlencoded',
+          headers: {
+            'User-Agent': _apiUa,
+            'Accept-Encoding': 'gzip',
+            if (_phpSessionId != null && _phpSessionId!.isNotEmpty)
+              'Cookie': 'PHPSESSID=$_phpSessionId',
+          },
+          validateStatus: (s) => s != null && s < 500,
+        ),
+      );
+      final setCookie = res.headers['set-cookie'];
+      if (setCookie != null) {
+        for (final c in setCookie) {
+          final m = RegExp(r'PHPSESSID=([^;]+)').firstMatch(c);
+          if (m != null && m.group(1)!.isNotEmpty) {
+            _phpSessionId = m.group(1);
+          }
+        }
+      }
+      if ((res.statusCode ?? 0) != 200) {
+        final err = utf8.decode(res.data ?? const [], allowMalformed: true);
+        throw Exception('wenku8 API HTTP ${res.statusCode}: $err');
+      }
+      final bytes = Uint8List.fromList(res.data ?? const []);
+      return utf8.decode(bytes, allowMalformed: true);
+    } on DioException catch (e) {
+      throw Exception('wenku8 API failed: $e');
+    }
+  }
+
+  String _xmlAttr(String tag, String name) {
+    final m = RegExp(
+      '$name=[\'"]([^\'"]*)[\'"]',
+      caseSensitive: false,
+    ).firstMatch(tag);
+    return m?.group(1) ?? '';
+  }
+
+  String _xmlDataValue(String block, String name) {
+    final re = RegExp(
+      '<data\\s+name=[\'"]$name[\'"]([^>]*)>(?:<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>|([^<]*))?</data>',
+      caseSensitive: false,
+    );
+    final m = re.firstMatch(block);
+    if (m == null) return '';
+    final attrs = m.group(1) ?? '';
+    final cdata = (m.group(2) ?? '').trim();
+    if (cdata.isNotEmpty) return cdata;
+    final text = (m.group(3) ?? '').trim();
+    if (text.isNotEmpty) return text;
+    return _xmlAttr(attrs, 'value');
+  }
+
+  String _xmlDataAttr(String block, String name, String attr) {
+    final re = RegExp(
+      '<data\\s+name=[\'"]$name[\'"]([^>/]*)/?>',
+      caseSensitive: false,
+    );
+    final m = re.firstMatch(block);
+    if (m == null) return '';
+    return _xmlAttr(m.group(1) ?? '', attr);
+  }
+
+  List<Map<String, dynamic>> _parseNovelListItems(String xml) {
+    final items = <Map<String, dynamic>>[];
+    final re = RegExp(
+      r'''<item\s+aid=['"](\d+)['"]>([\s\S]*?)</item>''',
+      caseSensitive: false,
+    );
+    for (final m in re.allMatches(xml)) {
+      final aid = m.group(1)!;
+      final block = m.group(2)!;
+      final name = _xmlDataValue(block, 'Title');
+      final author = _xmlDataValue(block, 'Author').isNotEmpty
+          ? _xmlDataValue(block, 'Author')
+          : _xmlDataAttr(block, 'Author', 'value');
+      final status = _xmlDataValue(block, 'BookStatus').isNotEmpty
+          ? _xmlDataValue(block, 'BookStatus')
+          : _xmlDataAttr(block, 'BookStatus', 'value');
+      final tags = _xmlDataAttr(block, 'Tags', 'value');
+      items.add({
+        'aid': aid,
+        'name': name,
+        'author': author,
+        'author_raw': author,
+        'status': status,
+        'tags': tags.isEmpty ? null : tags,
+        'cover': wenku8CoverUrl(aid),
+      });
+    }
+    // Fallback: bare <item aid='N'/>
+    if (items.isEmpty) {
+      for (final m in RegExp(r'''aid=['"](\d+)['"]''').allMatches(xml)) {
+        final aid = m.group(1)!;
+        items.add({
+          'aid': aid,
+          'name': '',
+          'author': '',
+          'author_raw': '',
+          'cover': wenku8CoverUrl(aid),
+        });
+      }
+    }
+    return items;
+  }
+
+  int? _parsePageNum(String xml) {
+    final m = RegExp(r'''<page\s+num=['"](\d+)['"]''').firstMatch(xml);
+    return m == null ? null : int.tryParse(m.group(1)!);
+  }
+
+  /// Map UI rank key → API sort. `done` uses `fullflag`.
+  String _apiSort(String type) => type == 'done' ? 'fullflag' : type;
+
   Future<Map<String, dynamic>> rank(String type, int page) async {
-    await ensureAccount();
-    final url = type == 'done'
-        ? '$_base/modules/article/articlelist.php?fullflag=1&page=$page'
-        : '$_base/modules/article/toplist.php?sort=$type&page=$page';
-    final res = await _http.getHtml(url, preferGbk: true);
-    final doc = parseHtml(res.html);
-    final items = _parseRank(doc);
-    final pagerMax = parseHtmlMaxPage(doc);
+    final xml = await _appApi(
+      'action=novellist&sort=${_apiSort(type)}&page=$page&t=0',
+    );
+    final items = _parseNovelListItems(xml);
+    final pagerMax = _parsePageNum(xml);
     final maxPage = inferMaxPage(
       page,
       items.length,
@@ -220,7 +368,7 @@ class Wenku8Client {
     };
   }
 
-  /// Homepage recommendation blocks (登录后 index.php 的 .blocktitle 分区).
+  /// Homepage recommendation blocks — still website HTML (discover unchanged).
   Future<Map<String, dynamic>> home() async {
     await ensureAccount();
     final res = await _http.getHtml('$_base/index.php', preferGbk: true);
@@ -240,7 +388,6 @@ class Wenku8Client {
       var title = cleanText(titleEl.text);
       if (title.isEmpty) continue;
       if (skip.any((s) => title.contains(s))) continue;
-      // Trim long promo titles: "完本轻小说推广区(已经完结…)" -> "完本轻小说推广区"
       final cut = title.indexOf('(');
       if (cut > 2) title = title.substring(0, cut).trim();
       Element? content = titleEl.nextElementSibling;
@@ -259,8 +406,7 @@ class Wenku8Client {
         var name = cleanText(a.attributes['title'] ?? a.text);
         if (name.length < 2) continue;
         if (RegExp(r'更多|查看|登录|注册|首页').hasMatch(name)) continue;
-        final img = a.querySelector('img') ??
-            a.parent?.querySelector('img');
+        final img = a.querySelector('img') ?? a.parent?.querySelector('img');
         var cover = absUrl(_base, img?.attributes['src']);
         if (cover.isEmpty) {
           cover = wenku8CoverUrl(aid);
@@ -281,269 +427,179 @@ class Wenku8Client {
     return {'sections': sections};
   }
 
+  /// Search via App API.
+  ///
+  /// - `tag`: `searchtype=tags` (real tag filter; same as website tags.php)
+  /// - `mixed` / default: articlename + author merge (MewX homepage)
+  /// - `articlename`: title-only
+  /// - `author`: author-only (detail author chip)
+  ///
+  /// Note: `searchtype=tag` (singular) is *not* a tag filter — same as
+  /// articlename. Must use plural `tags`.
   Future<Map<String, dynamic>> search(
     String keyword,
     String type,
     int page,
   ) async {
-    await ensureAccount();
-    final key = gbkQueryEncode(keyword);
-    final url = type == 'tag'
-        ? '$_base/modules/article/tags.php?t=$key&page=$page'
-        : '$_base/modules/article/search.php?searchtype=$type&searchkey=$key&page=$page';
-    final res = await _http.getHtml(url, preferGbk: true);
-    if (res.url.contains('/book/') && res.url.endsWith('.htm')) {
-      final aid = _extractAid(res.url);
-      if (aid != null) {
-        final info = await bookDetail(aid);
-        return {
-          'type': type,
-          'keyword': keyword,
-          'page': page,
-          'pager_max': 1,
-          'max_page': 1,
-          'items': [info],
-        };
-      }
+    final key = Uri.encodeQueryComponent(keyword);
+    Future<List<Map<String, dynamic>>> one(String apiType) async {
+      final xml = await _appApi(
+        'action=search&searchtype=$apiType&searchkey=$key&t=0',
+      );
+      if (xml.trim() == '19' || xml.trim().isEmpty) return [];
+      return _parseNovelListItems(xml);
     }
-    final items = <Map<String, dynamic>>[];
-    final doc = parseHtml(res.html);
-    for (final div in doc.querySelectorAll(
-      'table.grid div[style*="float:left;margin"]',
-    )) {
-      final a = div.querySelector('b a');
-      if (a == null) continue;
-      final ps = div.querySelectorAll('p');
-      final aid = _extractAid(a.attributes['href'] ?? '') ?? '';
-      final cover = _coverFromCard(div, aid);
-      final author = _cleanAuthor(ps.isNotEmpty ? ps.first.text : '');
-      items.add({
-        'name': cleanText(a.attributes['title'] ?? a.text),
-        'author': author,
-        'author_raw': author,
-        'aid': aid,
-        'cover': cover,
-      });
+
+    late final List<Map<String, dynamic>> all;
+    if (type == 'tag') {
+      all = await one('tags');
+    } else if (type == 'author') {
+      all = await one('author');
+    } else if (type == 'articlename') {
+      all = await one('articlename');
+    } else {
+      // mixed (default): same merge order as MewX SearchResultActivity
+      final byTitle = await one('articlename');
+      final byAuthor = await one('author');
+      final authorAids = {
+        for (final e in byAuthor) e['aid']?.toString() ?? '',
+      }..remove('');
+      all = [
+        for (final e in byTitle)
+          if (!authorAids.contains(e['aid']?.toString())) e,
+        ...byAuthor,
+      ];
     }
-    final pagerMax = parseHtmlMaxPage(doc);
-    final maxPage = inferMaxPage(
-      page,
-      items.length,
-      fullPageSize: 10,
-      parsed: pagerMax,
-    );
+
+    for (final item in all) {
+      if ((item['name'] as String?)?.isNotEmpty == true) continue;
+      final aid = item['aid']?.toString() ?? '';
+      if (aid.isEmpty) continue;
+      try {
+        final infoXml = await _appApi('action=book&do=info&aid=$aid&t=0');
+        item['name'] = _xmlDataValue(infoXml, 'Title');
+        final author = _xmlDataAttr(infoXml, 'Author', 'value');
+        if (author.isNotEmpty) {
+          item['author'] = author;
+          item['author_raw'] = author;
+        }
+      } catch (_) {}
+    }
+
+    final total = all.length;
+    final maxPage =
+        total == 0 ? 1 : ((total + _searchPageSize - 1) ~/ _searchPageSize);
+    final start = (page - 1) * _searchPageSize;
+    final slice = start >= total
+        ? <Map<String, dynamic>>[]
+        : all.sublist(start, min(start + _searchPageSize, total));
     return {
       'type': type,
       'keyword': keyword,
       'page': page,
-      'pager_max': pagerMax,
+      'pager_max': maxPage,
       'max_page': maxPage,
-      'items': items,
+      'items': slice,
     };
   }
 
-  List<Map<String, dynamic>> _parseRank(Document doc) {
-    final items = <Map<String, dynamic>>[];
-    for (final div in doc.querySelectorAll(
-      'table.grid div[style*="float:left;margin"]',
-    )) {
-      final a = div.querySelector('b a');
-      if (a == null) continue;
-      final ps = div.querySelectorAll('p');
-      final aid = _extractAid(a.attributes['href'] ?? '') ?? '';
-      final cover = _coverFromCard(div, aid);
-      final author = _cleanAuthor(ps.isNotEmpty ? ps.first.text : '');
-      items.add({
-        'name': cleanText(a.attributes['title'] ?? a.text),
-        'author': author,
-        'author_raw': author,
-        'aid': aid,
-        'cover': cover,
-      });
-    }
-    return items;
-  }
-
-  String _cleanAuthor(String? raw) {
-    var author = cleanText(raw);
-    author = author.replaceFirst(RegExp(r'^作者[:：]\s*'), '');
-    // Cards sometimes use "作者名 / 分类"
-    if (author.contains('/')) {
-      author = author.split('/').first.trim();
-    }
-    return author;
-  }
-
   String? _extractAid(String href) {
-    final m = RegExp(r'(\d+)').allMatches(href).toList();
-    if (m.isEmpty) return null;
-    // book/1234.htm or novel/1/1234/
     final book = RegExp(r'/book/(\d+)\.htm').firstMatch(href);
     if (book != null) return book.group(1);
     final novel = RegExp(r'/novel/\d+/(\d+)/').firstMatch(href);
     if (novel != null) return novel.group(1);
+    final m = RegExp(r'(\d+)').allMatches(href).toList();
+    if (m.isEmpty) return null;
     return m.last.group(1);
   }
 
-  /// Prefer real src / data-src / data-original from the page.
-  String? _pickImgSrc(Element? img) {
-    if (img == null) return null;
-    for (final key in ['data-original', 'data-src', 'data-lazy', 'src']) {
-      final v = absUrl(_base, img.attributes[key]);
-      if (v.isNotEmpty) return v;
-    }
-    return null;
-  }
-
-  /// Cover from list card HTML; if the page omitted <img>, derive CDN from aid.
-  String _coverFromCard(Element card, String aid) {
-    final img = card.querySelector('img');
-    var cover = preferHttps(_pickImgSrc(img) ?? '');
-    if (cover.isEmpty && aid.isNotEmpty) {
-      cover = wenku8CoverUrl(aid);
-    }
-    return cover;
-  }
-
   Future<Map<String, dynamic>> bookDetail(String aid) async {
-    await ensureAccount();
     if (_bookCache.containsKey(aid)) return Map.from(_bookCache[aid]!);
-    final folder = int.parse(aid) ~/ 1000;
-    final url = '$_base/book/$aid.htm';
-    var res = await _http.getHtml(url, preferGbk: true);
-    if (res.status != 200 || res.html.length < 200) {
-      res = await _http.getHtml(
-        '$_base/novel/$folder/$aid/index.htm',
-        preferGbk: true,
-      );
-    }
-    final doc = parseHtml(res.html);
+
+    final metaXml = await _appApi('action=book&do=meta&aid=$aid&t=0');
+    final introText = await _appApi('action=book&do=intro&aid=$aid&t=0');
+
+    final name = _xmlDataValue(metaXml, 'Title');
+    final author = _xmlDataAttr(metaXml, 'Author', 'value');
+    final status = _xmlDataAttr(metaXml, 'BookStatus', 'value');
+    final updateTime = _xmlDataAttr(metaXml, 'LastUpdate', 'value');
+    final tags = _xmlDataAttr(metaXml, 'Tags', 'value');
+    final intro = introText.trim();
+
+    // Only fields consumed by _loadComicInfo / cards. No PressId/分类.
     final data = <String, dynamic>{
       'aid': aid,
-      'name': '未知书名',
-      'category': '',
-      'author_raw': '',
-      'status': '',
-      'update_time': null,
-      'cover': '',
-      'intro': '',
-      'tags': null,
+      'name': name.isEmpty ? '未知书名' : name,
+      'author_raw': author,
+      'status': status,
+      'update_time': updateTime.isEmpty ? null : updateTime,
+      'cover': wenku8CoverUrl(aid),
+      'intro': intro,
+      'tags': tags.isEmpty ? null : tags,
     };
-    final title = doc.querySelector('title')?.text ?? '';
-    if (title.isNotEmpty) {
-      data['name'] = cleanText(title.split(' - ').first);
-    }
-    final imgTd = doc.querySelector('td[width="20%"][valign="top"] img');
-    if (imgTd != null) {
-      data['cover'] = preferHttps(absUrl(_base, imgTd.attributes['src']));
-    }
-    if ((data['cover'] as String).isEmpty) {
-      data['cover'] = wenku8CoverUrl(aid);
-    }
-    final pageText = doc.body?.text ?? '';
-    for (final tr in doc.querySelectorAll('tr')) {
-      final t = tr.text;
-      if (t.contains('文库分类') && t.contains('小说作者') ||
-          t.contains('文庫分類') && t.contains('小說作者')) {
-        final tds = tr.querySelectorAll('td');
-        data['category'] = _field(tds, ['文库分类：', '文庫分類：']);
-        data['author_raw'] = _field(tds, ['小说作者：', '小說作者：']);
-        data['status'] = _field(tds, ['文章状态：', '文章狀態：']);
-        data['update_time'] = _field(tds, ['最后更新：', '最後更新：']);
-        break;
-      }
-    }
-    for (final sp in doc.querySelectorAll('span.hottext')) {
-      final t = cleanText(sp.text);
-      if (t.startsWith('作品Tags')) {
-        data['tags'] = t.replaceFirst(RegExp(r'作品Tags[：:]'), '').trim();
-      }
-    }
-    // intro: 「内容简介：」</span><br><span style="font-size:14px;">…</span>
-    for (final sp in doc.querySelectorAll('span')) {
-      final t = cleanText(sp.text);
-      if (t.startsWith('内容简介') || t.startsWith('內容簡介')) {
-        Element? next = sp.nextElementSibling;
-        while (next != null && next.localName == 'br') {
-          next = next.nextElementSibling;
-        }
-        if (next != null && next.localName == 'span') {
-          data['intro'] = cleanText(next.text);
-        }
-        break;
-      }
-    }
-    if (pageText.contains('动画化') || pageText.contains('動畫化')) {
-      data['anime'] = '是';
-    } else {
-      data['anime'] = '否';
-    }
-    data['author'] =
-        '作者:${data['author_raw'] ?? ''}/分类:${data['category'] ?? ''}';
+
     _bookCache[aid] = Map.from(data);
     return data;
   }
 
-  String _field(List<Element> tds, List<String> labels) {
-    for (final td in tds) {
-      final t = cleanText(td.text);
-      for (final label in labels) {
-        if (t.contains(label.replaceAll('：', '')) || t.startsWith(label)) {
-          return t.replaceFirst(RegExp('${RegExp.escape(label)}|${RegExp.escape(label.replaceAll('：', ''))}[：:]?'), '').trim();
-        }
-      }
-    }
-    return '';
-  }
-
   Future<Map<String, dynamic>> catalog(String aid) async {
-    await ensureAccount();
     if (_catalogCache.containsKey(aid)) {
       return _catalogSummary(_catalogCache[aid]!);
     }
-    final folder = int.parse(aid) ~/ 1000;
-    final res = await _http.getHtml(
-      '$_base/novel/$folder/$aid/index.htm',
-      preferGbk: true,
-    );
-    final doc = parseHtml(res.html);
-    final title = cleanText(doc.getElementById('title')?.text ?? '小说_$aid');
+    final xml = await _appApi('action=book&do=list&aid=$aid&t=0');
     final catalog = <String, dynamic>{
       'aid': aid,
-      'title': title,
+      'title': '小说_$aid',
       'volumes': <Map<String, dynamic>>[],
     };
-    final table = doc.querySelector('table.css');
-    if (table == null) {
-      throw Exception('目录解析失败');
+
+    // Prefer meta title if cached.
+    final cached = _bookCache[aid];
+    if (cached != null && (cached['name'] as String?)?.isNotEmpty == true) {
+      catalog['title'] = cached['name'];
     }
-    Map<String, dynamic>? currentVol;
-    var chapSeq = 0;
-    for (final td in table.querySelectorAll('td')) {
-      final classes = td.classes;
-      if (classes.contains('vcss')) {
-        chapSeq = 0;
-        currentVol = {
-          'vol_num': (catalog['volumes'] as List).length + 1,
-          'name': cleanText(td.text),
-          'chapters': <Map<String, dynamic>>[],
-        };
-        (catalog['volumes'] as List).add(currentVol);
-        continue;
+
+    final volRe = RegExp(
+      r'''<volume\s+vid=["'](\d+)["']>([\s\S]*?)</volume>''',
+      caseSensitive: false,
+    );
+    for (final vm in volRe.allMatches(xml)) {
+      final block = vm.group(2)!;
+      final volNameM =
+          RegExp(r'<!\[CDATA\[([\s\S]*?)\]\]>').firstMatch(block);
+      // Volume CDATA is before first <chapter>; take text before <chapter.
+      var volName = '';
+      final beforeChap =
+          block.split(RegExp(r'<chapter', caseSensitive: false)).first;
+      final cdata =
+          RegExp(r'<!\[CDATA\[([\s\S]*?)\]\]>').firstMatch(beforeChap);
+      volName = cleanText(cdata?.group(1) ?? volNameM?.group(1) ?? '');
+      if (volName.isEmpty) {
+        volName = '卷${(catalog['volumes'] as List).length + 1}';
       }
-      if (!classes.contains('ccss') || currentVol == null) continue;
-      final a = td.querySelector('a');
-      final href = a?.attributes['href']?.trim() ?? '';
-      if (a == null || !href.endsWith('.htm')) continue;
-      var cid = href.substring(0, href.length - 4);
-      if (cid.contains('/')) cid = cid.split('/').last;
-      chapSeq++;
-      (currentVol['chapters'] as List).add({
-        'seq': chapSeq,
-        'title': cleanText(a.text),
-        'cid': cid,
+
+      final chapters = <Map<String, dynamic>>[];
+      final chapRe = RegExp(
+        r'''<chapter\s+cid=["'](\d+)["']><!\[CDATA\[([\s\S]*?)\]\]></chapter>''',
+        caseSensitive: false,
+      );
+      var seq = 0;
+      for (final cm in chapRe.allMatches(block)) {
+        seq++;
+        chapters.add({
+          'seq': seq,
+          'title': cleanText(cm.group(2) ?? ''),
+          'cid': cm.group(1)!,
+        });
+      }
+      if (chapters.isEmpty) continue;
+      (catalog['volumes'] as List).add({
+        'vol_num': (catalog['volumes'] as List).length + 1,
+        'name': volName,
+        'chapters': chapters,
       });
     }
+
     if ((catalog['volumes'] as List).isEmpty) {
       throw Exception('目录为空');
     }
@@ -579,7 +635,6 @@ class Wenku8Client {
     int volNum,
     int chapNum,
   ) async {
-    await ensureAccount();
     var catalog = _catalogCache[aid];
     if (catalog == null) {
       await this.catalog(aid);
@@ -602,63 +657,35 @@ class Wenku8Client {
     }
     if (chap == null || vol == null) throw Exception('章节不存在');
     final cid = chap['cid'].toString();
-    final folder = int.parse(aid) ~/ 1000;
-    final res = await _http.getHtml(
-      '$_base/novel/$folder/$aid/$cid.htm',
-      preferGbk: true,
-    );
-    final doc = parseHtml(res.html);
-    final contentDiv = doc.getElementById('content');
+    final raw = await _appApi('action=book&do=text&aid=$aid&cid=$cid&t=0');
     final images = <String>[];
     final lines = <String>[];
-    if (contentDiv != null) {
-      for (final el in contentDiv.querySelectorAll('#contentdp')) {
-        el.remove();
-      }
-      for (final div in contentDiv.querySelectorAll('div.divimage')) {
-        final img = div.querySelector('img');
-        var src = normalizeNovelImageUrl(
-          _pickImgSrc(img) ??
-              absUrl(_base, div.querySelector('a')?.attributes['href']),
-        );
-        if (src.isNotEmpty) {
-          if (!images.contains(src)) images.add(src);
-          div.replaceWith(Text('\n$src\n'));
-        } else {
-          div.remove();
-        }
-      }
-      // Auto-collect every illustration the page embeds (class names vary).
-      for (final img in contentDiv.querySelectorAll('img')) {
-        final src = normalizeNovelImageUrl(_pickImgSrc(img) ?? '');
-        if (src.isEmpty) continue;
-        if (!images.contains(src)) images.add(src);
-        img.replaceWith(Text('\n$src\n'));
-      }
-      for (final br in contentDiv.querySelectorAll('br')) {
-        br.replaceWith(Text('\n'));
-      }
-      final text = contentDiv.text.replaceAll('\u00a0', ' ');
-      for (final raw in text.split('\n')) {
-        final line = raw.replaceAll(RegExp(r'\r'), '').trimRight();
-        if (_watermark.any((m) => line.contains(m))) continue;
-        lines.add(line);
-      }
-      while (lines.isNotEmpty && lines.first.trim().isEmpty) {
-        lines.removeAt(0);
-      }
-      while (lines.isNotEmpty && lines.last.trim().isEmpty) {
-        lines.removeLast();
-      }
+
+    // App API embeds images as <!--image-->url<!--image-->
+    var text = raw.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    text = text.replaceAllMapped(
+      RegExp(r'<!--image-->([^<]+)<!--image-->', caseSensitive: false),
+      (m) {
+        final url = normalizeNovelImageUrl(preferHttps(m.group(1)!.trim()));
+        if (url.isNotEmpty && !images.contains(url)) images.add(url);
+        return '\n$url\n';
+      },
+    );
+
+    for (final rawLine in text.split('\n')) {
+      final line = rawLine.trimRight();
+      if (_watermark.any((m) => line.contains(m))) continue;
+      lines.add(line);
     }
+    while (lines.isNotEmpty && lines.first.trim().isEmpty) {
+      lines.removeAt(0);
+    }
+    while (lines.isNotEmpty && lines.last.trim().isEmpty) {
+      lines.removeLast();
+    }
+
+    // Reader only consumes content + images.
     return {
-      'aid': aid,
-      'title': catalog['title'],
-      'vol_num': volNum,
-      'vol_name': vol['name'],
-      'chapter_seq': chapNum,
-      'chapter_title': chap['title'],
-      'cid': cid,
       'images': images,
       'content': lines.join('\n'),
     };

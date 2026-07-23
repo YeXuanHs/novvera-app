@@ -34,6 +34,7 @@ import 'package:novvera/foundation/res.dart';
 import 'package:novvera/network/images.dart';
 import 'package:novvera/foundation/novel_source/builtin_sources.dart';
 import 'package:novvera/foundation/novel_source/novel_page_cache.dart';
+import 'package:novvera/foundation/novel_source/novel_paginator.dart';
 import 'package:novvera/pages/settings/settings_page.dart';
 import 'package:novvera/utils/clipboard_image.dart';
 import 'package:novvera/utils/data_sync.dart';
@@ -122,6 +123,8 @@ class _ReaderState extends State<Reader>
   @override
   int get maxPage {
     if (images == null) return 1;
+    // Novels: each images[] entry is already one gallery/continuous page.
+    if (isNovel) return images!.isEmpty ? 1 : images!.length;
     return !showSingleImageOnFirstPage()
         ? (images!.length / imagesPerPage).ceil()
         : 1 + ((images!.length - 1) / imagesPerPage).ceil();
@@ -331,7 +334,11 @@ class _ReaderState extends State<Reader>
   void updateHistory() {
     if (history != null) {
       // page >= maxPage handles both last image page and chapter comments page
-      if (page >= maxPage) {
+      if (isNovel) {
+        // Novel gallery/continuous: page index maps 1:1 to images keys.
+        history!.page = page.clamp(1, images?.length ?? 1);
+        history!.maxPage = images?.length ?? 1;
+      } else if (page >= maxPage) {
         /// Record the last image of chapter
         history!.page = images?.length ?? 1;
       } else {
@@ -346,7 +353,9 @@ class _ReaderState extends State<Reader>
           }
         }
       }
-      history!.maxPage = images?.length ?? 1;
+      if (!isNovel) {
+        history!.maxPage = images?.length ?? 1;
+      }
       if (widget.chapters?.isGrouped ?? false) {
         int g = 0;
         int c = chapter;
@@ -487,6 +496,8 @@ abstract mixin class _ImagePerPageHandler {
 
   /// The number of images displayed on one screen
   int get imagesPerPage {
+    // Novels paginate by filled text pages; never stack multiple keys per screen.
+    if (isNovelSource(type.sourceKey)) return 1;
     if (mode.isContinuous) return 1;
     if (isPortrait) {
       return appdata.settings.getReaderSetting(

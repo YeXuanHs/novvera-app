@@ -257,10 +257,31 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
     return comicSource.loadComicInfo!(widget.id);
   }
 
+  /// Prefer freshly loaded cover over the optional hero/history cover.
+  /// History may hold a stale/junk URL (e.g. huanmeng og:image bait).
+  String get _displayCover {
+    final loaded = comic.cover.trim();
+    if (loaded.isNotEmpty) return loaded;
+    return (widget.cover ?? '').trim();
+  }
+
   @override
   Future<void> onDataLoaded() async {
     isLiked = comic.isLiked ?? false;
     isFavorite = comic.isFavorite ?? false;
+    // Refresh history cover when detail has a better URL.
+    final hist = history;
+    final loaded = comic.cover.trim();
+    if (hist != null &&
+        loaded.isNotEmpty &&
+        hist.cover.trim() != loaded) {
+      hist.cover = loaded;
+      hist.title = comic.title;
+      if (comic.subTitle != null && comic.subTitle!.isNotEmpty) {
+        hist.subtitle = comic.subTitle!;
+      }
+      HistoryManager().addHistory(hist);
+    }
     // For sources with multi-folder favorites, prefer querying folders to get accurate favorite status
     // Some sources may not set isFavorite reliably when multi-folder is enabled
     if (comicSource.favoriteData?.loadFolders != null && comicSource.isLogged) {
@@ -322,7 +343,7 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
                 clipBehavior: Clip.antiAlias,
                 child: AnimatedImage(
                   image: CachedImageProvider(
-                    widget.cover ?? comic.cover,
+                    _displayCover,
                     sourceKey: comic.sourceKey,
                     cid: comic.id,
                   ),
@@ -739,7 +760,7 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
 
   void _viewCover(BuildContext context) {
     final imageProvider = CachedImageProvider(
-      widget.cover ?? comic.cover,
+      _displayCover,
       sourceKey: comic.sourceKey,
       cid: comic.id,
     );
@@ -756,7 +777,7 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
   void _saveCover(BuildContext context) async {
     try {
       final imageProvider = CachedImageProvider(
-        widget.cover ?? comic.cover,
+        _displayCover,
         sourceKey: comic.sourceKey,
         cid: comic.id,
       );
