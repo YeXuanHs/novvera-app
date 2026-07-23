@@ -690,15 +690,25 @@ class LinovelibClient {
     var intro = '';
     final dec = doc.querySelector('.book-dec');
     if (dec != null) {
+      // Site copyright banners live in aside.notice / .notice-body; strip
+      // before reading intro so they never become book description.
+      for (final n in [
+        ...dec.querySelectorAll('aside.notice'),
+        ...dec.querySelectorAll('.notice'),
+      ]) {
+        n.remove();
+      }
       final parts = <String>[];
       for (final p in dec.querySelectorAll('p')) {
         if (p.classes.contains('backupname')) continue;
+        if (p.classes.contains('notice-body')) continue;
         final t = cleanText(p.text);
-        if (t.isNotEmpty) parts.add(t);
+        if (t.isEmpty || _looksLikeSiteNotice(t)) continue;
+        parts.add(t);
       }
       if (parts.isEmpty) {
         final t = cleanText(dec.text);
-        if (t.isNotEmpty) parts.add(t);
+        if (t.isNotEmpty && !_looksLikeSiteNotice(t)) parts.add(t);
       }
       intro = parts.join('\n');
     }
@@ -708,6 +718,9 @@ class LinovelibClient {
     intro = intro
         .replaceFirst(RegExp(r'^.*?内容简介[：:]'), '')
         .trim();
+    if (_looksLikeSiteNotice(intro)) {
+      intro = _meta(doc, ['og:description', 'description']) ?? '';
+    }
     // Only fields consumed by _loadComicInfo / cards. No 分类.
     final data = <String, dynamic>{
       'aid': aid,
@@ -827,13 +840,26 @@ class LinovelibClient {
       };
     }
 
+    // #TextContent often embeds <style> (e.g. .pinglun{…}); remove so
+    // textContent / empty fallback never leaks CSS into chapter body.
+    for (final junk in tc.querySelectorAll('style, script, noscript')) {
+      junk.remove();
+    }
+
     final pTexts = <String>[];
     for (final node in tc.nodes) {
       if (node is! Element) continue;
+      if (node.localName == 'style' ||
+          node.localName == 'script' ||
+          node.localName == 'noscript') {
+        continue;
+      }
       if (node.localName == 'p') {
         final txt = node.text;
         if (txt.replaceAll(_spaceRe, '').isEmpty) continue;
-        pTexts.add(cleanText(txt));
+        final cleaned = cleanText(txt);
+        if (_looksLikeCssSnippet(cleaned)) continue;
+        pTexts.add(cleaned);
       } else if (node.localName == 'img') {
         final src = preferHttps(absUrl(
           _base,
@@ -865,7 +891,9 @@ class LinovelibClient {
     lines.addAll(paragraphs);
     if (lines.isEmpty && images.isEmpty) {
       final raw = cleanText(tc.text);
-      if (raw.isNotEmpty) lines.add(raw);
+      if (raw.isNotEmpty && !_looksLikeCssSnippet(raw)) {
+        lines.add(raw);
+      }
     }
     for (final src in images) {
       if (!lines.contains(src)) lines.add(src);
@@ -946,5 +974,30 @@ class LinovelibClient {
       'images': images,
       'content': lines.join('\n'),
     };
+  }
+
+  /// Copyright / takedown banners from linovelib (aside.notice).
+  static bool _looksLikeSiteNotice(String text) {
+    final t = text.trim();
+    if (t.isEmpty) return false;
+    return t.contains('尊敬的哔哩') ||
+        t.contains('版权方的要求') ||
+        t.contains('现已屏蔽') ||
+        (t.contains('仅保留作品文字简介') && t.contains('敬请谅解'));
+  }
+
+  /// CSS rules accidentally pulled from embedded style tags.
+  static bool _looksLikeCssSnippet(String text) {
+    final t = text.trim();
+    if (t.isEmpty) return false;
+    if (RegExp(r'^\.[a-zA-Z_-]+\s*\{').hasMatch(t)) return true;
+    if (t.contains('{') &&
+        t.contains('}') &&
+        (t.contains('display:') ||
+            t.contains('margin:') ||
+            t.contains('text-align:'))) {
+      return true;
+    }
+    return false;
   }
 }
