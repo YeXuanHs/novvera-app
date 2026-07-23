@@ -172,10 +172,11 @@ Future<void> _purgeWebViewCfClearance(String url) async {
       webViewEnvironment: AppWebview.webViewEnvironment,
     );
     final uri = WebUri(url);
-    await cm.deleteCookies(url: uri, name: 'cf_clearance');
+    // deleteCookie (singular) takes `name`; deleteCookies clears all for a URL.
+    await cm.deleteCookie(url: uri, name: 'cf_clearance');
     final host = uri.host;
     if (host.isNotEmpty) {
-      await cm.deleteCookies(
+      await cm.deleteCookie(
         url: WebUri('${uri.scheme}://$host/'),
         name: 'cf_clearance',
       );
