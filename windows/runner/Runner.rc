@@ -93,7 +93,7 @@ BEGIN
             VALUE "FileDescription", "Novvera" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "novvera" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2024-2026 com.github.yexuanhs. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026-2026 com.github.yexuanhs. All rights reserved." "\0"
             VALUE "OriginalFilename", "novvera.exe" "\0"
             VALUE "ProductName", "Novvera" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
