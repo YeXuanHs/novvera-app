@@ -43,6 +43,13 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Android signing (never commit)
+*.jks
+*.keystore
+android/key.properties
+android/keystore.jks
+key.properties
+
 add_translation.py
 
 */*/generated_*

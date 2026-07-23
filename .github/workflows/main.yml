@@ -192,20 +192,9 @@ jobs:
             printf '%s\n' "$KEY_PROPERTIES_ALT" > android/key.properties
             echo "Using ANDROID_KEYSTORE + ANDROID_KEY_PROPERTIES secrets"
           else
-            echo "No Android signing secrets; generating CI keystore (debug-equivalent)"
-            keytool -genkeypair -v \
-              -keystore android/keystore.jks \
-              -storepass novvera-ci \
-              -alias novvera \
-              -keypass novvera-ci \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -dname "CN=Novvera CI, OU=CI, O=Novvera, L=CI, ST=CI, C=CN"
-            {
-              printf 'storeFile=keystore.jks\n'
-              printf 'storePassword=novvera-ci\n'
-              printf 'keyAlias=novvera\n'
-              printf 'keyPassword=novvera-ci\n'
-            } > android/key.properties
+            echo "::error::Missing Android signing secrets. Set ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD (or ANDROID_KEYSTORE + ANDROID_KEY_PROPERTIES)."
+            echo "Do not generate a throwaway keystore in CI — each build would get a new signature and APKs cannot update in place."
+            exit 1
           fi
 
       - run: flutter pub get
