@@ -115,8 +115,23 @@ jobs:
 
       - run: flutter pub get
 
-      - name: Build iOS (no codesign)
-        run: flutter build ios --release --no-codesign
+      - name: Build iOS (unsigned, no Apple team)
+        run: |
+          flutter build ios --config-only --release --no-codesign
+          cd ios
+          xcodebuild -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=- \
+            DEVELOPMENT_TEAM= \
+            build
+          mkdir -p ../build/ios/iphoneos
+          cp -R build/Build/Products/Release-iphoneos/Runner.app \
+            ../build/ios/iphoneos/Runner.app
 
       - name: Package IPA
         run: |
