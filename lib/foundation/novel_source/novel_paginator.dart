@@ -50,15 +50,17 @@ List<NovelBlock> parseNovelBlocks(
   for (final raw in content.split('\n')) {
     final line = raw.trimRight();
     final trimmed = line.trim();
+    // Drop blank lines — wenku8 dumps often pad 10+ empty lines after titles.
+    if (trimmed.isEmpty) continue;
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
       flushText();
-      if (trimmed.isNotEmpty && seenImages.add(trimmed)) {
+      if (seenImages.add(trimmed)) {
         blocks.add(NovelImageBlock(trimmed));
       }
       continue;
     }
     if (textBuf.isNotEmpty) textBuf.writeln();
-    textBuf.write(line);
+    textBuf.write(trimmed);
   }
   flushText();
 

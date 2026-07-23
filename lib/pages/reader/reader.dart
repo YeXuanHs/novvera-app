@@ -14,7 +14,6 @@ import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:novvera/components/components.dart';
-import 'package:novvera/components/custom_slider.dart';
 import 'package:novvera/components/rich_comment_content.dart';
 import 'package:novvera/components/window_frame.dart';
 import 'package:novvera/foundation/app.dart';

@@ -18,7 +18,7 @@ class _AppSettingsState extends State<AppSettings> {
           icon: Icons.storage,
         ),
         ListTile(
-          title: Text("Storage Path for local comics".tl),
+          title: Text("Storage Path for local books".tl),
           subtitle: Text(LocalManager().path, softWrap: false),
           trailing: IconButton(
             icon: const Icon(Icons.copy),

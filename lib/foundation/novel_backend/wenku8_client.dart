@@ -43,6 +43,64 @@ const _watermark = [
   '最新最全的日本動漫輕小說',
 ];
 
+const _imageEntry = '<!--image-->';
+
+/// Port of MewX [OldNovelContentParser.parseNovelContent].
+///
+/// Official reader (Wenku8 Android 1.29):
+/// - splits on `\r\n` only (do not pre-normalize `\r` → `\n`, that invents blanks)
+/// - skips lines that are empty or ASCII-spaces only
+/// - each remaining line → one TEXT element (`trim`), or IMAGE from
+///   `<!--image-->url<!--image-->` (multiple per line allowed)
+/// - [WenkuReaderPaginator] later skips elements whose text length is 0
+///
+/// Returns ordered segments: text paragraphs and image URLs (http…).
+List<String> parseWenku8NovelContent(String raw) {
+  final result = <String>[];
+  for (final line in raw.split('\r\n')) {
+    // Same emptiness check as Java: only ASCII space counts as empty padding.
+    var onlySpaces = true;
+    for (var i = 0; i < line.length; i++) {
+      if (line.codeUnitAt(i) != 0x20) {
+        onlySpaces = false;
+        break;
+      }
+    }
+    if (onlySpaces) continue;
+
+    final imgAt = line.indexOf(_imageEntry);
+    if (imgAt < 0) {
+      final text = line.trim();
+      if (text.isEmpty) continue; // paginator would skip length-0 anyway
+      if (_watermark.any(text.contains)) continue;
+      result.add(text);
+      continue;
+    }
+
+    // One line may hold several <!--image-->url<!--image--> pairs.
+    var temp = 0;
+    while (true) {
+      temp = line.indexOf(_imageEntry, temp);
+      if (temp < 0) break;
+      final innerStart = temp + _imageEntry.length;
+      final end = line.indexOf(_imageEntry, innerStart);
+      if (end < 0) {
+        final text = line.trim();
+        if (text.isNotEmpty && !_watermark.any(text.contains)) {
+          result.add(text);
+        }
+        break;
+      }
+      final url = normalizeNovelImageUrl(
+        preferHttps(line.substring(innerStart, end).trim()),
+      );
+      if (url.startsWith('http')) result.add(url);
+      temp = end + _imageEntry.length;
+    }
+  }
+  return result;
+}
+
 /// Dart-side wenku8 client.
 ///
 /// Official App relay API for rankings / book meta / catalog / chapter text /
@@ -665,36 +723,16 @@ class Wenku8Client {
     if (chap == null || vol == null) throw Exception('章节不存在');
     final cid = chap['cid'].toString();
     final raw = await _appApi('action=book&do=text&aid=$aid&cid=$cid&t=0');
-    final images = <String>[];
-    final lines = <String>[];
+    // Match MewX OldNovelContentParser — not a homemade blank/page-number filter.
+    final segments = parseWenku8NovelContent(raw);
+    final images = <String>[
+      for (final s in segments)
+        if (s.startsWith('http://') || s.startsWith('https://')) s,
+    ];
 
-    // App API embeds images as <!--image-->url<!--image-->
-    var text = raw.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
-    text = text.replaceAllMapped(
-      RegExp(r'<!--image-->([^<]+)<!--image-->', caseSensitive: false),
-      (m) {
-        final url = normalizeNovelImageUrl(preferHttps(m.group(1)!.trim()));
-        if (url.isNotEmpty && !images.contains(url)) images.add(url);
-        return '\n$url\n';
-      },
-    );
-
-    for (final rawLine in text.split('\n')) {
-      final line = rawLine.trimRight();
-      if (_watermark.any((m) => line.contains(m))) continue;
-      lines.add(line);
-    }
-    while (lines.isNotEmpty && lines.first.trim().isEmpty) {
-      lines.removeAt(0);
-    }
-    while (lines.isNotEmpty && lines.last.trim().isEmpty) {
-      lines.removeLast();
-    }
-
-    // Reader only consumes content + images.
     return {
       'images': images,
-      'content': lines.join('\n'),
+      'content': segments.join('\n'),
     };
   }
 }

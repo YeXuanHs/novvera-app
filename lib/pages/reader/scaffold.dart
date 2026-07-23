@@ -14,7 +14,7 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
 
   static const kTopBarHeight = 56.0;
 
-  static const kBottomBarHeight = 105.0;
+  static const kBottomBarHeight = 56.0;
 
   bool get isOpen => _isOpen;
 
@@ -84,23 +84,11 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
 
   @override
   void initState() {
-    sliderFocus.canRequestFocus = false;
-    sliderFocus.addListener(() {
-      if (sliderFocus.hasFocus) {
-        sliderFocus.nextFocus();
-      }
-    });
     if (rotation != null) {
       SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     }
     super.initState();
     Future.delayed(const Duration(milliseconds: 200), addDragListener);
-  }
-
-  @override
-  void dispose() {
-    sliderFocus.dispose();
-    super.dispose();
   }
 
   void openOrClose() {
@@ -489,64 +477,31 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
 
     Widget child = SizedBox(
       height: kBottomBarHeight,
-      child: Column(
-        children: [
-          const SizedBox(height: 8),
-          Row(
+      child: LayoutBuilder(
+        builder: (context, constrains) {
+          final small = (constrains.maxWidth - buttons.length * 50) < 120;
+          return Row(
             children: [
-              const SizedBox(width: 8),
-              IconButton.filledTonal(
-                onPressed: () => !isReversed
-                    ? context.reader.chapter > 1
-                          ? context.reader.toPrevChapter()
-                          : context.reader.toPage(1)
-                    : context.reader.chapter < context.reader.maxChapter
-                    ? context.reader.toNextChapter()
-                    : context.reader.toPage(context.reader.maxPage),
-                icon: const Icon(Icons.first_page),
-              ),
-              Expanded(child: buildSlider()),
-              IconButton.filledTonal(
-                onPressed: () => !isReversed
-                    ? context.reader.chapter < context.reader.maxChapter
-                          ? context.reader.toNextChapter()
-                          : context.reader.toPage(context.reader.maxPage)
-                    : context.reader.chapter > 1
-                    ? context.reader.toPrevChapter()
-                    : context.reader.toPage(1),
-                icon: const Icon(Icons.last_page),
-              ),
-              const SizedBox(width: 8),
+              if (!small)
+                Container(
+                  height: 24,
+                  padding: const EdgeInsets.fromLTRB(6, 2, 6, 0),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.tertiaryContainer,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Center(child: Text(text)),
+                ).paddingLeft(16),
+              const Spacer(),
+              for (var button in buttons)
+                if (!small)
+                  button.paddingHorizontal(4)
+                else
+                  ...[button, const Spacer()],
+              if (!small) const SizedBox(width: 4),
             ],
-          ),
-          LayoutBuilder(
-            builder: (context, constrains) {
-              final small = (constrains.maxWidth - buttons.length * 50) < 120;
-              return Row(
-                children: [
-                  if (!small)
-                    Container(
-                      height: 24,
-                      padding: const EdgeInsets.fromLTRB(6, 2, 6, 0),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.tertiaryContainer,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Center(child: Text(text)),
-                    ).paddingLeft(16),
-                  const Spacer(),
-                  for (var button in buttons)
-                    if (!small)
-                      button.paddingHorizontal(4)
-                    else
-                      ...[button, const Spacer()],
-                  if (!small)
-                    const SizedBox(width: 4),
-                ],
-              );
-            },
-          ),
-        ],
+          );
+        },
       ),
     );
 
@@ -572,26 +527,6 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
           child: child,
         ),
       ),
-    );
-  }
-
-  var sliderFocus = FocusNode();
-
-  Widget buildSlider() {
-    // Clamp page to maxPage (excluding chapter comments page)
-    final displayPage = context.reader.page.clamp(1, context.reader.maxPage);
-    return CustomSlider(
-      focusNode: sliderFocus,
-      value: displayPage.toDouble(),
-      min: 1,
-      max: context.reader.maxPage
-          .clamp(displayPage, 1 << 16)
-          .toDouble(),
-      reversed: isReversed,
-      divisions: (context.reader.maxPage - 1).clamp(2, 1 << 16),
-      onChanged: (i) {
-        context.reader.toPage(i.toInt());
-      },
     );
   }
 

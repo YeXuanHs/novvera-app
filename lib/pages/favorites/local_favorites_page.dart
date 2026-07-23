@@ -450,7 +450,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                     ),
                     MenuEntry(
                       icon: Icons.update,
-                      text: "Update Comics Info".tl,
+                      text: "Update Books Info".tl,
                       onClick: () {
                         updateComicsInfo(widget.folder).then((newComics) {
                           if (mounted) {

@@ -420,7 +420,7 @@ class _SearchPageState extends State<SearchPage> {
         }
         return ListTile(
           leading: const Icon(Icons.link),
-          title: Text("${"Open comic".tl}: ${comicSource.name}"),
+          title: Text("${"Open book".tl}: ${comicSource.name}"),
           subtitle: Text(
             controller.text,
             maxLines: 1,

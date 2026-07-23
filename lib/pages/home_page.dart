@@ -509,16 +509,16 @@ class _ImportComicsWidgetState extends State<_ImportComicsWidget> {
   @override
   Widget build(BuildContext context) {
     String info = [
-      "Select a directory which contains the comic files.".tl,
-      "Select a directory which contains the comic directories.".tl,
+      "Select a directory which contains the book files.".tl,
+      "Select a directory which contains the book directories.".tl,
       "Select an archive file (cbz, zip, 7z, cb7)".tl,
       "Select a directory which contains multiple archive files.".tl,
       "Select an EhViewer database and a download folder.".tl,
       "Scan the current local path and restore the local database.".tl,
     ][type];
     List<String> importMethods = [
-      "Single Comic".tl,
-      "Multiple Comics".tl,
+      "Single Book".tl,
+      "Multiple Books".tl,
       "An archive file".tl,
       "Multiple archive files".tl,
       "EhViewer downloads".tl,
@@ -527,7 +527,7 @@ class _ImportComicsWidgetState extends State<_ImportComicsWidget> {
 
     return ContentDialog(
       dismissible: !loading,
-      title: "Import Comics".tl,
+      title: "Import Books".tl,
       content: loading
           ? SizedBox(
               width: 600,
@@ -711,7 +711,7 @@ class _ComicSourceWidgetState extends State<_ComicSourceWidget> {
                 child: Row(
                   children: [
                     Center(
-                      child: Text('Comic Source'.tl, style: ts.s18),
+                      child: Text('Book Source'.tl, style: ts.s18),
                     ),
                     Container(
                       margin: const EdgeInsets.symmetric(horizontal: 8),

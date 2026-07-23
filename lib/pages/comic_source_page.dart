@@ -136,7 +136,7 @@ class _BodyState extends State<_Body> {
   Widget build(BuildContext context) {
     return SmoothCustomScrollView(
       slivers: [
-        SliverAppbar(title: Text('Comic Source'.tl), style: AppbarStyle.shadow),
+        SliverAppbar(title: Text('Book Source'.tl), style: AppbarStyle.shadow),
         buildCard(context),
         for (var source in ComicSource.all())
           _SliverComicSource(
@@ -155,7 +155,7 @@ class _BodyState extends State<_Body> {
     showConfirmDialog(
       context: App.rootContext,
       title: "Delete".tl,
-      content: "Delete comic source '@n' ?".tlParams({"n": source.name}),
+      content: "Delete book source '@n' ?".tlParams({"n": source.name}),
       btnColor: context.colorScheme.error,
       onConfirm: () {
         var file = File(source.filePath);
@@ -216,7 +216,7 @@ class _BodyState extends State<_Body> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              title: Text("Add comic source".tl),
+              title: Text("Add book source".tl),
               leading: const Icon(Icons.dashboard_customize),
             ),
             TextField(
@@ -240,7 +240,7 @@ class _BodyState extends State<_Body> {
               children: [
                 FilledButton.tonalIcon(
                   icon: Icon(Icons.article_outlined),
-                  label: Text("Comic Source list".tl),
+                  label: Text("Book Source list".tl),
                   onPressed: () {
                     showPopUpWidget(
                       App.rootContext,
@@ -393,7 +393,7 @@ class _ComicSourceListState extends State<_ComicSourceList> {
 
   @override
   Widget build(BuildContext context) {
-    return PopUpWidgetScaffold(title: "Comic Source".tl, body: buildBody());
+    return PopUpWidgetScaffold(title: "Book Source".tl, body: buildBody());
   }
 
   Widget buildBody() {

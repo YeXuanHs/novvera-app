@@ -311,7 +311,7 @@ class _FollowUpdatesPageState extends AutomaticGlobalState<FollowUpdatesPage> {
         if (updatedComics.isNotEmpty)
           SliverToBoxAdapter(
             child: Text(
-                    "The comic will be marked as no updates as soon as you read it."
+                    "The book will be marked as no updates as soon as you read it."
                         .tl)
                 .paddingHorizontal(16)
                 .paddingVertical(4),
@@ -368,7 +368,7 @@ class _FollowUpdatesPageState extends AutomaticGlobalState<FollowUpdatesPage> {
                 Icon(Icons.list),
                 const SizedBox(width: 8),
                 Text(
-                  "All Comics".tl,
+                  "All Books".tl,
                   style: ts.s18,
                 ),
               ],
@@ -458,7 +458,7 @@ class _FollowUpdatesPageState extends AutomaticGlobalState<FollowUpdatesPage> {
         withProgress: true,
         cancelButtonText: "Cancel".tl,
         onCancel: onCancel,
-        message: "Updating comics...".tl,
+        message: "Updating books...".tl,
       );
 
       await for (var progress in updateFolder(folder, true)) {
@@ -493,7 +493,7 @@ class _FollowUpdatesPageState extends AutomaticGlobalState<FollowUpdatesPage> {
       withProgress: true,
       cancelButtonText: "Cancel".tl,
       onCancel: onCancel,
-      message: "Updating comics...".tl,
+      message: "Updating books...".tl,
     );
 
     int updated = 0;

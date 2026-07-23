@@ -57,7 +57,7 @@ class ImportComic {
         }
       }
       if (comics.isEmpty) {
-        App.rootContext.showMessage(message: "No valid comics found".tl);
+        App.rootContext.showMessage(message: "No valid books found".tl);
       }
       imported[selectedFolder] = comics;
       controller.close();
@@ -228,7 +228,7 @@ class ImportComic {
         }
       }
       if (!cancelled && imported[null]!.isEmpty) {
-        App.rootContext.showMessage(message: "No valid comics found".tl);
+        App.rootContext.showMessage(message: "No valid books found".tl);
       }
     } catch (e, s) {
       Log.error("Import Comic", e.toString(), s);
