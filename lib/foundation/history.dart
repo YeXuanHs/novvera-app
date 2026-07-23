@@ -146,14 +146,16 @@ class History implements Comic {
       });
     }
     if (page >= 1) {
-      if (ep >= 1) {
-        res += " - ";
+      if (isNovelSource(sourceKey)) {
+        // Novels: chapter only — no line/page count in history text.
+      } else {
+        if (ep >= 1) {
+          res += " - ";
+        }
+        res += "Page @page".tlParams({
+          "page": page,
+        });
       }
-      final pageKey =
-          isNovelSource(sourceKey) ? "Line @page" : "Page @page";
-      res += pageKey.tlParams({
-        "page": page,
-      });
     }
     return res;
   }

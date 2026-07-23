@@ -326,14 +326,16 @@ class _HistoryPageState extends State<HistoryPage> {
       });
     }
     if (h.page >= 1) {
-      if (h.ep >= 1) {
-        res += " - ";
+      if (isNovelSource(h.sourceKey)) {
+        // Novels: chapter only — no line/page count.
+      } else {
+        if (h.ep >= 1) {
+          res += " - ";
+        }
+        res += "Page @page".tlParams({
+          "page": h.page,
+        });
       }
-      final pageKey =
-          isNovelSource(h.sourceKey) ? "Line @page" : "Page @page";
-      res += pageKey.tlParams({
-        "page": h.page,
-      });
     }
     return res;
   }

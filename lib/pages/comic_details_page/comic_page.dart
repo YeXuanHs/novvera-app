@@ -506,11 +506,16 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
                           // ignore
                         }
                         text = groupName == null
-                            ? "${"Last Reading".tl}: $epName ${isNovelSource(comic.sourceKey) ? 'L' : 'P'}$page"
-                            : "${"Last Reading".tl}: $groupName $epName ${isNovelSource(comic.sourceKey) ? 'L' : 'P'}$page";
+                            ? isNovelSource(comic.sourceKey)
+                                ? "${"Last Reading".tl}: $epName"
+                                : "${"Last Reading".tl}: $epName P$page"
+                            : isNovelSource(comic.sourceKey)
+                                ? "${"Last Reading".tl}: $groupName $epName"
+                                : "${"Last Reading".tl}: $groupName $epName P$page";
                       } else {
-                        text =
-                            "${"Last Reading".tl}: ${isNovelSource(comic.sourceKey) ? 'L' : 'P'}$page";
+                        text = isNovelSource(comic.sourceKey)
+                            ? "Last Reading".tl
+                            : "${"Last Reading".tl}: P$page";
                       }
                       return Text(text);
                     },

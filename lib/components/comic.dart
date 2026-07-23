@@ -265,9 +265,11 @@ class ComicTile extends StatelessWidget {
               ),
               Expanded(
                 child: _ComicDescription(
-                  title: comic.maxPage == null
-                      ? comic.title.replaceAll("\n", "")
-                      : "[${comic.maxPage}${isNovelSource(comic.sourceKey) ? 'L' : 'P'}]${comic.title.replaceAll("\n", "")}",
+                  // Comics may prefix [NP]; novels never show page/line counts.
+                  title: (comic.maxPage != null &&
+                          !isNovelSource(comic.sourceKey))
+                      ? "[${comic.maxPage}P]${comic.title.replaceAll("\n", "")}"
+                      : comic.title.replaceAll("\n", ""),
                   subtitle: comic.subtitle ?? '',
                   description: comic.description,
                   badge: badge ?? comic.language,
