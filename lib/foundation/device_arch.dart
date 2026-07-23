@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
-/// Runtime platform + CPU ABI used to pick a download URL from version.json.
+/// Runtime platform + CPU ABI used to pick a Release asset / optional URL map.
 class DeviceArch {
   const DeviceArch({
     required this.platform,

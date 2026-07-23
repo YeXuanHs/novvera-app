@@ -47,25 +47,24 @@ class AppUpdateProgress {
     return '$pct%（${_fmt(transferred)}/${_fmt(total)}）';
   }
 
-  /// Under 1024MB keep MB; at/above that use GB.
+  /// Auto scale: B → KB → MB → GB → TB → PB → EB → ZB (1024-based).
   static String _fmt(int n) {
-    const mb = 1024 * 1024;
-    const gbCut = 1024 * mb;
-    if (n >= gbCut) {
-      final g = n / (1024 * mb);
-      if ((g * 10).round() % 10 == 0) {
-        return '${g.round()}GB';
-      }
-      return '${g.toStringAsFixed(1)}GB';
+    if (n < 0) n = 0;
+    const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB'];
+    var value = n.toDouble();
+    var i = 0;
+    while (value >= 1024 && i < units.length - 1) {
+      value /= 1024;
+      i++;
     }
-    final m = n / mb;
-    if (m >= 10 || (m - m.round()).abs() < 0.05) {
-      return '${m.round()}MB';
+    if (i == 0) return '$n${units[i]}';
+    if (value >= 100 || (value - value.round()).abs() < 0.05) {
+      return '${value.round()}${units[i]}';
     }
-    if (m < 0.1 && n > 0) {
-      return '${(n / 1024).round()}KB';
+    if (value >= 10) {
+      return '${value.toStringAsFixed(1)}${units[i]}';
     }
-    return '${m.toStringAsFixed(1)}MB';
+    return '${value.toStringAsFixed(2)}${units[i]}';
   }
 }
 
@@ -218,10 +217,8 @@ class AppUpdateService extends ChangeNotifier {
     });
   }
 
+  /// Optional meta fallback (version / changelog). Installers come from Releases.
   Future<AppUpdateInfo> _fetchVersionJson() async {
-    final arch = deviceArch ?? await DeviceArch.detect();
-    deviceArch = arch;
-
     return _getWithFallback(appVersionJsonUrl, appVersionJsonUrlDirect, (res) {
       final raw = res.data;
       final map = raw is Map
@@ -243,28 +240,10 @@ class AppUpdateService extends ChangeNotifier {
           ));
         }
       }
-
-      final picked = DeviceArch.pickDownloadUrl(
-        map['downloads'] is Map ? map['downloads'] as Map : null,
-        arch,
-      );
-      String? url = picked?.$2;
-      String? archKey = picked?.$1;
-      String? assetName;
-      if (url != null) {
-        assetName = Uri.tryParse(url)?.pathSegments.lastOrNull;
-        if (assetName == null || assetName.isEmpty) {
-          assetName = _defaultAssetName(ver.split('+').first, archKey);
-        }
-      }
-
       return AppUpdateInfo(
         version: ver.split('+').first,
         desc: (map['desc'] ?? '').toString(),
         history: history,
-        downloadUrl: url,
-        assetName: assetName,
-        archKey: archKey,
       );
     });
   }
@@ -298,6 +277,7 @@ class AppUpdateService extends ChangeNotifier {
     } catch (e) {
       Log.warning('AppUpdate', 'releases api: $e');
     }
+    // Meta-only fallback (no installer URLs — those live on Releases).
     try {
       return await _fetchVersionJson();
     } catch (e) {

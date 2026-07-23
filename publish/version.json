@@ -6,27 +6,5 @@
       "version": "1.0.0",
       "desc": "Novvera 1.0.0 初始发布。"
     }
-  ],
-  "downloads": {
-    "windows": {
-      "x64": "",
-      "arm64": ""
-    },
-    "android": {
-      "arm64-v8a": "",
-      "armeabi-v7a": "",
-      "x86_64": "",
-      "x86": "",
-      "universal": ""
-    },
-    "macos": {
-      "arm64": "",
-      "x64": "",
-      "universal": ""
-    },
-    "linux": {
-      "x64": "",
-      "arm64": ""
-    }
-  }
+  ]
 }
