@@ -21,6 +21,7 @@ class ComicImage extends StatefulWidget {
     this.gaplessPlayback = false,
     this.filterQuality = FilterQuality.medium,
     this.isAntiAlias = false,
+    this.fallbackHeight = 300,
     Map<String, String>? headers,
     int? cacheWidth,
     int? cacheHeight,
@@ -39,6 +40,10 @@ class ComicImage extends StatefulWidget {
   final double? width;
 
   final double? height;
+
+  /// Height used while loading / on error when intrinsic size is unknown.
+  /// Novels pass a smaller value so a broken 插图 does not open a huge gap.
+  final double fallbackHeight;
 
   final bool gaplessPlayback;
 
@@ -282,13 +287,33 @@ class _ComicImageState extends State<ComicImage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     if (_lastException != null) {
-      // display error and retry button on screen
+      final fb = widget.fallbackHeight;
+      // Compact strip for novel inline images; full card for comics.
+      if (fb <= 120) {
+        return SizedBox(
+          width: widget.width == double.infinity ? null : (widget.width ?? fb),
+          height: fb,
+          child: Center(
+            child: TextButton(
+              onPressed: () {
+                GlobalState.find<_ReaderGestureDetectorState>().ignoreNextTap();
+                setState(() {
+                  _loadingProgress = null;
+                  _lastException = null;
+                });
+                _resolveImage();
+              },
+              child: Text('插图加载失败 · 重试'),
+            ),
+          ),
+        );
+      }
       return SizedBox(
-        height: widget.height == null ? 300 : null,
-        width: widget.width == null ? 300 : null,
+        height: widget.height == null ? fb : null,
+        width: widget.width == null ? fb : null,
         child: Center(
           child: SizedBox(
-            height: 300,
+            height: fb,
             child: Column(
               children: [
                 Expanded(
@@ -357,10 +382,10 @@ class _ComicImageState extends State<ComicImage> with WidgetsBindingObserver {
       } else {
         if (width == double.infinity) {
           width = constrains.maxWidth;
-          height = 300;
+          height = widget.fallbackHeight;
         } else if (height == double.infinity) {
           height = constrains.maxHeight;
-          width = 300;
+          width = widget.fallbackHeight;
         }
       }
 

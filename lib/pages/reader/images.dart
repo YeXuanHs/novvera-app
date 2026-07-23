@@ -303,6 +303,8 @@ class _GalleryModeState extends State<_GalleryMode>
       blocks: NovelPageCache.blocks,
       viewport: viewport,
       style: style,
+      // Match _buildNovelTextPage + clear page-number overlay (~bottom: 13).
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 56),
     );
     NovelPageCache.clearTexts();
     final keys = <String>[];
@@ -1139,6 +1141,12 @@ class _ContinuousModeState extends State<_ContinuousMode>
   }
 
   /// Continuous novel reading: full-width paragraphs stacked vertically.
+  ///
+  /// Bottom inset clears the always-on page number / clock overlay
+  /// ([buildPageInfoText] sits at bottom: 13) so the last line is not clipped.
+  static const _novelBottomInset = 56.0;
+  static const _novelImageFallbackHeight = 96.0;
+
   Widget _buildNovelContinuous(BuildContext context) {
     final blocks = NovelPageCache.blocks;
     final mq = MediaQuery.sizeOf(context);
@@ -1185,7 +1193,7 @@ class _ContinuousModeState extends State<_ContinuousMode>
 
     Widget list = ListView.builder(
       controller: controller,
-      padding: EdgeInsets.fromLTRB(pad, 20, pad, 48),
+      padding: EdgeInsets.fromLTRB(pad, 20, pad, _novelBottomInset),
       itemCount: blocks.length,
       itemBuilder: (context, index) {
         final b = blocks[index];
@@ -1197,6 +1205,8 @@ class _ContinuousModeState extends State<_ContinuousMode>
               image: _createImageProviderFromKey(b.url, context, index + 1),
               width: double.infinity,
               fit: BoxFit.contain,
+              // Broken/CF-blocked 插图 used to reserve 300px → big black gap.
+              fallbackHeight: _novelImageFallbackHeight,
             ),
           );
         }
@@ -1487,7 +1497,8 @@ Widget _buildNovelTextPage(BuildContext context, String text) {
     color: context.colorScheme.surface,
     child: SizedBox.expand(
       child: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(pad, 20, pad, 20),
+        // Bottom 56 clears page number / clock so last lines are not clipped.
+        padding: EdgeInsets.fromLTRB(pad, 20, pad, 56),
         child: Text(
           text,
           style: TextStyle(

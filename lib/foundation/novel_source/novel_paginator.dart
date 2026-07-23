@@ -80,7 +80,7 @@ List<NovelGalleryPage> paginateNovelGallery({
   required List<NovelBlock> blocks,
   required Size viewport,
   required TextStyle style,
-  EdgeInsets padding = const EdgeInsets.fromLTRB(24, 20, 24, 20),
+  EdgeInsets padding = const EdgeInsets.fromLTRB(24, 20, 24, 56),
 }) {
   final maxWidth = (viewport.width - padding.horizontal).clamp(80.0, 100000.0);
   final maxHeight = (viewport.height - padding.vertical).clamp(80.0, 100000.0);

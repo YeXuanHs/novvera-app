@@ -56,8 +56,8 @@ Future<void> init() async {
     Log.error("init", "$e\n$s");
   }
   ComicSourceManager().registerBuiltinPages();
-  // Ensure wenku8 account/session once API is up.
-  await NovelApiClient.instance.ensureAccount().wait();
+  // wenku8 account is created lazily on first wenku8 website use (home),
+  // not at app start — otherwise CF Verify steals focus from other sources.
   CacheManager().setLimitSize(appdata.settings['cacheSize']);
   _checkOldConfigs();
   if (App.isAndroid) {
