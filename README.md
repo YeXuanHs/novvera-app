@@ -64,6 +64,7 @@ flutter build windows   # 或 apk / macos / linux / ios
 ## 致谢
 
 - 界面、桌面壳与大量基础能力来自上游 [Venera](https://github.com/venera-app/venera)
+- 轻小说文库相关官方 API 的对接，参考并得益于 [轻小说文库安卓客户端（MewX）](https://github.com/MewX/light-novel-library_Wenku8_Android) 的发布包分析；该仓库源码本身未包含 API 实现，但其客户端行为对本项目实现文库书源帮助很大。发布页：https://github.com/MewX/light-novel-library_Wenku8_Android/releases
 - 标签中文翻译等资源亦受益于社区相关项目（参见上游致谢）
 
 ## 许可
