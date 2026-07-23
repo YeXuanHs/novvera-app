@@ -135,14 +135,38 @@ class HuanmengClient {
 
   String _imgSrc(Element? img) {
     if (img == null) return '';
-    var cover = preferHttps(absUrl(
-      _base,
-      img.attributes['data-original'] ?? img.attributes['src'],
-    ));
-    if (cover.isEmpty || cover.contains('/template/') || _isJunkCover(cover)) {
+    var cover = lazyImgSrc(img, _base);
+    if (cover.isEmpty ||
+        cover.contains('/template/') ||
+        _isJunkCover(cover) ||
+        _isPlaceholderCover(cover)) {
       return '';
     }
     return cover;
+  }
+
+  /// Tiny / lazy-load placeholders mistaken for covers.
+  bool _isPlaceholderCover(String url) {
+    final u = url.toLowerCase();
+    if (u.startsWith('data:')) return true;
+    const bad = [
+      'placeholder',
+      'loading',
+      'lazy',
+      'nopic',
+      'no_cover',
+      'nocover',
+      'default_cover',
+      'blank',
+      'spacer',
+      '1x1',
+      'pixel.gif',
+      'transparent',
+    ];
+    for (final b in bad) {
+      if (u.contains(b)) return true;
+    }
+    return false;
   }
 
   /// Site-wide decoy / CF-bait assets that are not book covers.

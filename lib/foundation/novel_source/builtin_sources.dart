@@ -13,6 +13,17 @@ const kNovelSourceKeys = {'wenku8', 'linovelib', 'huanmeng'};
 
 bool isNovelSource(String? key) => key != null && kNovelSourceKeys.contains(key);
 
+/// Canonical work page URL for share / open-in-browser.
+String novelBookUrl(String sourceKey, String aid) {
+  if (aid.isEmpty) return '';
+  return switch (sourceKey) {
+    'wenku8' => 'https://www.wenku8.net/book/$aid.htm',
+    'linovelib' => 'https://www.linovelib.com/novel/$aid.html',
+    'huanmeng' => 'https://www.huanmengacg.com/index.php/book/info/$aid',
+    _ => '',
+  };
+}
+
 /// Built-in light-novel sources backed by in-process Dart scrapers.
 ///
 /// - **发现 (Explore)**: homepage recommendation sections (multipart)
@@ -541,7 +552,7 @@ Future<Res<ComicDetails>> _loadComicInfo(String source, String id) async {
       'comicId': id,
       'isFavorite': false,
       'updateTime': updateTime,
-      'url': null,
+      'url': novelBookUrl(source, id),
     });
     return Res(details);
   } catch (e) {

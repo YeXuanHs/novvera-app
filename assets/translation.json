@@ -344,6 +344,8 @@
     "Success": "成功",
     "Compressing": "压缩中",
     "Exporting": "导出中",
+    "Building EPUB…": "正在生成 EPUB…",
+    "No chapters": "暂无章节",
     "Search Sources": "搜索源",
     "Removed": "已移除",
     "Added to favorites": "已添加到收藏",

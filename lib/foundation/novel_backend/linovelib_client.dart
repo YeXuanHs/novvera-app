@@ -213,14 +213,9 @@ class LinovelibClient {
           authorA?.attributes['title'] ?? authorA?.text,
         );
         final img = li.querySelector('img');
-        var cover = absUrl(
-          _base,
-          img?.attributes['data-original'] ?? img?.attributes['src'],
-        );
+        var cover = lazyImgSrc(img, _base);
         if (cover.isEmpty) {
           cover = linovelibCoverUrl(aid);
-        } else {
-          cover = preferHttps(cover);
         }
         items.add({
           'aid': aid,
@@ -254,10 +249,7 @@ class LinovelibClient {
           );
           author = author.replaceFirst(RegExp(r'^作者[:：]?'), '').trim();
           final img = card.querySelector('img');
-          var cover = absUrl(
-            _base,
-            img?.attributes['data-original'] ?? img?.attributes['src'],
-          );
+          var cover = lazyImgSrc(img, _base);
           if (cover.isEmpty) {
             cover = linovelibCoverUrl(aid);
           } else {
@@ -292,10 +284,7 @@ class LinovelibClient {
             host = host.parent;
           }
           final img = a.querySelector('img') ?? a.parent?.querySelector('img');
-          var cover = absUrl(
-            _base,
-            img?.attributes['data-original'] ?? img?.attributes['src'],
-          );
+          var cover = lazyImgSrc(img, _base);
           if (cover.isEmpty) {
             cover = linovelibCoverUrl(aid);
           } else {
@@ -349,10 +338,7 @@ class LinovelibClient {
       }
       final img = book?.querySelector('img') ??
           a.parent?.querySelector('img');
-      var cover = preferHttps(absUrl(
-        _base,
-        img?.attributes['data-original'] ?? img?.attributes['src'],
-      ));
+      var cover = lazyImgSrc(img, _base);
       if (cover.isEmpty) {
         cover = linovelibCoverUrl(aid);
       }
@@ -492,10 +478,7 @@ class LinovelibClient {
       }
       author = author.replaceFirst(RegExp(r'^作者[:：]?'), '').trim();
       final img = block.querySelector('img');
-      var cover = preferHttps(absUrl(
-        _base,
-        img?.attributes['data-original'] ?? img?.attributes['src'],
-      ));
+      var cover = lazyImgSrc(img, _base);
       if (cover.isEmpty) {
         cover = linovelibCoverUrl(aid);
       }

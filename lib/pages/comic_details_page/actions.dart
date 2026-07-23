@@ -88,8 +88,13 @@ abstract mixin class _ComicPageActions {
 
   void share() {
     var text = comic.title;
-    if (comic.url != null) {
-      text += '\n${comic.url}';
+    final url = (comic.url != null && comic.url!.isNotEmpty)
+        ? comic.url!
+        : (isNovelSource(comic.sourceKey)
+            ? novelBookUrl(comic.sourceKey, comic.id)
+            : '');
+    if (url.isNotEmpty) {
+      text += '\n$url';
     }
     Share.shareText(text);
   }
@@ -130,6 +135,10 @@ abstract mixin class _ComicPageActions {
   void onReadEnd();
 
   void download() async {
+    if (isNovelSource(comic.sourceKey)) {
+      await _downloadNovelAsEpub();
+      return;
+    }
     if (LocalManager().isDownloading(comic.id, comic.comicType)) {
       App.rootContext.showMessage(message: "The comic is downloading".tl);
       return;
@@ -293,6 +302,195 @@ abstract mixin class _ComicPageActions {
     update();
   }
 
+  /// Fetch selected chapters and save a text EPUB (not comic image packs).
+  Future<void> _downloadNovelAsEpub() async {
+    if (comic.chapters == null || comic.chapters!.length == 0) {
+      App.rootContext.showMessage(message: "No chapters".tl);
+      return;
+    }
+
+    List<int>? selected;
+    await showSideBar(
+      App.rootContext,
+      _SelectDownloadChapter(
+        comic.chapters!.titles.toList(),
+        (v) => selected = v,
+        const [],
+      ),
+    );
+    if (selected == null || selected!.isEmpty) return;
+
+    final chapterIds = selected!
+        .map((i) => comic.chapters!.ids.elementAt(i))
+        .toList();
+    final chapterTitles = selected!
+        .map((i) => comic.chapters!.titles.elementAt(i))
+        .toList();
+
+    var canceled = false;
+    final loading = showLoadingDialog(
+      App.rootContext,
+      allowCancel: true,
+      message: "${"Exporting".tl} 0/${chapterIds.length}",
+      withProgress: true,
+      onCancel: () => canceled = true,
+    );
+
+    try {
+      // Cover
+      List<int>? coverBytes;
+      var coverExt = 'jpg';
+      try {
+        await for (final p in ImageDownloader.loadThumbnail(
+          comic.cover,
+          comic.sourceKey,
+          comic.id,
+        )) {
+          if (p.imageBytes != null) {
+            coverBytes = p.imageBytes;
+            coverExt = detectFileType(p.imageBytes!).ext.replaceFirst('.', '');
+            if (coverExt.isEmpty) coverExt = 'jpg';
+            break;
+          }
+        }
+      } catch (_) {}
+
+      final chaptersHtml = <String, String>{};
+      final imageCache = <String, String>{};
+      var imgIndex = 0;
+      final pendingImages = <({String url, String rel})>[];
+
+      for (var i = 0; i < chapterIds.length; i++) {
+        if (canceled) {
+          loading.close();
+          return;
+        }
+        loading.setMessage(
+          "${"Exporting".tl} ${i + 1}/${chapterIds.length}",
+        );
+        loading.setProgress((i + 1) / (chapterIds.length + 1));
+
+        final epId = chapterIds[i];
+        final title = chapterTitles[i];
+        final res = await loadNovelChapter(comic.sourceKey, comic.id, epId);
+        if (res.error) {
+          chaptersHtml[title] =
+              '<p>${_xmlEsc(res.errorMessage ?? "load failed")}</p>';
+          continue;
+        }
+        final data = res.data;
+        final text = (data['content'] ?? '').toString();
+        final trailing = (data['images'] as List? ?? [])
+            .map((e) => e.toString())
+            .where((e) => e.startsWith('http'))
+            .toList();
+        final blocks = parseNovelBlocks(text, trailingImages: trailing);
+        final body = StringBuffer();
+        for (final b in blocks) {
+          if (b is NovelTextBlock) {
+            for (final para in b.text.split(RegExp(r'\n+'))) {
+              final t = para.trim();
+              if (t.isEmpty) continue;
+              body.writeln('    <p>${_xmlEsc(t)}</p>');
+            }
+          } else if (b is NovelImageBlock) {
+            final url = normalizeNovelImageUrl(b.url);
+            if (!url.startsWith('http')) continue;
+            var rel = imageCache[url];
+            if (rel == null) {
+              final ext = _guessImageExt(url);
+              rel = 'images/img$imgIndex.$ext';
+              imageCache[url] = rel;
+              pendingImages.add((url: url, rel: rel));
+              imgIndex++;
+            }
+            body.writeln('    <p><img src="$rel" alt="illustration"/></p>');
+          }
+        }
+        if (body.isEmpty) {
+          body.writeln('    <p>（本章无内容）</p>');
+        }
+        var key = title;
+        var n = 2;
+        while (chaptersHtml.containsKey(key)) {
+          key = '$title ($n)';
+          n++;
+        }
+        chaptersHtml[key] = body.toString();
+      }
+
+      if (canceled) {
+        loading.close();
+        return;
+      }
+      loading.setMessage("Building EPUB…".tl);
+      loading.setProgress(0.95);
+
+      final embedded = <String, List<int>>{};
+      for (final item in pendingImages) {
+        if (canceled) {
+          loading.close();
+          return;
+        }
+        try {
+          await for (final p in ImageDownloader.loadComicImage(
+            item.url,
+            comic.sourceKey,
+            comic.id,
+            '',
+          )) {
+            if (p.imageBytes != null) {
+              embedded[item.rel] = p.imageBytes!;
+              break;
+            }
+          }
+        } catch (_) {}
+      }
+
+      final outName =
+          '${sanitizeFileName(comic.title, maxLength: 80)}.epub';
+      final outPath = FilePath.join(App.cachePath, outName);
+
+      await createNovelEpubWithImages(
+        NovelEpubData(
+          title: comic.title,
+          author: comic.findAuthor() ?? comic.subTitle ?? '',
+          chapters: chaptersHtml,
+          coverBytes: coverBytes,
+          coverExt: coverExt,
+        ),
+        embedded,
+        App.cachePath,
+        outPath,
+      );
+
+      loading.close();
+      await saveFile(file: File(outPath), filename: outName);
+      try {
+        File(outPath).deleteSync();
+      } catch (_) {}
+      App.rootContext.showMessage(message: "Saved".tl);
+    } catch (e, s) {
+      Log.error('NovelEpub', '$e\n$s');
+      loading.close();
+      App.rootContext.showMessage(message: e.toString());
+    }
+  }
+
+  String _xmlEsc(String s) => s
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;');
+
+  String _guessImageExt(String url) {
+    final path = Uri.tryParse(url)?.path.toLowerCase() ?? url.toLowerCase();
+    for (final e in ['.jpg', '.jpeg', '.png', '.webp', '.gif']) {
+      if (path.contains(e)) return e.substring(1);
+    }
+    return 'jpg';
+  }
+
   void onTapTag(String tag, String namespace) {
     var target = comicSource.handleClickTagEvent?.call(namespace, tag);
     var context = App.mainNavigatorKey!.currentContext!;
@@ -324,23 +522,31 @@ abstract mixin class _ComicPageActions {
               context.showMessage(message: "Copied".tl);
             },
           ),
-          if (comic.url != null)
-            MenuEntry(
-              icon: Icons.link,
-              text: "Copy URL".tl,
-              onClick: () {
-                Clipboard.setData(ClipboardData(text: comic.url!));
-                context.showMessage(message: "Copied".tl);
-              },
-            ),
-          if (comic.url != null)
-            MenuEntry(
-              icon: Icons.open_in_browser,
-              text: "Open in Browser".tl,
-              onClick: () {
-                launchUrlString(comic.url!);
-              },
-            ),
+          ...() {
+            final url = (comic.url != null && comic.url!.isNotEmpty)
+                ? comic.url!
+                : (isNovelSource(comic.sourceKey)
+                    ? novelBookUrl(comic.sourceKey, comic.id)
+                    : '');
+            if (url.isEmpty) return <MenuEntry>[];
+            return [
+              MenuEntry(
+                icon: Icons.link,
+                text: "Copy URL".tl,
+                onClick: () {
+                  Clipboard.setData(ClipboardData(text: url));
+                  context.showMessage(message: "Copied".tl);
+                },
+              ),
+              MenuEntry(
+                icon: Icons.open_in_browser,
+                text: "Open in Browser".tl,
+                onClick: () {
+                  launchUrlString(url);
+                },
+              ),
+            ];
+          }(),
         ]);
   }
 

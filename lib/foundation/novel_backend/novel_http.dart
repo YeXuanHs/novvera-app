@@ -19,6 +19,17 @@ String absUrl(String base, String? href) {
   return Uri.parse(base).resolve(href).toString();
 }
 
+/// Resolve cover/image URL preferring lazy-load attributes over placeholder [src].
+String lazyImgSrc(Element? img, String base) {
+  if (img == null) return '';
+  final raw = img.attributes['data-original'] ??
+      img.attributes['data-src'] ??
+      img.attributes['data-lazy'] ??
+      img.attributes['data-url'] ??
+      img.attributes['src'];
+  return preferHttps(absUrl(base, raw));
+}
+
 /// Prefer https for CDN hosts that still emit http links.
 String preferHttps(String url) {
   if (url.startsWith('http://')) {

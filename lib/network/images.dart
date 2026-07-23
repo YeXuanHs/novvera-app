@@ -18,13 +18,38 @@ abstract class ImageDownloader {
 
     if (cache != null) {
       var data = await cache.readAsBytes();
-      yield ImageDownloadProgress(
-        currentBytes: data.length,
-        totalBytes: data.length,
-        imageBytes: data,
-      );
+      if (_looksLikeImage(data)) {
+        yield ImageDownloadProgress(
+          currentBytes: data.length,
+          totalBytes: data.length,
+          imageBytes: data,
+        );
+        return;
+      }
+      await CacheManager().delete(cacheKey);
     }
 
+    Object? lastError;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) {
+        await Future.delayed(Duration(milliseconds: 200 * attempt));
+      }
+      try {
+        yield* _downloadThumbnailOnce(url, sourceKey, cid, cacheKey);
+        return;
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    throw lastError ?? "Error: Empty response body.";
+  }
+
+  static Stream<ImageDownloadProgress> _downloadThumbnailOnce(
+    String url,
+    String? sourceKey,
+    String? cid,
+    String cacheKey,
+  ) async* {
     var configs = <String, dynamic>{};
     if (sourceKey != null) {
       var comicSource = ComicSource.find(sourceKey);
@@ -39,7 +64,7 @@ abstract class ImageDownloader {
     if (((configs['url'] as String?) ?? url).startsWith('cover.') &&
         sourceKey != null) {
       var comicSource = ComicSource.find(sourceKey);
-      if(comicSource != null) {
+      if (comicSource != null) {
         var comicInfo = await comicSource.loadComicInfo!(cid!);
         yield* loadThumbnail(comicInfo.data.cover, sourceKey);
         return;
@@ -56,8 +81,11 @@ abstract class ImageDownloader {
     if (requestUrl.startsWith('//')) {
       requestUrl = 'https:$requestUrl';
     }
-    var req = await dio.request<ResponseBody>(requestUrl,
-        data: configs['data']);
+    var req = await dio.request<ResponseBody>(requestUrl, data: configs['data']);
+    final status = req.statusCode ?? 0;
+    if (status >= 400) {
+      throw "Invalid Status Code: $status";
+    }
     var stream = req.data?.stream ?? (throw "Error: Empty response body.");
     int? expectedBytes = req.data!.contentLength;
     if (expectedBytes == -1) {
@@ -80,12 +108,53 @@ abstract class ImageDownloader {
       (configs['onResponse'] as JSInvokable).free();
     }
 
-    await CacheManager().writeCache(cacheKey, buffer);
+    final bytes = buffer is Uint8List ? buffer : Uint8List.fromList(buffer);
+    if (!_looksLikeImage(bytes)) {
+      throw "Error: Response is not an image.";
+    }
+
+    await CacheManager().writeCache(cacheKey, bytes);
     yield ImageDownloadProgress(
-      currentBytes: buffer.length,
-      totalBytes: buffer.length,
-      imageBytes: Uint8List.fromList(buffer),
+      currentBytes: bytes.length,
+      totalBytes: bytes.length,
+      imageBytes: bytes,
     );
+  }
+
+  static bool _looksLikeImage(List<int> data) {
+    if (data.length < 8) return false;
+    // JPEG
+    if (data[0] == 0xFF && data[1] == 0xD8) return true;
+    // PNG
+    if (data[0] == 0x89 &&
+        data[1] == 0x50 &&
+        data[2] == 0x4E &&
+        data[3] == 0x47) {
+      return true;
+    }
+    // GIF
+    if (data[0] == 0x47 && data[1] == 0x49 && data[2] == 0x46) return true;
+    // WEBP (RIFF....WEBP)
+    if (data[0] == 0x52 &&
+        data[1] == 0x49 &&
+        data[2] == 0x46 &&
+        data[3] == 0x46 &&
+        data.length > 11 &&
+        data[8] == 0x57 &&
+        data[9] == 0x45 &&
+        data[10] == 0x42 &&
+        data[11] == 0x50) {
+      return true;
+    }
+    // AVIF / HEIC often start with ftyp
+    if (data.length > 12 &&
+        data[4] == 0x66 &&
+        data[5] == 0x74 &&
+        data[6] == 0x79 &&
+        data[7] == 0x70) {
+      return true;
+    }
+    return false;
   }
 
   static final _loadingImages = <String, _StreamWrapper<ImageDownloadProgress>>{};
