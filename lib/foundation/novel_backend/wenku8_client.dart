@@ -67,10 +67,24 @@ class Wenku8Client {
 
   Future<void> init() async {
     await _loadAccount();
-    await ensureAccount();
+    // Must not throw: NovelApiClient.init() Future.wait-s all sources.
+    // A wenku8 CF block used to poison every later huanmeng/linovelib call
+    // (init never marked ready → re-ran ensureAccount → Verify opened wenku8).
+    try {
+      await ensureAccount();
+    } on CloudflareException catch (e) {
+      Log.warning(
+        'Wenku8',
+        'Cloudflare on bootstrap (${e.url}); verify when browsing wenku8',
+      );
+    } catch (e) {
+      Log.warning('Wenku8', 'bootstrap: $e');
+    }
     _refreshTimer?.cancel();
     _refreshTimer = Timer.periodic(_loginRefreshInterval, (_) {
-      ensureAccount(forceLogin: true);
+      ensureAccount(forceLogin: true).catchError((Object e) {
+        Log.warning('Wenku8', 'periodic ensureAccount: $e');
+      });
     });
   }
 

@@ -14,10 +14,20 @@ class NovelApiClient {
 
   Future<void> init() async {
     if (_inited) return;
+    // Isolate per-source bootstrap failures so one site's CF/login block
+    // cannot keep `_inited` false and hijack Verify URLs for other sources.
+    Future<void> safe(String name, Future<void> Function() run) async {
+      try {
+        await run();
+      } catch (e) {
+        Log.warning('NovelApi', '$name init: $e');
+      }
+    }
+
     await Future.wait([
-      Wenku8Client.instance.init(),
-      LinovelibClient.instance.init(),
-      HuanmengClient.instance.init(),
+      safe('wenku8', Wenku8Client.instance.init),
+      safe('linovelib', LinovelibClient.instance.init),
+      safe('huanmeng', HuanmengClient.instance.init),
     ]);
     _inited = true;
   }
