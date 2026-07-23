@@ -123,7 +123,8 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
             child: widget.child,
           ),
         ),
-        if (appdata.settings['showPageNumberInReader'] == true && !isOnChapterCommentsPage)
+        if (appdata.settings['showPageNumberInReader'] == true &&
+            !isOnChapterCommentsPage)
           buildPageInfoText(),
         if (!isOnChapterCommentsPage)
           buildStatusInfo(),
@@ -374,12 +375,22 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
   }
 
   Widget buildBottom() {
-    // Use maxPage for display (excluding chapter comments page)
-    final displayPage = context.reader.page.clamp(1, context.reader.maxPage);
-    final unit = context.reader.pageUnit;
-    var text = "E${context.reader.chapter} : $unit$displayPage";
-    if (context.reader.widget.chapters == null) {
-      text = "$unit$displayPage";
+    // Novels: chapter title only (no page/total — total is unknown with
+    // incremental layout). Comics: keep E{n} : P{page}.
+    final String text;
+    if (context.reader.isNovel) {
+      final title = context.reader.widget.chapters?.titles.elementAtOrNull(
+            context.reader.chapter - 1,
+          ) ??
+          "E${context.reader.chapter}";
+      text = title.length > 16 ? '${title.substring(0, 16)}…' : title;
+    } else {
+      final displayPage =
+          context.reader.page.clamp(1, context.reader.maxPage);
+      final unit = context.reader.pageUnit;
+      text = context.reader.widget.chapters == null
+          ? "$unit$displayPage"
+          : "E${context.reader.chapter} : $unit$displayPage";
     }
 
     final buttons = [
@@ -539,10 +550,17 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
     if (epName.length > 8) {
       epName = "${epName.substring(0, 8)}...";
     }
-    var pageText = "${context.reader.page}/${context.reader.maxPage}";
-    var text = context.reader.widget.chapters != null
-        ? "$epName : $pageText"
-        : pageText;
+    // Novels: chapter name only — no page/total (incremental pages have no
+    // stable total). Comics keep page/maxPage.
+    final String text;
+    if (context.reader.isNovel) {
+      text = epName;
+    } else {
+      final pageText = "${context.reader.page}/${context.reader.maxPage}";
+      text = context.reader.widget.chapters != null
+          ? "$epName : $pageText"
+          : pageText;
+    }
 
     return Positioned(
       bottom: 13,

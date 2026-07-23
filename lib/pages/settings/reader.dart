@@ -259,7 +259,7 @@ class _ReaderSettingsState extends State<ReaderSettings> {
           useDeviceSettings: useDeviceSpecificSettings,
         ).toSliver(),
         _SwitchSetting(
-          title: "Show Page Number".tl,
+          title: "Show reading position in reader".tl,
           settingKey: "showPageNumberInReader",
           onChanged: () {
             widget.onChanged?.call("showPageNumberInReader");

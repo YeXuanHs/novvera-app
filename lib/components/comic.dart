@@ -186,10 +186,19 @@ class ComicTile extends StatelessWidget {
                     color: Colors.blue.toOpacity(0.9),
                     constraints: const BoxConstraints(minWidth: 24),
                     padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: CustomPaint(
-                      painter:
-                          _ReadingHistoryPainter(history.page, history.maxPage),
-                    ),
+                    child: isNovelSource(comic.sourceKey)
+                        // Novels: no page/total badge — history only resumes.
+                        ? const Icon(
+                            Icons.menu_book,
+                            size: 14,
+                            color: Colors.white,
+                          )
+                        : CustomPaint(
+                            painter: _ReadingHistoryPainter(
+                              history.page,
+                              history.maxPage,
+                            ),
+                          ),
                   )
               ],
             ),

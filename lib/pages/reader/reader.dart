@@ -334,9 +334,9 @@ class _ReaderState extends State<Reader>
     if (history != null) {
       // page >= maxPage handles both last image page and chapter comments page
       if (isNovel) {
-        // Novel gallery/continuous: page index maps 1:1 to images keys.
+        // Resume position only — no total page count (gallery lays out lazily).
         history!.page = page.clamp(1, images?.length ?? 1);
-        history!.maxPage = images?.length ?? 1;
+        history!.maxPage = null;
       } else if (page >= maxPage) {
         /// Record the last image of chapter
         history!.page = images?.length ?? 1;
