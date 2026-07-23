@@ -289,6 +289,7 @@ class _GalleryModeState extends State<_GalleryMode>
   }
 
   /// Fill-viewport gallery pages for novels; images get exclusive pages.
+  /// Heavy TextPainter work runs off the build path to avoid UI freezes.
   void _ensureNovelGalleryPages(Size viewport) {
     if (!reader.isNovel || _novelPaging) return;
     if (NovelPageCache.blocks.isEmpty) return;
@@ -302,54 +303,77 @@ class _GalleryModeState extends State<_GalleryMode>
       height: 1.75,
       color: Theme.of(context).colorScheme.onSurface,
     );
-    // Same horizontal inset as _buildNovelTextPage (centered column on wide screens).
     final hPad =
         viewport.width > 720 ? (viewport.width - 720) / 2 + 24.0 : 24.0;
-    final galleryPages = paginateNovelGallery(
-      blocks: NovelPageCache.blocks,
-      viewport: viewport,
-      style: style,
-      // Match _buildNovelTextPage; clear page-number / clock overlay.
-      padding: EdgeInsets.fromLTRB(
-        hPad,
-        20,
-        hPad,
-        _kNovelReaderBottomInset + MediaQuery.paddingOf(context).bottom,
-      ),
+    final padding = EdgeInsets.fromLTRB(
+      hPad,
+      20,
+      hPad,
+      _kNovelReaderBottomInset + MediaQuery.paddingOf(context).bottom,
     );
-    NovelPageCache.clearTexts();
-    final keys = <String>[];
-    for (final p in galleryPages) {
-      if (p is NovelGalleryImagePage) {
-        keys.add(p.url);
-      } else if (p is NovelGalleryTextPage) {
-        keys.add(NovelPageCache.put(p.text));
-      }
-    }
-    if (keys.isEmpty) return;
-
-    // Map old page → approximate new page by ratio.
-    final oldLen = reader.images?.length ?? keys.length;
+    final blocks = List<NovelBlock>.from(NovelPageCache.blocks);
+    final oldLen = reader.images?.length ?? 0;
     final oldPage = reader.page;
-    final ratio = oldLen <= 1 ? 0.0 : (oldPage - 1) / (oldLen - 1);
-    final newPage = (ratio * (keys.length - 1)).round() + 1;
 
-    _lastNovelViewport = viewport;
     _novelPaging = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      reader.images = keys;
-      reader.setPage(newPage.clamp(1, keys.length));
-      // Recreate page controller if item count changed drastically.
-      if (controller.hasClients) {
-        final target = newPage.clamp(1, keys.length);
-        if ((controller.page?.round() ?? reader.page) != target) {
-          controller.jumpToPage(target);
+    Future(() {
+      if (!mounted) {
+        _novelPaging = false;
+        return;
+      }
+      List<NovelGalleryPage> galleryPages;
+      try {
+        galleryPages = paginateNovelGallery(
+          blocks: blocks,
+          viewport: viewport,
+          style: style,
+          padding: padding,
+        );
+      } catch (e, s) {
+        Log.error('Reader', 'novel gallery paginate failed\n$e\n$s');
+        _novelPaging = false;
+        return;
+      }
+      if (!mounted) {
+        _novelPaging = false;
+        return;
+      }
+
+      NovelPageCache.clearTexts();
+      final keys = <String>[];
+      for (final p in galleryPages) {
+        if (p is NovelGalleryImagePage) {
+          keys.add(p.url);
+        } else if (p is NovelGalleryTextPage) {
+          keys.add(NovelPageCache.put(p.text));
         }
       }
-      _novelPaging = false;
-      setState(() {});
-      context.readerScaffold.update();
+      if (keys.isEmpty) {
+        _novelPaging = false;
+        return;
+      }
+
+      final ratio = oldLen <= 1 ? 0.0 : (oldPage - 1) / (oldLen - 1);
+      final newPage = (ratio * (keys.length - 1)).round() + 1;
+
+      _lastNovelViewport = viewport;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          _novelPaging = false;
+          return;
+        }
+        reader.images = keys;
+        reader.setPage(newPage.clamp(1, keys.length));
+        if (controller.hasClients) {
+          final target = newPage.clamp(1, keys.length);
+          if ((controller.page?.round() ?? reader.page) != target) {
+            controller.jumpToPage(target);
+          }
+        }
+        _novelPaging = false;
+        setState(() {});
+        context.readerScaffold.update();
+      });
     });
   }
 

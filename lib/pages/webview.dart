@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher_string.dart';
 import 'package:novvera/components/components.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/appdata.dart';
+import 'package:novvera/network/cookie_jar.dart';
 import 'package:novvera/network/proxy.dart';
 import 'package:novvera/utils/ext.dart';
 import 'package:novvera/utils/translations.dart';
@@ -28,7 +29,10 @@ extension WebviewExtension on InAppWebViewController {
     );
     var res = <io.Cookie>[];
     for (var cookie in cookies) {
-      var c = io.Cookie(cookie.name, cookie.value);
+      // Baidu Hm_lvt etc. contain commas; dart:io Cookie rejects them.
+      // Must not abort — otherwise cf_clearance is never saved after Verify.
+      final c = tryCreateCookie(cookie.name, cookie.value);
+      if (c == null) continue;
       c.domain = cookie.domain;
       res.add(c);
     }

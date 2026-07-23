@@ -113,9 +113,10 @@ class LinovelibClient {
   void _setCookie(String name, String value) {
     final jar = SingleInstanceCookieJar.instance;
     if (jar == null) return;
-    final c = Cookie(name, value)
-      ..domain = '.linovelib.com'
-      ..path = '/';
+    final c = tryCreateCookie(name, value);
+    if (c == null) return;
+    c.domain = '.linovelib.com';
+    c.path = '/';
     jar.saveFromResponse(Uri.parse('$_base/'), [c]);
   }
 

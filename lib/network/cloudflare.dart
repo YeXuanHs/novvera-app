@@ -191,10 +191,8 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
   var uri = Uri.parse(url);
   Log.info('Cloudflare', 'Verify open $url (from ${e.url})');
 
-  // Drop stale clearance so WebView must obtain a fresh one. Keeping an
-  // expired cf_clearance makes "no challenge css" look like success while
-  // Dio POSTs still get 403.
-  _purgeJarCfClearance(uri);
+  // Do not purge jar cf_clearance before Verify succeeds. If cookie save
+  // fails (e.g. Baidu Hm_lvt commas), purging first leaves the app worse off.
 
   void saveCookies(Map<String, String> cookies) {
     var domain = uri.host;
@@ -202,15 +200,15 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
     if (splits.length > 1) {
       domain = ".${splits[splits.length - 2]}.${splits[splits.length - 1]}";
     }
-    SingleInstanceCookieJar.instance!.saveFromResponse(
-      uri,
-      List<io.Cookie>.generate(cookies.length, (index) {
-        var cookie = io.Cookie(
-            cookies.keys.elementAt(index), cookies.values.elementAt(index));
-        cookie.domain = domain;
-        return cookie;
-      }),
-    );
+    final list = <io.Cookie>[];
+    for (final entry in cookies.entries) {
+      final cookie = tryCreateCookie(entry.key, entry.value);
+      if (cookie == null) continue;
+      cookie.domain = domain;
+      list.add(cookie);
+    }
+    if (list.isEmpty) return;
+    SingleInstanceCookieJar.instance!.saveFromResponse(uri, list);
   }
 
   // windows version of package `flutter_inappwebview` cannot get some cookies
@@ -247,6 +245,7 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
           if (cookiesMap['cf_clearance'] == null) {
             return;
           }
+          _purgeJarCfClearance(uri);
           saveCookies(cookiesMap);
           controller.close();
           onFinished();
@@ -259,40 +258,46 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
     bool success = false;
     var clearedWebView = false;
     void check(InAppWebViewController controller) async {
-      var head = await controller.evaluateJavascript(
-          source: "document.head.innerHTML") as String;
-      var body = await controller.evaluateJavascript(
-          source: "document.body.innerHTML") as String;
-      final title = await controller.getTitle() ?? '';
-      Log.info("Cloudflare", "Checking head: $head");
-      var isChallenging = head.contains('#challenge-success-text') ||
-          head.contains("#challenge-error-text") ||
-          head.contains("#challenge-form") ||
-          body.contains("challenge-platform") ||
-          body.contains("window._cf_chl_opt") ||
-          title.contains('Just a moment') ||
-          title.contains('Attention Required');
-      if (!isChallenging) {
-        Log.info(
-          "Cloudflare",
-          "Cloudflare is passed due to there is no challenge css",
-        );
-        var ua = await controller.getUA();
-        if (ua != null) {
-          appdata.implicitData['ua'] = ua;
-          appdata.writeImplicitData();
+      try {
+        var head = await controller.evaluateJavascript(
+            source: "document.head.innerHTML") as String;
+        var body = await controller.evaluateJavascript(
+            source: "document.body.innerHTML") as String;
+        final title = await controller.getTitle() ?? '';
+        Log.info("Cloudflare", "Checking head: $head");
+        var isChallenging = head.contains('#challenge-success-text') ||
+            head.contains("#challenge-error-text") ||
+            head.contains("#challenge-form") ||
+            body.contains("challenge-platform") ||
+            body.contains("window._cf_chl_opt") ||
+            title.contains('Just a moment') ||
+            title.contains('Attention Required');
+        if (!isChallenging) {
+          Log.info(
+            "Cloudflare",
+            "Cloudflare is passed due to there is no challenge css",
+          );
+          var ua = await controller.getUA();
+          if (ua != null) {
+            appdata.implicitData['ua'] = ua;
+            appdata.writeImplicitData();
+          }
+          var cookies = await controller.getCookies(url) ?? [];
+          if (cookies.firstWhereOrNull(
+                  (element) => element.name == 'cf_clearance') ==
+              null) {
+            return;
+          }
+          // Replace any stale jar clearance only after a fresh one is in hand.
+          _purgeJarCfClearance(uri);
+          SingleInstanceCookieJar.instance?.saveFromResponse(uri, cookies);
+          if (!success) {
+            App.rootPop();
+            success = true;
+          }
         }
-        var cookies = await controller.getCookies(url) ?? [];
-        if (cookies.firstWhereOrNull(
-                (element) => element.name == 'cf_clearance') ==
-            null) {
-          return;
-        }
-        SingleInstanceCookieJar.instance?.saveFromResponse(uri, cookies);
-        if (!success) {
-          App.rootPop();
-          success = true;
-        }
+      } catch (err, st) {
+        Log.error('Cloudflare', 'Verify check failed\n$err\n$st');
       }
     }
 

@@ -6,6 +6,17 @@ import 'package:sqlite3/sqlite3.dart';
 import 'package:novvera/foundation/log.dart';
 import 'package:novvera/utils/ext.dart';
 
+/// [Cookie] rejects commas / semicolons in values (e.g. Baidu `Hm_lvt=a,b`).
+/// Skipping those must not abort saving `cf_clearance`.
+Cookie? tryCreateCookie(String name, String value) {
+  try {
+    return Cookie(name, value);
+  } on FormatException catch (e) {
+    Log.warning('Cookie', 'skip $name: $e');
+    return null;
+  }
+}
+
 class CookieJarSql {
   late Database _db;
 
@@ -62,19 +73,30 @@ class CookieJarSql {
       WHERE domain = ?;
     ''', [domain]);
 
-    return rows
-        .map((row) => Cookie(
-              row["name"] as String,
-              row["value"] as String,
-            )
-              ..domain = row["domain"] as String
-              ..path = row["path"] as String
-              ..expires = row["expires"] == null
-                  ? null
-                  : DateTime.fromMillisecondsSinceEpoch(row["expires"] as int)
-              ..secure = row["secure"] == 1
-              ..httpOnly = row["httpOnly"] == 1)
-        .toList();
+    final out = <Cookie>[];
+    for (final row in rows) {
+      final c = tryCreateCookie(
+        row["name"] as String,
+        row["value"] as String,
+      );
+      if (c == null) {
+        // Drop corrupt rows so loadForRequest never throws.
+        _db.execute(
+          'DELETE FROM cookies WHERE name = ? AND domain = ? AND path = ?;',
+          [row["name"], row["domain"], row["path"]],
+        );
+        continue;
+      }
+      c.domain = row["domain"] as String;
+      c.path = row["path"] as String;
+      c.expires = row["expires"] == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(row["expires"] as int);
+      c.secure = row["secure"] == 1;
+      c.httpOnly = row["httpOnly"] == 1;
+      out.add(c);
+    }
+    return out;
   }
 
   List<String> _getAcceptedDomains(String host) {
