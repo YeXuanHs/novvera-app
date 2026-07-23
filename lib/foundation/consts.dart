@@ -10,6 +10,9 @@ const appRepoReleasesUrl = '$appRepoUrl/releases';
 const appRepoPubspecUrl =
     'https://raw.githubusercontent.com/YeXuanHs/novvera-app/main/pubspec.yaml';
 
+/// Community QQ group invite.
+const appQqGroupUrl = 'https://qm.qq.com/q/P2br4CwKsy';
+
 /// If window width is less than this value, it is considered as mobile.
 const changePoint = 600;
 

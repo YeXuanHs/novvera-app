@@ -75,6 +75,13 @@ class _AboutSettingsState extends State<AboutSettings> {
             launchUrlString(appRepoUrl);
           },
         ).toSliver(),
+        ListTile(
+          title: Text("QQ Group".tl),
+          trailing: const Icon(Icons.open_in_new),
+          onTap: () {
+            launchUrlString(appQqGroupUrl);
+          },
+        ).toSliver(),
       ],
     );
   }
