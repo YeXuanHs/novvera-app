@@ -2,8 +2,8 @@
 
 [![flutter](https://img.shields.io/badge/flutter-3.41.4-blue)](https://flutter.dev/)
 [![License](https://img.shields.io/github/license/YeXuanHs/novvera-app)](https://github.com/YeXuanHs/novvera-app/blob/main/LICENSE)
-[![Release](https://img.shields.io/github/v/release/YeXuanHs/novvera-app)](https://github.com/YeXuanHs/novvera-app/releases/latest)
-[![stars](https://img.shields.io/github/stars/YeXuanHs/novvera-app?style=flat)](https://github.com/YeXuanHs/novvera-app/stargazers)
+[![Release](https://img.shields.io/github/v/release/YeXuanHs/novvera-app?cacheSeconds=60)](https://github.com/YeXuanHs/novvera-app/releases/latest)
+[![stars](https://img.shields.io/github/stars/YeXuanHs/novvera-app?style=flat&cacheSeconds=60)](https://github.com/YeXuanHs/novvera-app/stargazers)
 
 开源双端轻小说阅读器。支持 **Windows / macOS / Linux / Android / iOS**。
 
