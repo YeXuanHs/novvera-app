@@ -209,6 +209,7 @@ class Settings with ChangeNotifier {
     'enableClockAndBatteryInfoInReader': true,
     'quickCollectImage': 'No', // No, DoubleTap, Swipe
     'authorizationRequired': false,
+    'checkUpdateOnStart': false,
     'onClickFavorite': 'viewDetail', // viewDetail, read
     'enableDnsOverrides': false,
     'dnsOverrides': {},

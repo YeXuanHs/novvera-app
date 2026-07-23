@@ -4,6 +4,12 @@ const appBrandName = 'Novvera';
 /// Official repository.
 const appRepoUrl = 'https://github.com/YeXuanHs/novvera-app';
 
+const appRepoReleasesUrl = '$appRepoUrl/releases';
+
+/// Remote pubspec used by in-app update check (same branch as releases).
+const appRepoPubspecUrl =
+    'https://raw.githubusercontent.com/YeXuanHs/novvera-app/main/pubspec.yaml';
+
 /// If window width is less than this value, it is considered as mobile.
 const changePoint = 600;
 
