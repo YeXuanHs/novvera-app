@@ -68,6 +68,10 @@ class _AboutSettingsState extends State<AboutSettings> {
           title: "Check for updates on startup".tl,
           settingKey: "checkUpdateOnStart",
         ).toSliver(),
+        _SwitchSetting(
+          title: "Auto download updates".tl,
+          settingKey: "tryAutoUpdate",
+        ).toSliver(),
         ListTile(
           title: const Text("Github"),
           trailing: const Icon(Icons.open_in_new),
@@ -85,74 +89,4 @@ class _AboutSettingsState extends State<AboutSettings> {
       ],
     );
   }
-}
-
-/// Compare remote [pubspec.yaml] version with the running app.
-Future<bool> checkUpdate() async {
-  var res = await AppDio().get(appRepoPubspecUrl);
-  if (res.statusCode == 200) {
-    var data = loadYaml(res.data);
-    if (data["version"] != null) {
-      return _compareVersion(
-        data["version"].toString().split("+")[0],
-        App.version,
-      );
-    }
-  }
-  return false;
-}
-
-Future<void> checkUpdateUi([
-  bool showMessageIfNoUpdate = true,
-  bool delay = false,
-]) async {
-  try {
-    var value = await checkUpdate();
-    if (value) {
-      if (delay) {
-        await Future.delayed(const Duration(seconds: 2));
-      }
-      showDialog(
-        context: App.rootContext,
-        builder: (context) {
-          return ContentDialog(
-            title: "New version available".tl,
-            content: Text(
-              "A new version is available. Do you want to update now?".tl,
-            ).paddingHorizontal(16),
-            actions: [
-              Button.text(
-                onPressed: () {
-                  Navigator.pop(context);
-                  launchUrlString(appRepoReleasesUrl);
-                },
-                child: Text("Update".tl),
-              ),
-            ],
-          );
-        },
-      );
-    } else if (showMessageIfNoUpdate) {
-      App.rootContext.showMessage(message: "No new version available".tl);
-    }
-  } catch (e, s) {
-    Log.error("Check Update", e.toString(), s);
-    if (showMessageIfNoUpdate) {
-      App.rootContext.showMessage(message: e.toString());
-    }
-  }
-}
-
-/// Return true if [version1] > [version2].
-bool _compareVersion(String version1, String version2) {
-  var v1 = version1.split(".");
-  var v2 = version2.split(".");
-  final n = math.max(v1.length, v2.length);
-  for (var i = 0; i < n; i++) {
-    final a = i < v1.length ? int.tryParse(v1[i]) ?? 0 : 0;
-    final b = i < v2.length ? int.tryParse(v2[i]) ?? 0 : 0;
-    if (a > b) return true;
-    if (a < b) return false;
-  }
-  return false;
 }

@@ -110,6 +110,7 @@ class MainActivity : FlutterFragmentActivity() {
         ).setMethodCallHandler { call, res ->
             when (call.method) {
                 "getProxy" -> res.success(getProxy())
+                "getSupportedAbis" -> res.success(Build.SUPPORTED_ABIS.toList())
                 "setScreenOn" -> {
                     val set = call.argument<Boolean>("set") ?: false
                     if (set) {

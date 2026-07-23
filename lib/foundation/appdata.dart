@@ -210,6 +210,7 @@ class Settings with ChangeNotifier {
     'quickCollectImage': 'No', // No, DoubleTap, Swipe
     'authorizationRequired': false,
     'checkUpdateOnStart': false,
+    'tryAutoUpdate': true,
     'onClickFavorite': 'viewDetail', // viewDetail, read
     'enableDnsOverrides': false,
     'dnsOverrides': {},

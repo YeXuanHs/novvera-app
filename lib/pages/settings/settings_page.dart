@@ -14,13 +14,11 @@ import 'package:novvera/foundation/js_engine.dart';
 import 'package:novvera/foundation/local.dart';
 import 'package:novvera/foundation/log.dart';
 import 'package:novvera/foundation/consts.dart';
-import 'package:novvera/network/app_dio.dart';
+import 'package:novvera/components/update_modal.dart';
 import 'package:novvera/utils/data.dart';
 import 'package:novvera/utils/data_sync.dart';
 import 'package:novvera/utils/io.dart';
 import 'package:novvera/utils/translations.dart';
-import 'package:yaml/yaml.dart';
-import 'dart:math' as math;
 
 part 'reader.dart';
 part 'explore_settings.dart';
