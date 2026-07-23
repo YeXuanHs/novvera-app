@@ -288,6 +288,12 @@ class Wenku8Client {
   }
 
   Future<String> _appApi(String plain) async {
+    final bytes = await _appApiBytes(plain);
+    return utf8.decode(bytes, allowMalformed: true);
+  }
+
+  /// Raw App API response (covers are JPEG, not text).
+  Future<Uint8List> _appApiBytes(String plain) async {
     final request = base64.encode(utf8.encode(plain));
     final body =
         '&appver=${_buildAppVer()}&request=$request&timetoken=${DateTime.now().millisecondsSinceEpoch}';
@@ -320,11 +326,19 @@ class Wenku8Client {
         final err = utf8.decode(res.data ?? const [], allowMalformed: true);
         throw Exception('wenku8 API HTTP ${res.statusCode}: $err');
       }
-      final bytes = Uint8List.fromList(res.data ?? const []);
-      return utf8.decode(bytes, allowMalformed: true);
+      return Uint8List.fromList(res.data ?? const []);
     } on DioException catch (e) {
       throw Exception('wenku8 API failed: $e');
     }
+  }
+
+  /// Cover JPEG via official App relay (`action=book&do=cover`).
+  Future<Uint8List> fetchCoverBytes(String aid) async {
+    final bytes = await _appApiBytes('action=book&do=cover&aid=$aid&t=0');
+    if (bytes.length < 8 || bytes[0] != 0xFF || bytes[1] != 0xD8) {
+      throw Exception('wenku8 cover is not JPEG (aid=$aid, len=${bytes.length})');
+    }
+    return bytes;
   }
 
   String _xmlAttr(String tag, String name) {
@@ -471,13 +485,8 @@ class Wenku8Client {
         var name = cleanText(a.attributes['title'] ?? a.text);
         if (name.length < 2) continue;
         if (RegExp(r'更多|查看|登录|注册|首页').hasMatch(name)) continue;
-        final img = a.querySelector('img') ?? a.parent?.querySelector('img');
-        var cover = absUrl(_base, img?.attributes['src']);
-        if (cover.isEmpty) {
-          cover = wenku8CoverUrl(aid);
-        } else {
-          cover = preferHttps(cover);
-        }
+        // Always use App-API cover scheme; website CDN 404s for many aids.
+        final cover = wenku8CoverUrl(aid);
         items.add({
           'aid': aid,
           'name': name,

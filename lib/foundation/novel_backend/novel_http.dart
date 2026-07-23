@@ -54,8 +54,16 @@ String normalizeNovelImageUrl(String url) {
   return u;
 }
 
-/// Wenku8 cover CDN: img.wenku8.com/image/{aid//1000}/{aid}/{aid}s.jpg
+/// Wenku8 cover: CDN is incomplete for many books (404). Use a custom scheme
+/// resolved via App API `action=book&do=cover` in [ImageDownloader].
 String wenku8CoverUrl(String aid) {
+  final id = int.tryParse(aid);
+  if (id == null) return '';
+  return 'novvera://wenku8/cover/$id';
+}
+
+/// Legacy CDN path (may 404). Kept for diagnostics / migration.
+String wenku8CoverCdnUrl(String aid) {
   final id = int.tryParse(aid);
   if (id == null) return '';
   final folder = id ~/ 1000;
@@ -68,6 +76,14 @@ String linovelibCoverUrl(String aid) {
   if (id == null) return '';
   final folder = id ~/ 1000;
   return 'https://www.linovelib.com/files/article/image/$folder/$aid/${aid}s.jpg';
+}
+
+/// Huanmeng list pages often omit cover imgs (text-only shelf links).
+/// Resolve via detail page in [ImageDownloader].
+String huanmengCoverUrl(String aid) {
+  final id = int.tryParse(aid);
+  if (id == null) return '';
+  return 'novvera://huanmeng/cover/$id';
 }
 
 Document parseHtml(String source) => html_parser.parse(source);

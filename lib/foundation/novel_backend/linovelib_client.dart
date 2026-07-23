@@ -1,11 +1,16 @@
-import 'dart:io';
+import 'dart:async';
+import 'dart:convert';
 
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:html/dom.dart';
+import 'package:novvera/foundation/appdata.dart';
+import 'package:novvera/foundation/consts.dart';
 import 'package:novvera/foundation/log.dart';
 import 'package:novvera/foundation/novel_backend/chapterlog.dart';
 import 'package:novvera/foundation/novel_backend/novel_http.dart';
 import 'package:novvera/network/cloudflare.dart';
 import 'package:novvera/network/cookie_jar.dart';
+import 'package:novvera/pages/webview.dart';
 
 const _base = 'https://www.linovelib.com';
 
@@ -394,17 +399,10 @@ class LinovelibClient {
     if (!await passSearchGuard()) {
       Log.warning('Linovelib', 'search_guard missing ticket; trying anyway');
     }
-    var res = await _http.postForm(
-      '$_base/S6/',
-      {'searchkey': keyword},
-      headers: {
-        'Origin': _base,
-        'Referer': '$_base/',
-      },
-    );
-    if (res.html.trim().isEmpty) {
-      await passSearchGuard();
-      res = await _http.postForm(
+
+    String html;
+    try {
+      var res = await _http.postForm(
         '$_base/S6/',
         {'searchkey': keyword},
         headers: {
@@ -412,8 +410,30 @@ class LinovelibClient {
           'Referer': '$_base/',
         },
       );
+      if (res.html.trim().isEmpty) {
+        await passSearchGuard();
+        res = await _http.postForm(
+          '$_base/S6/',
+          {'searchkey': keyword},
+          headers: {
+            'Origin': _base,
+            'Referer': '$_base/',
+          },
+        );
+      }
+      html = res.html;
+    } on CloudflareException catch (e) {
+      // Dio TLS ≠ browser TLS: cf_clearance from Verify cannot authorize Dio POST.
+      // Searching inside WebView uses the same fingerprint as the cookie.
+      Log.warning(
+        'Linovelib',
+        'Dio POST /S6/ blocked ($e); falling back to WebView search '
+        '(Verify homepage alone cannot fix this)',
+      );
+      html = await _searchHtmlViaWebView(keyword);
     }
-    final doc = parseHtml(res.html);
+
+    final doc = parseHtml(html);
     final items = _parseSearch(doc);
     final pagerMax = parseHtmlMaxPage(doc);
     final maxPage = inferMaxPage(
@@ -430,6 +450,145 @@ class LinovelibClient {
       'max_page': maxPage,
       'items': items,
     };
+  }
+
+  /// Run search_guard + form POST inside WebView (browser TLS + cookies).
+  Future<String> _searchHtmlViaWebView(String keyword) async {
+    final completer = Completer<String>();
+    var submitted = false;
+    final kwJson = jsonEncode(keyword);
+    final ua = (appdata.implicitData['ua'] is String &&
+            (appdata.implicitData['ua'] as String).isNotEmpty)
+        ? appdata.implicitData['ua'] as String
+        : webUA;
+
+    late final HeadlessInAppWebView headless;
+    headless = HeadlessInAppWebView(
+      webViewEnvironment: AppWebview.webViewEnvironment,
+      initialSettings: InAppWebViewSettings(
+        userAgent: ua,
+        javaScriptEnabled: true,
+        thirdPartyCookiesEnabled: true,
+      ),
+      initialUrlRequest: URLRequest(url: WebUri('$_base/')),
+      onLoadStop: (controller, url) async {
+        if (completer.isCompleted) return;
+        try {
+          final href = url?.toString() ?? '';
+          if (!submitted) {
+            submitted = true;
+            // Seed jar cookies into WebView, then redeem search_guard & POST.
+            await _injectJarCookies(controller);
+            await controller.evaluateJavascript(source: '''
+(async function() {
+  try {
+    await fetch('/S6/?search_guard=css', {credentials:'include'});
+    var jsTxt = await fetch('/S6/?search_guard=js', {credentials:'include'})
+      .then(function(r){ return r.text(); });
+    eval(jsTxt);
+    await new Promise(function(r){ setTimeout(r, 900); });
+    await fetch('/S6/?search_guard=redeem&r=' + Date.now(), {credentials:'include'});
+    await new Promise(function(r){ setTimeout(r, 900); });
+    await fetch('/S6/?search_guard=redeem&r=' + Date.now(), {credentials:'include'});
+    var form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/S6/';
+    var input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'searchkey';
+    input.value = $kwJson;
+    form.appendChild(input);
+    document.body.appendChild(form);
+    form.submit();
+  } catch (e) {
+    window.__linovelibSearchErr = String(e);
+  }
+})();
+''');
+            return;
+          }
+
+          // After submit: wait until result markup or error appears.
+          final err = await controller.evaluateJavascript(
+            source: 'window.__linovelibSearchErr || ""',
+          );
+          if (err is String && err.isNotEmpty) {
+            throw Exception('WebView search JS: $err');
+          }
+          final html = await controller.evaluateJavascript(
+            source: 'document.documentElement.outerHTML',
+          );
+          if (html is! String || html.length < 200) return;
+          final lower = html.toLowerCase();
+          if (lower.contains('just a moment') ||
+              lower.contains('attention required') ||
+              lower.contains('challenge-platform')) {
+            // Still on CF interstitial — wait for next loadStop.
+            return;
+          }
+          if (href.contains('/S6') ||
+              html.contains('se-result') ||
+              html.contains('search-result') ||
+              html.contains('没有搜索到') ||
+              html.contains('搜索结果')) {
+            // Persist WebView cookies (incl. cf_clearance) back to Dio jar.
+            final cookies = await controller.getCookies('$_base/');
+            if (cookies != null && cookies.isNotEmpty) {
+              SingleInstanceCookieJar.instance
+                  ?.saveFromResponse(Uri.parse('$_base/'), cookies);
+            }
+            final nextUa = await controller.getUA();
+            if (nextUa != null && nextUa.isNotEmpty) {
+              appdata.implicitData['ua'] = nextUa;
+              appdata.writeImplicitData();
+            }
+            if (!completer.isCompleted) completer.complete(html);
+            await headless.dispose();
+          }
+        } catch (e, s) {
+          Log.error('Linovelib', 'WebView search: $e\n$s');
+          if (!completer.isCompleted) completer.completeError(e);
+          try {
+            await headless.dispose();
+          } catch (_) {}
+        }
+      },
+    );
+
+    await headless.run();
+    try {
+      return await completer.future.timeout(const Duration(seconds: 50));
+    } on TimeoutException {
+      try {
+        await headless.dispose();
+      } catch (_) {}
+      throw Exception(
+        '哔哩轻小说搜索超时：站点对 App 内 HTTP 客户端拦截了 POST /S6/，'
+        'WebView 回退也未在限时内完成。请稍后重试。',
+      );
+    }
+  }
+
+  Future<void> _injectJarCookies(InAppWebViewController controller) async {
+    final jar = SingleInstanceCookieJar.instance;
+    if (jar == null) return;
+    final cm = CookieManager.instance(
+      webViewEnvironment: AppWebview.webViewEnvironment,
+    );
+    final cookies = jar.loadForRequest(Uri.parse('$_base/'));
+    for (final c in cookies) {
+      try {
+        await cm.setCookie(
+          url: WebUri('$_base/'),
+          name: c.name,
+          value: c.value,
+          domain: c.domain ?? '.linovelib.com',
+          path: c.path ?? '/',
+          isSecure: c.secure,
+          webViewController: controller,
+        );
+      } catch (_) {}
+    }
   }
 
   List<Map<String, dynamic>> _parseSearch(Document doc) {

@@ -312,6 +312,7 @@ class HuanmengClient {
       final tags = cleanText(block.querySelector('.red-lx')?.text);
       var cover = _coverInCard(block, aid);
       if (cover.isEmpty) cover = coverIndex[aid] ?? '';
+      if (cover.isEmpty) cover = huanmengCoverUrl(aid);
 
       items.add({
         'aid': aid,
@@ -341,6 +342,7 @@ class HuanmengClient {
       block ??= a.parent;
       var cover = block != null ? _coverInCard(block, aid) : '';
       if (cover.isEmpty) cover = coverIndex[aid] ?? '';
+      if (cover.isEmpty) cover = huanmengCoverUrl(aid);
       var author = block != null ? _authorInCard(block) : '';
       if (author.isEmpty) author = authorIndex[aid] ?? '';
       items.add({
@@ -441,6 +443,7 @@ class HuanmengClient {
       if (cover.isEmpty) cover = coverIndex[aid] ?? '';
       var author = _authorInCard(card);
       if (author.isEmpty) author = authorIndex[aid] ?? '';
+      if (cover.isEmpty) cover = huanmengCoverUrl(aid);
       return {
         'aid': aid,
         'name': name,
@@ -603,6 +606,14 @@ class HuanmengClient {
     };
     _bookCache[aid] = Map.from(data);
     return data;
+  }
+
+  /// Real cover URL from detail HTML (list pages often have no img).
+  Future<String> resolveCoverUrl(String aid) async {
+    final info = await bookDetail(aid);
+    final c = (info['cover'] ?? '').toString().trim();
+    if (c.startsWith('http')) return c;
+    throw Exception('huanmeng cover missing for aid=$aid');
   }
 
   Future<Map<String, dynamic>> catalog(String aid) async {

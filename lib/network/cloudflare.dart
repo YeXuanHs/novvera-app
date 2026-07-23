@@ -142,17 +142,31 @@ String _peekBody(Response response) {
 }
 
 /// POST/API paths (e.g. linovelib `/S6/`) usually do not render a CF
-/// challenge page on GET — opening them makes Verify look like a no-op.
+/// challenge page on GET — opening the site root makes Verify look like a
+/// no-op (homepage has no challenge CSS). Prefer staying on the same host
+/// root only when the path is clearly an asset; for `/S6/` keep the URL so
+/// the search form can load (and linovelib search already WebView-falls-back).
 String _challengeBrowseUrl(String url) {
   final uri = Uri.tryParse(url);
   if (uri == null || uri.host.isEmpty) return url;
   final path = uri.path;
-  final isSearchPost = path == '/S6' || path == '/S6/' || path.startsWith('/S6/');
   final looksLikeAsset = RegExp(
     r'\.(jpe?g|png|gif|webp|css|js|ico|woff2?|mp3|mp4)(\?|$)',
     caseSensitive: false,
   ).hasMatch(path);
-  if (isSearchPost || looksLikeAsset) {
+  if (looksLikeAsset) {
+    return '${uri.scheme}://${uri.host}/';
+  }
+  // /S6/ POST challenges: open homepage only as last resort for cookie minting.
+  // Prefer / so WebView can run; Dio still cannot reuse cf_clearance (TLS bind).
+  final isSearchPost =
+      path == '/S6' || path == '/S6/' || path.startsWith('/S6/');
+  if (isSearchPost) {
+    Log.info(
+      'Cloudflare',
+      'Verify for linovelib /S6/ opens homepage to mint cookies; '
+      'search itself uses WebView POST (Dio cannot reuse cf_clearance).',
+    );
     return '${uri.scheme}://${uri.host}/';
   }
   return url;
@@ -234,7 +248,8 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
         if (!isChallenging) {
           Log.info(
             "Cloudflare",
-            "Cloudflare is passed due to there is no challenge css",
+            "No challenge UI on page — waiting for cf_clearance cookie "
+            "(homepage often has no CF widget to click)",
           );
           var ua = controller.userAgent;
           if (ua != null) {
@@ -275,7 +290,8 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
         if (!isChallenging) {
           Log.info(
             "Cloudflare",
-            "Cloudflare is passed due to there is no challenge css",
+            "No challenge UI on page — waiting for cf_clearance cookie "
+            "(homepage often has no CF widget to click)",
           );
           var ua = await controller.getUA();
           if (ua != null) {

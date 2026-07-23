@@ -1,5 +1,3 @@
-import 'dart:collection';
-
 import 'package:novvera/foundation/appdata.dart';
 import 'package:novvera/foundation/comic_source/comic_source.dart';
 import 'package:novvera/foundation/consts.dart';
@@ -203,25 +201,9 @@ ComicSource _buildSource({
     ),
   ];
 
-  // wenku8 App search: homepage is mixed (title+author merge). Keep explicit
-  // 书名 / 作者; detail-page author chip must use `author`, not mixed.
-  final List<SearchOptions>? searchOptions;
-  if (key == 'wenku8') {
-    searchOptions = [
-      SearchOptions(
-        LinkedHashMap.from({
-          'mixed': '综合',
-          'articlename': '书名',
-          'author': '作者',
-        }),
-        '搜索类型',
-        'select',
-        'mixed',
-      ),
-    ];
-  } else {
-    searchOptions = null;
-  }
+  // wenku8 search UI has no type switch — App "综合" is articlename+author merge.
+  // Author-only search is only reached via detail-page author chip (options=author).
+  final List<SearchOptions>? searchOptions = null;
 
   return ComicSource(
     name,
@@ -293,7 +275,10 @@ Map<String, dynamic> _imageLoadingConfig(String sourceKey, String imageKey) {
     'huanmeng' => 'https://www.huanmengacg.com/',
     _ => 'https://www.linovelib.com/',
   };
-  final url = normalizeNovelImageUrl(imageKey);
+  // Preserve custom cover schemes; only normalize http(s) novel images.
+  final url = imageKey.startsWith('novvera://')
+      ? imageKey
+      : normalizeNovelImageUrl(imageKey);
   final ua = appdata.implicitData['ua'];
   return {
     'url': url,
@@ -310,6 +295,7 @@ String _fallbackCover(String sourceKey, String aid) {
   return switch (sourceKey) {
     'wenku8' => wenku8CoverUrl(aid),
     'linovelib' => linovelibCoverUrl(aid),
+    'huanmeng' => huanmengCoverUrl(aid),
     _ => '',
   };
 }
@@ -317,9 +303,17 @@ String _fallbackCover(String sourceKey, String aid) {
 Comic _itemToComic(Map<String, dynamic> item, String sourceKey) {
   final aid = '${item['aid'] ?? ''}';
   final title = (item['name'] ?? item['title'] ?? '').toString();
-  var cover = preferHttps((item['cover'] ?? '').toString());
+  var cover = (item['cover'] ?? '').toString().trim();
+  // Do not preferHttps custom schemes (novvera://wenku8/cover/…).
+  if (cover.startsWith('http://') || cover.startsWith('https://')) {
+    cover = preferHttps(cover);
+  }
   if (cover.isEmpty && aid.isNotEmpty) {
     cover = _fallbackCover(sourceKey, aid);
+  }
+  // Wenku8 list payloads may still carry CDN links — force API cover scheme.
+  if (sourceKey == 'wenku8' && aid.isNotEmpty) {
+    cover = wenku8CoverUrl(aid);
   }
   var author = (item['author_raw'] ?? '').toString().trim();
   if (author.isEmpty) {
@@ -332,29 +326,13 @@ Comic _itemToComic(Map<String, dynamic> item, String sourceKey) {
   }
   author = author.replaceFirst(RegExp(r'^作者[:：]\s*'), '').trim();
 
-  final tags = <String>[];
-  final tagStr = item['tags']?.toString();
-  if (tagStr != null && tagStr.isNotEmpty) {
-    tags.addAll(
-      tagStr.split(RegExp(r'[\s,/|]+')).where((e) => e.trim().isNotEmpty),
-    );
-  }
-  // Huanmeng cards: title + author only — hide 连载/完结 status chips.
-  if (sourceKey != 'huanmeng') {
-    final status = item['status']?.toString();
-    if (status != null && status.isNotEmpty) {
-      tags.add(status);
-    }
-  } else {
-    tags.removeWhere((t) => t == '连载' || t == '完结' || t == '連載' || t == '完結');
-  }
-  // Cards show title + author only; synopsis belongs on the detail page.
+  // List / search cards: title + author + cover only (no tag chips).
   return Comic(
     title,
     cover,
     aid,
     author,
-    tags.isEmpty ? null : tags,
+    null,
     '',
     sourceKey,
     null,
@@ -496,9 +474,14 @@ Future<Res<ComicDetails>> _loadComicInfo(String source, String id) async {
     );
 
     final title = (info['name'] ?? catalog['title'] ?? '').toString();
-    var cover = preferHttps((info['cover'] ?? '').toString());
-    if (cover.isEmpty) {
-      cover = _fallbackCover(source, id);
+    var cover = (info['cover'] ?? '').toString().trim();
+    if (source == 'wenku8') {
+      cover = wenku8CoverUrl(id);
+    } else {
+      cover = preferHttps(cover);
+      if (cover.isEmpty) {
+        cover = _fallbackCover(source, id);
+      }
     }
     final authorRaw = (info['author_raw'] ?? '').toString();
     var intro = (info['intro'] ?? '').toString().trim();

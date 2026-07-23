@@ -5,11 +5,16 @@ import 'package:flutter_qjs/flutter_qjs.dart';
 import 'package:novvera/foundation/cache_manager.dart';
 import 'package:novvera/foundation/comic_source/comic_source.dart';
 import 'package:novvera/foundation/consts.dart';
+import 'package:novvera/foundation/novel_backend/huanmeng_client.dart';
+import 'package:novvera/foundation/novel_backend/wenku8_client.dart';
 import 'package:novvera/utils/image.dart';
 
 import 'app_dio.dart';
 
 abstract class ImageDownloader {
+  static const _wenku8CoverPrefix = 'novvera://wenku8/cover/';
+  static const _huanmengCoverPrefix = 'novvera://huanmeng/cover/';
+
   static Stream<ImageDownloadProgress> loadThumbnail(
       String url, String? sourceKey,
       [String? cid]) async* {
@@ -71,16 +76,47 @@ abstract class ImageDownloader {
       }
     }
 
+    String requestUrl = configs['url'] ?? url;
+    if (requestUrl.startsWith('//')) {
+      requestUrl = 'https:$requestUrl';
+    }
+
+    // Wenku8: CDN often 404; fetch JPEG from App API.
+    if (requestUrl.startsWith(_wenku8CoverPrefix) ||
+        (sourceKey == 'wenku8' &&
+            requestUrl.contains('img.wenku8.com/image/'))) {
+      final aid = requestUrl.startsWith(_wenku8CoverPrefix)
+          ? requestUrl.substring(_wenku8CoverPrefix.length)
+          : RegExp(r'/(\d+)/\1s?\.jpg').firstMatch(requestUrl)?.group(1);
+      if (aid != null && aid.isNotEmpty) {
+        final bytes = await Wenku8Client.instance.fetchCoverBytes(aid);
+        await CacheManager().writeCache(cacheKey, bytes);
+        yield ImageDownloadProgress(
+          currentBytes: bytes.length,
+          totalBytes: bytes.length,
+          imageBytes: bytes,
+        );
+        return;
+      }
+    }
+
+    // Huanmeng: list/home often has text-only links with no cover img.
+    // Resolve real cover from detail page, then download like a normal URL.
+    if (requestUrl.startsWith(_huanmengCoverPrefix)) {
+      final aid = requestUrl.substring(_huanmengCoverPrefix.length);
+      if (aid.isEmpty) {
+        throw 'Error: Empty huanmeng cover aid.';
+      }
+      requestUrl = await HuanmengClient.instance.resolveCoverUrl(aid);
+      configs['url'] = requestUrl;
+    }
+
     var dio = AppDio(BaseOptions(
       headers: Map<String, dynamic>.from(configs['headers']),
       method: configs['method'] ?? 'GET',
       responseType: ResponseType.stream,
     ));
 
-    String requestUrl = configs['url'] ?? url;
-    if (requestUrl.startsWith('//')) {
-      requestUrl = 'https:$requestUrl';
-    }
     var req = await dio.request<ResponseBody>(requestUrl, data: configs['data']);
     final status = req.statusCode ?? 0;
     if (status >= 400) {
