@@ -116,7 +116,7 @@ class NovelApiClient {
     final c = LinovelibClient.instance;
     if (path == '/meta/rank-types') {
       return c.rank(
-        (q['type'] ?? 'allvisit').toString(),
+        (q['type'] ?? 'monthvisit').toString(),
         int.tryParse('${q['page'] ?? 1}') ?? 1,
       );
     }
@@ -157,7 +157,7 @@ class NovelApiClient {
     final c = HuanmengClient.instance;
     if (path == '/meta/rank-types') {
       return c.rank(
-        (q['type'] ?? 'allvisit').toString(),
+        (q['type'] ?? 'top').toString(),
         int.tryParse('${q['page'] ?? 1}') ?? 1,
       );
     }

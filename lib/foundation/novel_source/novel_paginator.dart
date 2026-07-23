@@ -50,7 +50,8 @@ List<NovelBlock> parseNovelBlocks(
   for (final raw in content.split('\n')) {
     final line = raw.trimRight();
     final trimmed = line.trim();
-    // Drop blank lines — wenku8 dumps often pad 10+ empty lines after titles.
+    // Drop blank source lines (wenku8 often pads with space-only lines after
+    // titles). Visual paragraph gaps are inserted when joining paragraphs.
     if (trimmed.isEmpty) continue;
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
       flushText();
@@ -59,7 +60,10 @@ List<NovelBlock> parseNovelBlocks(
       }
       continue;
     }
-    if (textBuf.isNotEmpty) textBuf.writeln();
+    // One blank line between paragraphs so Text renders real paragraph gaps.
+    if (textBuf.isNotEmpty) {
+      textBuf.write('\n\n');
+    }
     textBuf.write(trimmed);
   }
   flushText();
@@ -78,22 +82,31 @@ List<NovelBlock> parseNovelBlocks(
 
 /// Gallery pagination: fill viewport with text; images force end of text page
 /// and occupy an exclusive page of their own.
+///
+/// Keep [padding] in sync with [_buildNovelTextPage] / continuous novel list.
 List<NovelGalleryPage> paginateNovelGallery({
   required List<NovelBlock> blocks,
   required Size viewport,
   required TextStyle style,
-  EdgeInsets padding = const EdgeInsets.fromLTRB(24, 20, 24, 56),
+  EdgeInsets padding = const EdgeInsets.fromLTRB(24, 20, 24, 88),
 }) {
   final maxWidth = (viewport.width - padding.horizontal).clamp(80.0, 100000.0);
   final maxHeight = (viewport.height - padding.vertical).clamp(80.0, 100000.0);
   final pages = <NovelGalleryPage>[];
   final buf = StringBuffer();
+  final strut = StrutStyle.fromTextStyle(style, forceStrutHeight: true);
+  const heightBehavior = TextHeightBehavior(
+    applyHeightToFirstAscent: false,
+    applyHeightToLastDescent: false,
+  );
 
   double measure(String text) {
     if (text.trim().isEmpty) return 0;
     final tp = TextPainter(
       text: TextSpan(text: text, style: style),
       textDirection: TextDirection.ltr,
+      strutStyle: strut,
+      textHeightBehavior: heightBehavior,
     )..layout(maxWidth: maxWidth);
     return tp.height;
   }

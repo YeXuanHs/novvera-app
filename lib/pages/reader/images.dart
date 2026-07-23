@@ -1,5 +1,8 @@
 part of 'reader.dart';
 
+/// Clears page-number / clock overlay so the last novel line is not clipped.
+const _kNovelReaderBottomInset = 88.0;
+
 class _ReaderImages extends StatefulWidget {
   const _ReaderImages({super.key});
 
@@ -299,12 +302,20 @@ class _GalleryModeState extends State<_GalleryMode>
       height: 1.75,
       color: Theme.of(context).colorScheme.onSurface,
     );
+    // Same horizontal inset as _buildNovelTextPage (centered column on wide screens).
+    final hPad =
+        viewport.width > 720 ? (viewport.width - 720) / 2 + 24.0 : 24.0;
     final galleryPages = paginateNovelGallery(
       blocks: NovelPageCache.blocks,
       viewport: viewport,
       style: style,
-      // Match _buildNovelTextPage + clear page-number overlay (~bottom: 13).
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 56),
+      // Match _buildNovelTextPage; clear page-number / clock overlay.
+      padding: EdgeInsets.fromLTRB(
+        hPad,
+        20,
+        hPad,
+        _kNovelReaderBottomInset + MediaQuery.paddingOf(context).bottom,
+      ),
     );
     NovelPageCache.clearTexts();
     final keys = <String>[];
@@ -1141,20 +1152,22 @@ class _ContinuousModeState extends State<_ContinuousMode>
   }
 
   /// Continuous novel reading: full-width paragraphs stacked vertically.
-  ///
-  /// Bottom inset clears the always-on page number / clock overlay
-  /// ([buildPageInfoText] sits at bottom: 13) so the last line is not clipped.
-  static const _novelBottomInset = 56.0;
   static const _novelImageFallbackHeight = 96.0;
 
   Widget _buildNovelContinuous(BuildContext context) {
     final blocks = NovelPageCache.blocks;
     final mq = MediaQuery.sizeOf(context);
+    final bottomSafe = MediaQuery.paddingOf(context).bottom;
     final pad = mq.width > 720 ? (mq.width - 720) / 2 + 24.0 : 24.0;
     final style = TextStyle(
       fontSize: 17,
       height: 1.75,
       color: context.colorScheme.onSurface,
+    );
+    final strut = StrutStyle.fromTextStyle(style, forceStrutHeight: true);
+    const heightBehavior = TextHeightBehavior(
+      applyHeightToFirstAscent: false,
+      applyHeightToLastDescent: false,
     );
 
     // Ensure images list length matches blocks for progress (1 block ≈ 1 L).
@@ -1193,7 +1206,12 @@ class _ContinuousModeState extends State<_ContinuousMode>
 
     Widget list = ListView.builder(
       controller: controller,
-      padding: EdgeInsets.fromLTRB(pad, 20, pad, _novelBottomInset),
+      padding: EdgeInsets.fromLTRB(
+        pad,
+        20,
+        pad,
+        _kNovelReaderBottomInset + bottomSafe,
+      ),
       itemCount: blocks.length,
       itemBuilder: (context, index) {
         final b = blocks[index];
@@ -1212,8 +1230,13 @@ class _ContinuousModeState extends State<_ContinuousMode>
         }
         final text = b is NovelTextBlock ? b.text : '';
         return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Text(text, style: style),
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text(
+            text,
+            style: style,
+            strutStyle: strut,
+            textHeightBehavior: heightBehavior,
+          ),
         );
       },
     );
@@ -1492,20 +1515,34 @@ ImageProvider _createImageProvider(int page, BuildContext context) {
 
 Widget _buildNovelTextPage(BuildContext context, String text) {
   final width = MediaQuery.sizeOf(context).width;
+  final bottomSafe = MediaQuery.paddingOf(context).bottom;
   final pad = width > 720 ? (width - 720) / 2 + 24.0 : 24.0;
+  final style = TextStyle(
+    fontSize: 17,
+    height: 1.75,
+    color: context.colorScheme.onSurface,
+  );
+  final strut = StrutStyle.fromTextStyle(style, forceStrutHeight: true);
+  const heightBehavior = TextHeightBehavior(
+    applyHeightToFirstAscent: false,
+    applyHeightToLastDescent: false,
+  );
   return ColoredBox(
     color: context.colorScheme.surface,
     child: SizedBox.expand(
       child: SingleChildScrollView(
-        // Bottom 56 clears page number / clock so last lines are not clipped.
-        padding: EdgeInsets.fromLTRB(pad, 20, pad, 56),
+        // Keep in sync with paginateNovelGallery padding / overlay clearance.
+        padding: EdgeInsets.fromLTRB(
+          pad,
+          20,
+          pad,
+          _kNovelReaderBottomInset + bottomSafe,
+        ),
         child: Text(
           text,
-          style: TextStyle(
-            fontSize: 17,
-            height: 1.75,
-            color: context.colorScheme.onSurface,
-          ),
+          style: style,
+          strutStyle: strut,
+          textHeightBehavior: heightBehavior,
         ),
       ),
     ),

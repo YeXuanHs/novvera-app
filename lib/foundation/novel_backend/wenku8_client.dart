@@ -22,19 +22,19 @@ const _loginRefreshInterval = Duration(hours: 1);
 const _searchPageSize = 10;
 
 const _rankTypes = <String, String>{
-  'allvisit': '总点击榜',
-  'allvote': '总推荐榜',
-  'monthvisit': '月点击榜',
-  'monthvote': '月推荐榜',
-  'weekvisit': '周点击榜',
-  'weekvote': '周推荐榜',
-  'dayvisit': '日点击榜',
-  'dayvote': '日推荐榜',
-  'postdate': '新书一览',
+  'allvisit': '总点击排行',
+  'allvote': '总推荐排行',
+  'monthvisit': '月点击排行',
+  'monthvote': '月推荐排行',
+  'weekvisit': '周点击排行',
+  'weekvote': '周推荐排行',
+  'dayvisit': '日点击排行',
+  'dayvote': '日推荐排行',
+  'postdate': '最新入库',
   'lastupdate': '最近更新',
-  'goodnum': '总收藏榜',
+  'goodnum': '总收藏量排行',
   'size': '字数排行',
-  'done': '完结全本',
+  'done': '完结小说列表',
 };
 
 const _watermark = [

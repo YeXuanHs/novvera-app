@@ -9,35 +9,36 @@ import 'package:novvera/network/cookie_jar.dart';
 
 const _base = 'https://www.linovelib.com';
 
+/// Labels / paths follow https://www.linovelib.com/top.html sidebar.
 const _rankTypes = <String, String>{
-  'allvisit': '总点击榜',
-  'allvote': '总推荐榜',
   'monthvisit': '月点击榜',
-  'monthvote': '月推荐榜',
   'weekvisit': '周点击榜',
+  'monthvote': '月推荐榜',
   'weekvote': '周推荐榜',
-  'dayvisit': '日点击榜',
-  'dayvote': '日推荐榜',
-  'postdate': '新书一览',
+  'monthflower': '月鲜花榜',
+  'weekflower': '周鲜花榜',
+  'monthegg': '月鸡蛋榜',
+  'weekegg': '周鸡蛋榜',
   'lastupdate': '最近更新',
-  'goodnum': '总收藏榜',
-  'size': '字数排行',
-  'done': '完结全本',
+  'postdate': '最新入库',
+  'goodnum': '收藏榜',
+  'newhot': '新书榜',
+  'done': '全本',
 };
 
 const _rankPaths = <String, String>{
-  'allvisit': '/topfull/allvisit/{page}.html',
-  'allvote': '/top/monthvote/{page}.html',
   'monthvisit': '/top/monthvisit/{page}.html',
-  'monthvote': '/top/monthvote/{page}.html',
   'weekvisit': '/top/weekvisit/{page}.html',
+  'monthvote': '/top/monthvote/{page}.html',
   'weekvote': '/top/weekvote/{page}.html',
-  'dayvisit': '/top/weekvisit/{page}.html',
-  'dayvote': '/top/weekvote/{page}.html',
-  'postdate': '/top/postdate/{page}.html',
+  'monthflower': '/top/monthflower/{page}.html',
+  'weekflower': '/top/weekflower/{page}.html',
+  'monthegg': '/top/monthegg/{page}.html',
+  'weekegg': '/top/weekegg/{page}.html',
   'lastupdate': '/top/lastupdate/{page}.html',
+  'postdate': '/top/postdate/{page}.html',
   'goodnum': '/top/goodnum/{page}.html',
-  'size': '/top/newhot/{page}.html',
+  'newhot': '/top/newhot/{page}.html',
   'done': '/topfull/allvisit/{page}.html',
 };
 

@@ -5,38 +5,65 @@ import 'package:novvera/network/cloudflare.dart';
 
 const _base = 'https://www.huanmengacg.com';
 
+/// Site categories: genre tags + 排行 / 完本 (not wenku8-style click ranks).
 const _rankTypes = <String, String>{
-  'allvisit': '总点击榜',
-  'allvote': '总推荐榜',
-  'monthvisit': '月点击榜',
-  'monthvote': '月推荐榜',
-  'weekvisit': '周点击榜',
-  'weekvote': '周推荐榜',
-  'dayvisit': '日点击榜',
-  'dayvote': '日推荐榜',
-  'postdate': '新书一览',
-  'lastupdate': '最近更新',
-  'goodnum': '总收藏榜',
-  'size': '字数排行',
-  'done': '完结全本',
+  'top': '排行',
+  'done': '完本',
+  'tag_1': '校园',
+  'tag_2': '青春',
+  'tag_3': '恋爱',
+  'tag_4': '治愈',
+  'tag_5': '群像',
+  'tag_6': '竞技',
+  'tag_7': '音乐',
+  'tag_8': '美食',
+  'tag_9': '旅行',
+  'tag_10': '欢乐向',
+  'tag_11': '经营',
+  'tag_12': '职场',
+  'tag_13': '斗智',
+  'tag_14': '脑洞',
+  'tag_15': '宅文化',
+  'tag_16': '穿越',
+  'tag_17': '奇幻',
+  'tag_18': '魔法',
+  'tag_19': '异能',
+  'tag_20': '战斗',
+  'tag_21': '科幻',
+  'tag_22': '机战',
+  'tag_23': '战争',
+  'tag_24': '冒险',
+  'tag_25': '龙傲天',
+  'tag_26': '悬疑',
+  'tag_27': '犯罪',
+  'tag_28': '复仇',
+  'tag_29': '黑暗',
+  'tag_30': '猎奇',
+  'tag_31': '惊悚',
+  'tag_32': '间谍',
+  'tag_33': '末日',
+  'tag_34': '游戏',
+  'tag_35': '大逃杀',
+  'tag_36': '青梅竹马',
+  'tag_37': '妹妹',
+  'tag_38': '女儿',
+  'tag_39': 'JK',
+  'tag_40': 'JC',
+  'tag_41': '大小姐',
+  'tag_42': '性转',
+  'tag_43': '伪娘',
+  'tag_44': '人外',
+  'tag_45': '后宫',
+  'tag_46': '百合',
+  'tag_47': '耽美',
+  'tag_48': 'NTR',
+  'tag_49': '女性视角',
 };
 
-/// Map builtin rank keys onto huanmeng list pages.
-/// Site has Cloudflare; no dedicated wenku8-style rank API.
-const _rankPaths = <String, String>{
-  'allvisit': '/index.php/custom/top',
-  'allvote': '/index.php/custom/top',
-  'monthvisit': '/index.php/book/category/tags/1',
-  'monthvote': '/index.php/book/category/tags/3',
-  'weekvisit': '/index.php/book/category/tags/2',
-  'weekvote': '/index.php/book/category/tags/4',
-  'dayvisit': '/index.php/book/category/tags/10',
-  'dayvote': '/index.php/book/category/tags/5',
-  'postdate': '/index.php/book/category/tags/6',
-  'lastupdate': '/index.php/book/category/tags/12',
-  'goodnum': '/index.php/book/category/tags/11',
-  'size': '/index.php/book/category/tags/7',
+final _rankPaths = <String, String>{
+  'top': '/index.php/custom/top',
   'done': '/index.php/book/category/finish/2',
+  for (var i = 1; i <= 49; i++) 'tag_$i': '/index.php/book/category/tags/$i',
 };
 
 final _aidRe = RegExp(r'/book/info/(\d+)');
@@ -313,7 +340,7 @@ class HuanmengClient {
 
   Future<Map<String, dynamic>> rank(String type, int page) async {
     await ensureSession();
-    final path = _rankPaths[type] ?? _rankPaths['allvisit']!;
+    final path = _rankPaths[type] ?? _rankPaths['top']!;
     final res = await _http.getHtml(_listUrl(path, page));
     final doc = parseHtml(res.html);
     final items = _parseBookCards(doc);

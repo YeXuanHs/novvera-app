@@ -16,7 +16,7 @@ bool isNovelSource(String? key) => key != null && kNovelSourceKeys.contains(key)
 /// Built-in light-novel sources backed by in-process Dart scrapers.
 ///
 /// - **发现 (Explore)**: homepage recommendation sections (multipart)
-/// - **分类 (Categories)**: rank types via Ranking page
+/// - **分类 (Categories)**: per-source ranks / tags matching the site or App API
 List<ComicSource> createBuiltinNovelSources() {
   return [
     _buildSource(name: '轻小说文库', key: 'wenku8'),
@@ -25,35 +25,106 @@ List<ComicSource> createBuiltinNovelSources() {
   ];
 }
 
-const _rankTypes = <String, String>{
-  'allvisit': '总点击榜',
-  'allvote': '总推荐榜',
-  'monthvisit': '月点击榜',
-  'monthvote': '月推荐榜',
-  'weekvisit': '周点击榜',
-  'weekvote': '周推荐榜',
-  'dayvisit': '日点击榜',
-  'dayvote': '日推荐榜',
-  'postdate': '新书一览',
+/// Official wenku8 App / MewX rank tabs.
+const _wenku8RankTypes = <String, String>{
+  'allvisit': '总点击排行',
+  'allvote': '总推荐排行',
+  'monthvisit': '月点击排行',
+  'monthvote': '月推荐排行',
+  'weekvisit': '周点击排行',
+  'weekvote': '周推荐排行',
+  'dayvisit': '日点击排行',
+  'dayvote': '日推荐排行',
+  'postdate': '最新入库',
   'lastupdate': '最近更新',
-  'goodnum': '总收藏榜',
+  'goodnum': '总收藏量排行',
   'size': '字数排行',
-  'done': '完结全本',
+  'done': '完结小说列表',
 };
 
-ComicSource _buildSource({
-  required String name,
-  required String key,
-}) {
-  final ranking = RankingData(
-    Map<String, String>.from(_rankTypes),
-    (option, page) => _loadRank(key, option, page),
-    null,
-  );
+/// https://www.linovelib.com/top.html sidebar.
+const _linovelibRankTypes = <String, String>{
+  'monthvisit': '月点击榜',
+  'weekvisit': '周点击榜',
+  'monthvote': '月推荐榜',
+  'weekvote': '周推荐榜',
+  'monthflower': '月鲜花榜',
+  'weekflower': '周鲜花榜',
+  'monthegg': '月鸡蛋榜',
+  'weekegg': '周鸡蛋榜',
+  'lastupdate': '最近更新',
+  'postdate': '最新入库',
+  'goodnum': '收藏榜',
+  'newhot': '新书榜',
+  'done': '全本',
+};
 
-  // Show every rank type as a tap target on the Categories page (not a single
-  // "排行" chip that hides the options one click deeper).
-  final rankTags = _rankTypes.entries
+/// https://www.huanmengacg.com — 排行 / 完本 + 题材 tags.
+const _huanmengBoardTypes = <String, String>{
+  'top': '排行',
+  'done': '完本',
+};
+
+const _huanmengTagTypes = <String, String>{
+  'tag_1': '校园',
+  'tag_2': '青春',
+  'tag_3': '恋爱',
+  'tag_4': '治愈',
+  'tag_5': '群像',
+  'tag_6': '竞技',
+  'tag_7': '音乐',
+  'tag_8': '美食',
+  'tag_9': '旅行',
+  'tag_10': '欢乐向',
+  'tag_11': '经营',
+  'tag_12': '职场',
+  'tag_13': '斗智',
+  'tag_14': '脑洞',
+  'tag_15': '宅文化',
+  'tag_16': '穿越',
+  'tag_17': '奇幻',
+  'tag_18': '魔法',
+  'tag_19': '异能',
+  'tag_20': '战斗',
+  'tag_21': '科幻',
+  'tag_22': '机战',
+  'tag_23': '战争',
+  'tag_24': '冒险',
+  'tag_25': '龙傲天',
+  'tag_26': '悬疑',
+  'tag_27': '犯罪',
+  'tag_28': '复仇',
+  'tag_29': '黑暗',
+  'tag_30': '猎奇',
+  'tag_31': '惊悚',
+  'tag_32': '间谍',
+  'tag_33': '末日',
+  'tag_34': '游戏',
+  'tag_35': '大逃杀',
+  'tag_36': '青梅竹马',
+  'tag_37': '妹妹',
+  'tag_38': '女儿',
+  'tag_39': 'JK',
+  'tag_40': 'JC',
+  'tag_41': '大小姐',
+  'tag_42': '性转',
+  'tag_43': '伪娘',
+  'tag_44': '人外',
+  'tag_45': '后宫',
+  'tag_46': '百合',
+  'tag_47': '耽美',
+  'tag_48': 'NTR',
+  'tag_49': '女性视角',
+};
+
+Map<String, String> _rankTypesFor(String key) => switch (key) {
+      'linovelib' => _linovelibRankTypes,
+      'huanmeng' => {..._huanmengBoardTypes, ..._huanmengTagTypes},
+      _ => _wenku8RankTypes,
+    };
+
+List<CategoryItem> _rankCategoryItems(String key, Map<String, String> types) {
+  return types.entries
       .map(
         (e) => CategoryItem(
           e.value,
@@ -64,20 +135,46 @@ ComicSource _buildSource({
         ),
       )
       .toList();
+}
+
+ComicSource _buildSource({
+  required String name,
+  required String key,
+}) {
+  final rankTypes = _rankTypesFor(key);
+  final ranking = RankingData(
+    Map<String, String>.from(rankTypes),
+    (option, page) => _loadRank(key, option, page),
+    null,
+  );
+
+  final List<BaseCategoryPart> categoryParts;
+  if (key == 'huanmeng') {
+    categoryParts = [
+      FixedCategoryPart('榜单', _rankCategoryItems(key, _huanmengBoardTypes)),
+      FixedCategoryPart('题材', _rankCategoryItems(key, _huanmengTagTypes)),
+    ];
+  } else if (key == 'linovelib') {
+    categoryParts = [
+      FixedCategoryPart('榜单', _rankCategoryItems(key, _linovelibRankTypes)),
+    ];
+  } else {
+    categoryParts = [
+      FixedCategoryPart('排行榜', _rankCategoryItems(key, _wenku8RankTypes)),
+    ];
+  }
 
   final categoryData = CategoryData(
     title: name,
     key: key,
-    categories: [
-      FixedCategoryPart('排行榜', rankTags),
-    ],
+    categories: categoryParts,
     enableRankingPage: false,
   );
 
   final categoryComicsData = CategoryComicsData(
     options: const [],
     load: (category, param, options, page) {
-      final type = _resolveRankType(category, param, options);
+      final type = _resolveRankType(key, category, param, options);
       return _loadRank(key, type, page);
     },
     rankingData: ranking,
@@ -307,19 +404,25 @@ Future<Res<List<Comic>>> _loadRank(String source, String type, int page) async {
   }
 }
 
-String _resolveRankType(String category, String? param, List<String> options) {
-  if (param != null && _rankTypes.containsKey(param)) {
+String _resolveRankType(
+  String source,
+  String category,
+  String? param,
+  List<String> options,
+) {
+  final types = _rankTypesFor(source);
+  if (param != null && types.containsKey(param)) {
     return param;
   }
-  if (options.isNotEmpty && _rankTypes.containsKey(options.first)) {
+  if (options.isNotEmpty && types.containsKey(options.first)) {
     return options.first;
   }
-  for (final e in _rankTypes.entries) {
+  for (final e in types.entries) {
     if (e.value == category || e.key == category) {
       return e.key;
     }
   }
-  return _rankTypes.keys.first;
+  return types.keys.first;
 }
 
 Future<Res<List<Comic>>> _loadSearch(
