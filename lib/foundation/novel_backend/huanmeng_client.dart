@@ -1,3 +1,4 @@
+import 'package:html/dom.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:novvera/foundation/log.dart';
 import 'package:novvera/foundation/novel_backend/novel_http.dart';
@@ -11,11 +12,10 @@ const _apiPassword = 'chiyu666';
 const _apiUa =
     'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36';
 
-/// Genre tags + 排行 / 完本 (same IDs as site / bookapi `tags=`).
+/// Board + genre labels (match site nav / category pages).
 const _rankTypes = <String, String>{
-  'top': '最新',
+  'top': '排行',
   'done': '完本',
-  'serializing': '连载',
   'tag_1': '校园',
   'tag_2': '青春',
   'tag_3': '恋爱',
@@ -68,17 +68,27 @@ const _rankTypes = <String, String>{
   'tag_50': '暂未分类',
 };
 
+final _rankPaths = <String, String>{
+  'top': '/index.php/custom/top',
+  'done': '/index.php/book/category/finish/2',
+  for (var i = 1; i <= 50; i++) 'tag_$i': '/index.php/book/category/tags/$i',
+};
+
+final _aidRe = RegExp(r'/book/info/(\d+)');
 final _volPrefixRe = RegExp(
   r'^(第.+?卷|特别篇|番外|短篇|全一卷|幕间)',
 );
 final _spaceRe = RegExp(r'\s+');
+final _rankPrefixRe = RegExp(r'^\d+[、．.\s]+');
 final _watermarkUrlRe = RegExp(
   r'^\(?https?://(www\.)?huanmengacg\.com/?\)?$',
   caseSensitive: false,
 );
 final _htmlEntityRe = RegExp(r'&#(\d+);');
 
-/// Huanmeng client via official `/index.php/bookapi/*` (Legado 9.0 API).
+const _junkNames = {'书籍详情', '立刻阅读', '立即阅读', '更多'};
+
+/// Huanmeng: homepage + category via HTML; search/detail/toc/body via bookapi.
 class HuanmengClient {
   HuanmengClient._();
   static final HuanmengClient instance = HuanmengClient._();
@@ -87,6 +97,9 @@ class HuanmengClient {
   final _bookCache = <String, Map<String, dynamic>>{};
   final _catalogCache = <String, Map<String, dynamic>>{};
 
+  bool _sessionReady = false;
+  DateTime? _sessionAt;
+
   Map<String, String> get _headers => {
         'User-Agent': _apiUa,
         'Referer': '$_base/',
@@ -94,9 +107,8 @@ class HuanmengClient {
 
   Future<void> init() async {
     try {
-      // Warm cookies; CF may still challenge later.
-      await _apiGet('/index.php/bookapi/search', {'page': '1', 'size': '1'});
-      Log.info('Huanmeng', 'bookapi ready');
+      await ensureSession();
+      Log.info('Huanmeng', 'session ready (HTML + bookapi)');
     } on CloudflareException catch (e) {
       Log.warning(
         'Huanmeng',
@@ -106,6 +118,404 @@ class HuanmengClient {
       Log.warning('Huanmeng', 'bootstrap: $e');
     }
   }
+
+  Future<bool> ensureSession({bool force = false}) async {
+    if (!force &&
+        _sessionReady &&
+        _sessionAt != null &&
+        DateTime.now().difference(_sessionAt!) < const Duration(minutes: 25)) {
+      return true;
+    }
+    await _http.getHtml('$_base/');
+    _sessionReady = true;
+    _sessionAt = DateTime.now();
+    return true;
+  }
+
+  // ── HTML helpers (发现 / 分类) ───────────────────────────────────────────
+
+  String _extractAid(String href) {
+    final m = _aidRe.firstMatch(href);
+    return m?.group(1) ?? '';
+  }
+
+  String _imgSrc(Element? img) {
+    if (img == null) return '';
+    var cover = lazyImgSrc(img, _base);
+    if (cover.isEmpty ||
+        cover.contains('/template/') ||
+        _isJunkCover(cover) ||
+        _isPlaceholderCover(cover)) {
+      return '';
+    }
+    return cover;
+  }
+
+  bool _isPlaceholderCover(String url) {
+    final u = url.toLowerCase();
+    if (u.startsWith('data:')) return true;
+    const bad = [
+      'placeholder',
+      'loading',
+      'lazy',
+      'nopic',
+      'no_cover',
+      'nocover',
+      'default_cover',
+      'blank',
+      'spacer',
+      '1x1',
+      'pixel.gif',
+      'transparent',
+    ];
+    for (final b in bad) {
+      if (u.contains(b)) return true;
+    }
+    return false;
+  }
+
+  bool _isJunkCover(String url) {
+    final u = url.toLowerCase();
+    if (u.contains('/img/48028.')) return true;
+    if (RegExp(r'/img/\d+\.(jpe?g|png|webp)(\?|$)').hasMatch(u)) return true;
+    return false;
+  }
+
+  String _coverInCard(Element card, String aid) {
+    for (final a in card.querySelectorAll('a[href*="/book/info/"]')) {
+      if (_extractAid(a.attributes['href'] ?? '') != aid) continue;
+      final c = _imgSrc(a.querySelector('img'));
+      if (c.isNotEmpty) return c;
+    }
+    final aids = <String>{};
+    for (final a in card.querySelectorAll('a[href*="/book/info/"]')) {
+      final id = _extractAid(a.attributes['href'] ?? '');
+      if (id.isNotEmpty) aids.add(id);
+    }
+    if (aids.length == 1 && aids.contains(aid)) {
+      return _imgSrc(card.querySelector('img'));
+    }
+    return '';
+  }
+
+  String _authorInCard(Element card) {
+    final labeled = card.querySelector(
+      '.book-author, .dg-booka2, .author, .author-text',
+    );
+    if (labeled != null) {
+      final t = cleanText(labeled.text);
+      if (t.isNotEmpty) return t;
+    }
+    final dd = card.querySelector('dd');
+    final scope = dd ?? card;
+    for (final p in scope.querySelectorAll('p')) {
+      final t = cleanText(p.text);
+      if (t.isEmpty || t.length > 40) continue;
+      if (p.classes.contains('big-book-info')) continue;
+      if (p.querySelector('.red-lx, .red-lxa, .red-2x, .fa-heart') != null) {
+        continue;
+      }
+      if (RegExp(r'^[\d.]+$').hasMatch(t)) continue;
+      if (t == '连载' || t == '完结') continue;
+      return t;
+    }
+    return '';
+  }
+
+  Map<String, String> _buildCoverIndex(Document doc) {
+    final map = <String, String>{};
+    for (final a in doc.querySelectorAll('a[href*="/book/info/"]')) {
+      final aid = _extractAid(a.attributes['href'] ?? '');
+      if (aid.isEmpty || map.containsKey(aid)) continue;
+      final c = _imgSrc(a.querySelector('img'));
+      if (c.isNotEmpty) map[aid] = c;
+    }
+    return map;
+  }
+
+  Map<String, String> _buildAuthorIndex(Document doc) {
+    final map = <String, String>{};
+
+    void put(String aid, String author) {
+      if (aid.isEmpty || author.isEmpty || map.containsKey(aid)) return;
+      map[aid] = author;
+    }
+
+    for (final el in doc.querySelectorAll('.book-author, .dg-booka2')) {
+      final author = cleanText(el.text);
+      Element? host = el.parent;
+      for (var i = 0; i < 6 && host != null; i++) {
+        final a = host.querySelector('a[href*="/book/info/"]');
+        if (a != null) {
+          put(_extractAid(a.attributes['href'] ?? ''), author);
+          break;
+        }
+        host = host.parent;
+      }
+    }
+
+    for (final dl in doc.querySelectorAll('dl')) {
+      final a = dl.querySelector(
+        'a.bigpic-book-name, a.book-name, a[href*="/book/info/"]',
+      );
+      if (a == null) continue;
+      put(_extractAid(a.attributes['href'] ?? ''), _authorInCard(dl));
+    }
+
+    return map;
+  }
+
+  List<Map<String, dynamic>> _parseBookCards(Document doc) {
+    final items = <Map<String, dynamic>>[];
+    final seen = <String>{};
+    final coverIndex = _buildCoverIndex(doc);
+    final authorIndex = _buildAuthorIndex(doc);
+
+    for (final a in doc.querySelectorAll('a.bigpic-book-name')) {
+      final href = a.attributes['href'] ?? '';
+      final aid = _extractAid(href);
+      var name = cleanText(a.text).replaceFirst(_rankPrefixRe, '');
+      if (aid.isEmpty || name.isEmpty || !seen.add(aid)) continue;
+      if (_junkNames.contains(name)) continue;
+
+      Element? block = a.parent;
+      for (var i = 0; i < 6 && block != null; i++) {
+        if (block.localName == 'dl') break;
+        block = block.parent;
+      }
+      block ??= a.parent;
+
+      var author = _authorInCard(block!);
+      if (author.isEmpty) author = authorIndex[aid] ?? '';
+      final status = cleanText(block.querySelector('.red-lxa, .red-lx')?.text);
+      var cover = _coverInCard(block, aid);
+      if (cover.isEmpty) cover = coverIndex[aid] ?? '';
+      if (cover.isEmpty) cover = huanmengCoverUrl(aid);
+
+      items.add({
+        'aid': aid,
+        'name': name,
+        'author': author,
+        'author_raw': author,
+        'cover': cover,
+        'status': status,
+      });
+    }
+
+    if (items.isNotEmpty) return items;
+
+    for (final a in doc.querySelectorAll('a[href*="/book/info/"]')) {
+      final href = a.attributes['href'] ?? '';
+      final aid = _extractAid(href);
+      var name = cleanText(a.attributes['title'] ?? a.text)
+          .replaceFirst(_rankPrefixRe, '');
+      if (aid.isEmpty || name.length < 2 || !seen.add(aid)) continue;
+      if (_junkNames.contains(name)) continue;
+      Element? block = a.parent;
+      for (var i = 0; i < 5 && block != null; i++) {
+        if (block.localName == 'li' || block.localName == 'dl') break;
+        block = block.parent;
+      }
+      block ??= a.parent;
+      var cover = block != null ? _coverInCard(block, aid) : '';
+      if (cover.isEmpty) cover = coverIndex[aid] ?? '';
+      if (cover.isEmpty) cover = huanmengCoverUrl(aid);
+      var author = block != null ? _authorInCard(block) : '';
+      if (author.isEmpty) author = authorIndex[aid] ?? '';
+      items.add({
+        'aid': aid,
+        'name': name,
+        'author': author,
+        'author_raw': author,
+        'cover': cover,
+      });
+    }
+    return items;
+  }
+
+  String _listUrl(String path, int page) {
+    if (page <= 1) return '$_base$path';
+    if (path.contains('/custom/top')) return '$_base$path';
+    return '$_base$path/page/$page';
+  }
+
+  /// Category / board pages (排行、完本、题材 tags).
+  Future<Map<String, dynamic>> rank(String type, int page) async {
+    await ensureSession();
+    final path = _rankPaths[type] ?? _rankPaths['top']!;
+    final res = await _http.getHtml(_listUrl(path, page));
+    final doc = parseHtml(res.html);
+    final items = _parseBookCards(doc);
+    final pagerMax = parseHtmlMaxPage(doc);
+    final isTop = path.contains('/custom/top');
+    final maxPage = isTop
+        ? 1
+        : inferMaxPage(
+            page,
+            items.length,
+            fullPageSize: 30,
+            parsed: pagerMax,
+          );
+    return {
+      'type': type,
+      'type_name': _rankTypes[type] ?? type,
+      'page': page,
+      'pager_max': pagerMax,
+      'max_page': maxPage,
+      'items': items,
+    };
+  }
+
+  /// Homepage recommendation blocks (热门书籍 / 本周好书 / …).
+  Future<Map<String, dynamic>> home() async {
+    await ensureSession();
+    final res = await _http.getHtml('$_base/');
+    final doc = parseHtml(res.html);
+    final coverIndex = _buildCoverIndex(doc);
+    final authorIndex = _buildAuthorIndex(doc);
+    final sections = <Map<String, dynamic>>[];
+    final seenTitles = <String>{};
+
+    Element? sectionBox(Element h2) {
+      Element? el = h2.parent;
+      for (var i = 0; i < 8 && el != null; i++) {
+        final cls = el.className;
+        if (cls.contains('listBook3') ||
+            cls.contains('alone2') ||
+            cls.contains('swiper3') ||
+            cls.contains('listTab') ||
+            cls.contains('list-book') ||
+            cls.contains('bk-book') ||
+            cls.contains('ruku-book') ||
+            cls.contains('gexin-book') ||
+            cls.contains('book-jp') ||
+            cls.contains('Update-book') ||
+            cls.contains('listBook')) {
+          return el;
+        }
+        el = el.parent;
+      }
+      Element? box = h2.parent;
+      for (var i = 0; i < 6 && box != null; i++) {
+        if (box.querySelectorAll('a[href*="/book/info/"]').length >= 3) {
+          return box;
+        }
+        box = box.parent;
+      }
+      return null;
+    }
+
+    Map<String, dynamic>? itemFromCard(
+      Element card,
+      String aid,
+      String name,
+    ) {
+      if (name.length < 2 || _junkNames.contains(name)) return null;
+      var cover = _coverInCard(card, aid);
+      if (cover.isEmpty) cover = coverIndex[aid] ?? '';
+      if (cover.isEmpty) cover = huanmengCoverUrl(aid);
+      var author = _authorInCard(card);
+      if (author.isEmpty) author = authorIndex[aid] ?? '';
+      return {
+        'aid': aid,
+        'name': name,
+        'author': author,
+        'author_raw': author,
+        'cover': cover,
+      };
+    }
+
+    for (final h2 in doc.querySelectorAll('h2')) {
+      var title = cleanText(h2.text).replaceAll('更多', '').trim();
+      if (title.isEmpty || title.length > 24) continue;
+      if (!seenTitles.add(title)) continue;
+      final box = sectionBox(h2);
+      if (box == null) continue;
+
+      final items = <Map<String, dynamic>>[];
+      final seen = <String>{};
+
+      // Prefer titled cards (精品推荐 / 排行样式).
+      for (final a in box.querySelectorAll('a.bigpic-book-name')) {
+        // Skip swiper clones when present.
+        Element? host = a.parent;
+        var skip = false;
+        for (var i = 0; i < 5 && host != null; i++) {
+          if (host.className.contains('swiper-slide-duplicate')) {
+            skip = true;
+            break;
+          }
+          host = host.parent;
+        }
+        if (skip) continue;
+
+        final aid = _extractAid(a.attributes['href'] ?? '');
+        final name = cleanText(a.text).replaceFirst(_rankPrefixRe, '');
+        if (aid.isEmpty || !seen.add(aid)) continue;
+        Element? card = a.parent;
+        for (var i = 0; i < 6 && card != null; i++) {
+          if (card.localName == 'dl' ||
+              card.localName == 'li' ||
+              card.className.contains('dg-wrapper') ||
+              card.className.contains('book-block') ||
+              card.className.contains('item')) {
+            break;
+          }
+          card = card.parent;
+        }
+        card ??= a.parent!;
+        final item = itemFromCard(card, aid, name);
+        if (item != null) items.add(item);
+      }
+
+      // Fallback: any book/info link in section.
+      if (items.length < 3) {
+        for (final a in box.querySelectorAll('a[href*="/book/info/"]')) {
+          Element? host = a.parent;
+          var skip = false;
+          for (var i = 0; i < 5 && host != null; i++) {
+            if (host.className.contains('swiper-slide-duplicate')) {
+              skip = true;
+              break;
+            }
+            host = host.parent;
+          }
+          if (skip) continue;
+
+          final aid = _extractAid(a.attributes['href'] ?? '');
+          var name = cleanText(a.attributes['title'] ?? a.text)
+              .replaceFirst(_rankPrefixRe, '');
+          if (aid.isEmpty || name.length < 2 || !seen.add(aid)) continue;
+          if (_junkNames.contains(name)) continue;
+          Element? card = a.parent;
+          for (var i = 0; i < 5 && card != null; i++) {
+            if (card.localName == 'li' ||
+                card.localName == 'dl' ||
+                card.className.contains('img-box') ||
+                card.className.contains('item') ||
+                card.className.contains('dg-wrapper')) {
+              break;
+            }
+            card = card.parent;
+          }
+          card ??= a.parent!;
+          // Prefer img alt as title when link text is empty/short.
+          if (name.length < 2) {
+            name = cleanText(card.querySelector('img')?.attributes['alt']);
+          }
+          final item = itemFromCard(card, aid, name);
+          if (item != null) items.add(item);
+        }
+      }
+
+      if (items.length < 3) continue;
+      sections.add({'title': title, 'items': items});
+    }
+
+    return {'sections': sections};
+  }
+
+  // ── bookapi (搜索 / 详情 / 目录 / 正文) ─────────────────────────────────
 
   String _apiUrl(String path, Map<String, String> query) {
     final q = <String, String>{'password': _apiPassword, ...query};
@@ -119,7 +529,13 @@ class HuanmengClient {
     final url = _apiUrl(path, query);
     final json = await _http.getJson(url, headers: _headers);
     final code = json['code'];
-    if (code != null && code != 0 && code != 200 && code != '0' && code != '200') {
+    if (code != null &&
+        code != 0 &&
+        code != 200 &&
+        code != '0' &&
+        code != '200' &&
+        code != 1 &&
+        code != '1') {
       final msg = (json['msg'] ?? json['message'] ?? 'API error').toString();
       throw Exception(msg);
     }
@@ -178,8 +594,6 @@ class HuanmengClient {
   Future<({List<Map<String, dynamic>> items, int maxPage, int? total})>
       _searchApi({
     String? key,
-    String? tags,
-    String? state,
     required int page,
     int size = 20,
   }) async {
@@ -188,8 +602,6 @@ class HuanmengClient {
       'size': '$size',
     };
     if (key != null && key.isNotEmpty) q['key'] = key;
-    if (tags != null && tags.isNotEmpty) q['tags'] = tags;
-    if (state != null && state.isNotEmpty) q['state'] = state;
     final json = await _apiGet('/index.php/bookapi/search', q);
     final data = json['data'];
     final list = <Map<String, dynamic>>[];
@@ -206,49 +618,6 @@ class HuanmengClient {
       }
     }
     return (items: list, maxPage: pages < 1 ? 1 : pages, total: total);
-  }
-
-  Future<Map<String, dynamic>> rank(String type, int page) async {
-    String? tags;
-    String? state;
-    if (type == 'done') {
-      state = '2';
-    } else if (type == 'serializing') {
-      state = '1';
-    } else if (type.startsWith('tag_')) {
-      tags = type.substring(4);
-    }
-    // `top` / unknown → latest list (no filter)
-    final res = await _searchApi(tags: tags, state: state, page: page);
-    return {
-      'type': type,
-      'type_name': _rankTypes[type] ?? type,
-      'page': page,
-      'pager_max': res.maxPage,
-      'max_page': res.maxPage,
-      'items': res.items,
-    };
-  }
-
-  Future<Map<String, dynamic>> home() async {
-    final sections = <Map<String, dynamic>>[];
-    Future<void> add(String title, Future<({List<Map<String, dynamic>> items, int maxPage, int? total})> Function() load) async {
-      try {
-        final r = await load();
-        if (r.items.isEmpty) return;
-        sections.add({'title': title, 'items': r.items});
-      } catch (e) {
-        Log.warning('Huanmeng', 'home $title: $e');
-      }
-    }
-
-    await add('最新更新', () => _searchApi(page: 1, size: 20));
-    await add('连载中', () => _searchApi(state: '1', page: 1, size: 20));
-    await add('已完结', () => _searchApi(state: '2', page: 1, size: 20));
-    await add('穿越', () => _searchApi(tags: '16', page: 1, size: 20));
-    await add('恋爱', () => _searchApi(tags: '3', page: 1, size: 20));
-
-    return {'sections': sections};
   }
 
   Future<Map<String, dynamic>> search(
@@ -306,7 +675,6 @@ class HuanmengClient {
     return info;
   }
 
-  /// Cover URL from detail API.
   Future<String> resolveCoverUrl(String aid) async {
     final info = await bookDetail(aid);
     final c = (info['cover'] ?? '').toString().trim();

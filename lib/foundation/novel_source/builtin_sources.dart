@@ -70,8 +70,7 @@ const _linovelibRankTypes = <String, String>{
 
 /// https://www.huanmengacg.com — 排行 / 完本 + 题材 tags.
 const _huanmengBoardTypes = <String, String>{
-  'top': '最新',
-  'serializing': '连载',
+  'top': '排行',
   'done': '完本',
 };
 
