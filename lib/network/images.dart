@@ -6,6 +6,7 @@ import 'package:novvera/foundation/cache_manager.dart';
 import 'package:novvera/foundation/comic_source/comic_source.dart';
 import 'package:novvera/foundation/consts.dart';
 import 'package:novvera/foundation/novel_backend/huanmeng_client.dart';
+import 'package:novvera/foundation/novel_backend/linovelib_client.dart';
 import 'package:novvera/foundation/novel_backend/wenku8_client.dart';
 import 'package:novvera/utils/image.dart';
 
@@ -14,6 +15,10 @@ import 'app_dio.dart';
 abstract class ImageDownloader {
   static const _wenku8CoverPrefix = 'novvera://wenku8/cover/';
   static const _huanmengCoverPrefix = 'novvera://huanmeng/cover/';
+  static final _linovelibCoverHost = RegExp(
+    r'linovelib\.com/files/article/image/',
+    caseSensitive: false,
+  );
 
   static Stream<ImageDownloadProgress> loadThumbnail(
       String url, String? sourceKey,
@@ -109,6 +114,20 @@ abstract class ImageDownloader {
       }
       requestUrl = await HuanmengClient.instance.resolveCoverUrl(aid);
       configs['url'] = requestUrl;
+    }
+
+    // Linovelib covers sit behind Cloudflare: Dio often gets HTML, browser OK.
+    // Fetch via client (Dio then WebView) the same way Playwright MCP can.
+    if (sourceKey == 'linovelib' || _linovelibCoverHost.hasMatch(requestUrl)) {
+      final bytes =
+          await LinovelibClient.instance.fetchCoverBytes(requestUrl);
+      await CacheManager().writeCache(cacheKey, bytes);
+      yield ImageDownloadProgress(
+        currentBytes: bytes.length,
+        totalBytes: bytes.length,
+        imageBytes: bytes,
+      );
+      return;
     }
 
     var dio = AppDio(BaseOptions(

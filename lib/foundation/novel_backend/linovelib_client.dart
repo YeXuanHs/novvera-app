@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:html/dom.dart';
@@ -8,6 +9,7 @@ import 'package:novvera/foundation/consts.dart';
 import 'package:novvera/foundation/log.dart';
 import 'package:novvera/foundation/novel_backend/chapterlog.dart';
 import 'package:novvera/foundation/novel_backend/novel_http.dart';
+import 'package:novvera/network/app_dio.dart';
 import 'package:novvera/network/cloudflare.dart';
 import 'package:novvera/network/cookie_jar.dart';
 import 'package:novvera/pages/webview.dart';
@@ -606,41 +608,36 @@ class LinovelibClient {
 
   /// Fill name/author/cover/intro from `/novel/{aid}.html` only ([bookDetail]).
   /// Hollow / error detail pages are dropped (e.g. empty shells in search hits).
+  /// All aids are fetched concurrently (no concurrency cap).
   Future<List<Map<String, dynamic>>> _enrichAids(List<String> aids) async {
     if (aids.isEmpty) return [];
-    const chunk = 4;
-    final out = <Map<String, dynamic>>[];
-    for (var i = 0; i < aids.length; i += chunk) {
-      final end = (i + chunk > aids.length) ? aids.length : i + chunk;
-      final slice = aids.sublist(i, end);
-      final parts = await Future.wait(slice.map((aid) async {
-        try {
-          final info = await bookDetail(aid);
-          if (info['hollow'] == true) {
-            Log.warning('Linovelib', 'enrich skip hollow aid=$aid');
-            return null;
-          }
-          final author = '${info['author_raw'] ?? info['author'] ?? ''}';
-          final cover = '${info['cover'] ?? ''}'.trim();
-          return <String, dynamic>{
-            'aid': aid,
-            'name': '${info['name'] ?? ''}',
-            'author': author,
-            'author_raw': author,
-            'cover': cover.isNotEmpty ? cover : linovelibCoverUrl(aid),
-            'status': '${info['status'] ?? ''}',
-            'intro': '${info['intro'] ?? ''}',
-          };
-        } catch (e) {
-          Log.warning('Linovelib', 'enrich aid=$aid: $e');
+    final parts = await Future.wait(aids.map((aid) async {
+      try {
+        final info = await bookDetail(aid);
+        if (info['hollow'] == true) {
+          Log.warning('Linovelib', 'enrich skip hollow aid=$aid');
           return null;
         }
-      }));
-      for (final p in parts) {
-        if (p != null) out.add(p);
+        final author = '${info['author_raw'] ?? info['author'] ?? ''}';
+        final cover = '${info['cover'] ?? ''}'.trim();
+        return <String, dynamic>{
+          'aid': aid,
+          'name': '${info['name'] ?? ''}',
+          'author': author,
+          'author_raw': author,
+          'cover': cover.isNotEmpty ? cover : linovelibCoverUrl(aid),
+          'status': '${info['status'] ?? ''}',
+          'intro': '${info['intro'] ?? ''}',
+        };
+      } catch (e) {
+        Log.warning('Linovelib', 'enrich aid=$aid: $e');
+        return null;
       }
-    }
-    return out;
+    }));
+    return [
+      for (final p in parts)
+        if (p != null) p,
+    ];
   }
 
   Future<Map<String, dynamic>> bookDetail(String aid) async {
@@ -984,6 +981,202 @@ class LinovelibClient {
             t.contains('margin:') ||
             t.contains('text-align:'))) {
       return true;
+    }
+    return false;
+  }
+
+  /// Cover bytes for list/detail cards.
+  ///
+  /// Dio often gets CF HTML (not JPEG) even when the same URL opens fine in a
+  /// browser — clearance is TLS-bound. Fall back to headless WebView `fetch`.
+  Future<Uint8List> fetchCoverBytes(String coverUrl) async {
+    var url = preferHttps(coverUrl.trim());
+    if (url.startsWith('//')) url = 'https:$url';
+    if (url.isEmpty) {
+      throw Exception('linovelib cover url empty');
+    }
+    try {
+      final bytes = await _dioFetchCover(url);
+      if (_looksLikeImageBytes(bytes)) return bytes;
+      Log.warning(
+        'Linovelib',
+        'cover Dio not image (${bytes.length}B); WebView fallback',
+      );
+    } catch (e) {
+      Log.warning('Linovelib', 'cover Dio failed: $e; WebView fallback');
+    }
+    return _webviewFetchCoverQueued(url);
+  }
+
+  Future<Uint8List> _dioFetchCover(String url) async {
+    final dio = AppDio();
+    final res = await dio.get<List<int>>(
+      url,
+      options: Options(
+        responseType: ResponseType.bytes,
+        followRedirects: true,
+        headers: {
+          'User-Agent': _ua,
+          'Referer': '$_base/',
+          'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+        },
+      ),
+    );
+    final status = res.statusCode ?? 0;
+    if (status >= 400) {
+      throw Exception('cover HTTP $status');
+    }
+    return Uint8List.fromList(res.data ?? const []);
+  }
+
+  /// Serialize WebView cover fetches — spawning many headless views at once
+  /// is slow and flaky on desktop.
+  Future<Uint8List>? _coverWvTail;
+
+  Future<Uint8List> _webviewFetchCoverQueued(String url) {
+    final prev = _coverWvTail;
+    final done = Completer<Uint8List>();
+    _coverWvTail = done.future;
+    () async {
+      if (prev != null) {
+        try {
+          await prev;
+        } catch (_) {}
+      }
+      try {
+        done.complete(await _webviewFetchCoverOnce(url));
+      } catch (e, s) {
+        done.completeError(e, s);
+      }
+    }();
+    return done.future;
+  }
+
+  Future<Uint8List> _webviewFetchCoverOnce(String url) async {
+    final completer = Completer<Uint8List>();
+    final urlJson = jsonEncode(url);
+    final baseJson = jsonEncode('$_base/');
+
+    late final HeadlessInAppWebView headless;
+    headless = HeadlessInAppWebView(
+      webViewEnvironment: AppWebview.webViewEnvironment,
+      initialSettings: InAppWebViewSettings(
+        userAgent: _ua,
+        javaScriptEnabled: true,
+        thirdPartyCookiesEnabled: true,
+      ),
+      // Warm same-site cookies, then fetch the image in-page (browser TLS).
+      initialUrlRequest: URLRequest(url: WebUri('$_base/')),
+      onLoadStop: (controller, _) async {
+        if (completer.isCompleted) return;
+        try {
+          await _injectJarCookies(controller);
+          final html = await controller.evaluateJavascript(
+            source: 'document.documentElement.outerHTML',
+          );
+          if (html is String && _isCfHtml(html)) {
+            // Still on CF interstitial — wait for next navigation.
+            return;
+          }
+          await controller.evaluateJavascript(source: '''
+window.__linovelibCover = null;
+(async function() {
+  try {
+    var r = await fetch($urlJson, {
+      credentials: 'include',
+      headers: { 'Referer': $baseJson }
+    });
+    var buf = await r.arrayBuffer();
+    var bytes = new Uint8Array(buf);
+    var bin = '';
+    var chunk = 0x8000;
+    for (var i = 0; i < bytes.length; i += chunk) {
+      bin += String.fromCharCode.apply(
+        null,
+        bytes.subarray(i, Math.min(i + chunk, bytes.length))
+      );
+    }
+    window.__linovelibCover = btoa(bin);
+  } catch (e) {
+    window.__linovelibCover = 'ERR:' + String(e);
+  }
+})();
+''');
+          String? b64;
+          for (var i = 0; i < 60; i++) {
+            await Future<void>.delayed(const Duration(milliseconds: 100));
+            final v = await controller.evaluateJavascript(
+              source: 'window.__linovelibCover',
+            );
+            if (v is String && v.isNotEmpty && v != 'null') {
+              b64 = v;
+              break;
+            }
+          }
+          if (b64 == null) {
+            throw Exception('WebView cover timeout');
+          }
+          if (b64.startsWith('ERR:')) {
+            throw Exception(b64);
+          }
+          final bytes = base64Decode(b64);
+          if (!_looksLikeImageBytes(bytes)) {
+            throw Exception(
+              'WebView cover not image (${bytes.length}B)',
+            );
+          }
+          final cookies = await controller.getCookies('$_base/');
+          if (cookies != null && cookies.isNotEmpty) {
+            SingleInstanceCookieJar.instance
+                ?.saveFromResponse(Uri.parse('$_base/'), cookies);
+          }
+          appdata.implicitData['ua'] = _ua;
+          appdata.writeImplicitData();
+          if (!completer.isCompleted) completer.complete(bytes);
+          try {
+            await headless.dispose();
+          } catch (_) {}
+        } catch (e, s) {
+          Log.error('Linovelib', 'WebView cover: $e\n$s');
+          if (!completer.isCompleted) completer.completeError(e);
+          try {
+            await headless.dispose();
+          } catch (_) {}
+        }
+      },
+    );
+
+    await headless.run();
+    try {
+      return await completer.future.timeout(const Duration(seconds: 25));
+    } on TimeoutException {
+      try {
+        await headless.dispose();
+      } catch (_) {}
+      throw Exception('linovelib cover WebView timeout: $url');
+    }
+  }
+
+  static bool _looksLikeImageBytes(List<int> data) {
+    if (data.length < 8) return false;
+    if (data[0] == 0xFF && data[1] == 0xD8) return true; // JPEG
+    if (data[0] == 0x89 &&
+        data[1] == 0x50 &&
+        data[2] == 0x4E &&
+        data[3] == 0x47) {
+      return true; // PNG
+    }
+    if (data[0] == 0x47 && data[1] == 0x49 && data[2] == 0x46) return true;
+    if (data[0] == 0x52 &&
+        data[1] == 0x49 &&
+        data[2] == 0x46 &&
+        data[3] == 0x46 &&
+        data.length > 11 &&
+        data[8] == 0x57 &&
+        data[9] == 0x45 &&
+        data[10] == 0x42 &&
+        data[11] == 0x50) {
+      return true; // WEBP
     }
     return false;
   }

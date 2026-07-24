@@ -221,41 +221,34 @@ class HuanmengClient {
   }
 
   /// Fill name/author/cover from bookapi detail (cached).
+  /// All aids are fetched concurrently (no concurrency cap).
   Future<List<Map<String, dynamic>>> _enrichAids(List<String> aids) async {
     if (aids.isEmpty) return [];
-    const chunk = 8;
-    final out = <Map<String, dynamic>>[];
-    for (var i = 0; i < aids.length; i += chunk) {
-      final end = (i + chunk > aids.length) ? aids.length : i + chunk;
-      final slice = aids.sublist(i, end);
-      final parts = await Future.wait(slice.map((aid) async {
-        try {
-          final info = await bookDetail(aid);
-          return {
-            'aid': aid,
-            'name': '${info['name'] ?? ''}',
-            'author': '${info['author'] ?? ''}',
-            'author_raw': '${info['author'] ?? ''}',
-            'cover': '${info['cover'] ?? ''}'.isNotEmpty
-                ? '${info['cover']}'
-                : huanmengCoverUrl(aid),
-            'status': '${info['status'] ?? ''}',
-            'intro': '${info['intro'] ?? ''}',
-          };
-        } catch (e) {
-          Log.warning('Huanmeng', 'enrich aid=$aid: $e');
-          return {
-            'aid': aid,
-            'name': '小说_$aid',
-            'author': '',
-            'author_raw': '',
-            'cover': huanmengCoverUrl(aid),
-          };
-        }
-      }));
-      out.addAll(parts);
-    }
-    return out;
+    return Future.wait(aids.map((aid) async {
+      try {
+        final info = await bookDetail(aid);
+        return {
+          'aid': aid,
+          'name': '${info['name'] ?? ''}',
+          'author': '${info['author'] ?? ''}',
+          'author_raw': '${info['author'] ?? ''}',
+          'cover': '${info['cover'] ?? ''}'.isNotEmpty
+              ? '${info['cover']}'
+              : huanmengCoverUrl(aid),
+          'status': '${info['status'] ?? ''}',
+          'intro': '${info['intro'] ?? ''}',
+        };
+      } catch (e) {
+        Log.warning('Huanmeng', 'enrich aid=$aid: $e');
+        return {
+          'aid': aid,
+          'name': '小说_$aid',
+          'author': '',
+          'author_raw': '',
+          'cover': huanmengCoverUrl(aid),
+        };
+      }
+    }));
   }
 
   /// Category / board pages — scrape IDs, enrich via API.

@@ -69,7 +69,14 @@ class CloudflareInterceptor extends Interceptor {
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
     if (options.headers['cookie'].toString().contains('cf_clearance')) {
-      options.headers['user-agent'] = appdata.implicitData['ua'] ?? webUA;
+      // Keep an explicit UA (e.g. linovelib Playwright MCP pin). Only fill
+      // when the request did not set one.
+      final existing = options.headers['User-Agent'] ??
+          options.headers['user-agent'];
+      if (existing == null || '$existing'.trim().isEmpty) {
+        options.headers['user-agent'] =
+            appdata.implicitData['ua'] ?? webUA;
+      }
     }
     handler.next(options);
   }

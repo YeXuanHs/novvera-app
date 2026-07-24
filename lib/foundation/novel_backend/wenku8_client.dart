@@ -509,42 +509,35 @@ class Wenku8Client {
   }
 
   /// Fill name/author/cover from App API [bookDetail] (covers via [wenku8CoverUrl]).
+  /// All aids are fetched concurrently (no concurrency cap).
   Future<List<Map<String, dynamic>>> _enrichAids(List<String> aids) async {
     if (aids.isEmpty) return [];
-    const chunk = 6;
-    final out = <Map<String, dynamic>>[];
-    for (var i = 0; i < aids.length; i += chunk) {
-      final end = (i + chunk > aids.length) ? aids.length : i + chunk;
-      final slice = aids.sublist(i, end);
-      final parts = await Future.wait(slice.map((aid) async {
-        try {
-          final info = await bookDetail(aid);
-          final author = '${info['author_raw'] ?? info['author'] ?? ''}';
-          return {
-            'aid': aid,
-            'name': '${info['name'] ?? ''}',
-            'author': author,
-            'author_raw': author,
-            'cover': '${info['cover'] ?? ''}'.isNotEmpty
-                ? '${info['cover']}'
-                : wenku8CoverUrl(aid),
-            'status': '${info['status'] ?? ''}',
-            'intro': '${info['intro'] ?? ''}',
-          };
-        } catch (e) {
-          Log.warning('Wenku8', 'enrich aid=$aid: $e');
-          return {
-            'aid': aid,
-            'name': '小说_$aid',
-            'author': '',
-            'author_raw': '',
-            'cover': wenku8CoverUrl(aid),
-          };
-        }
-      }));
-      out.addAll(parts);
-    }
-    return out;
+    return Future.wait(aids.map((aid) async {
+      try {
+        final info = await bookDetail(aid);
+        final author = '${info['author_raw'] ?? info['author'] ?? ''}';
+        return {
+          'aid': aid,
+          'name': '${info['name'] ?? ''}',
+          'author': author,
+          'author_raw': author,
+          'cover': '${info['cover'] ?? ''}'.isNotEmpty
+              ? '${info['cover']}'
+              : wenku8CoverUrl(aid),
+          'status': '${info['status'] ?? ''}',
+          'intro': '${info['intro'] ?? ''}',
+        };
+      } catch (e) {
+        Log.warning('Wenku8', 'enrich aid=$aid: $e');
+        return {
+          'aid': aid,
+          'name': '小说_$aid',
+          'author': '',
+          'author_raw': '',
+          'cover': wenku8CoverUrl(aid),
+        };
+      }
+    }));
   }
 
   /// Search via App API.
