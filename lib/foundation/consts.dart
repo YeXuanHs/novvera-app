@@ -52,8 +52,11 @@ const changePoint = 600;
 const changePoint2 = 1300;
 
 /// Default user agent for http requests.
+///
+/// Keep in sync with Playwright MCP Chromium (`navigator.userAgent`), so
+/// linovelib / Cloudflare sites see the same desktop Chrome fingerprint.
 const webUA =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36";
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
 
 /// Pages for all comics is started from this value.
 const firstPage = 1;

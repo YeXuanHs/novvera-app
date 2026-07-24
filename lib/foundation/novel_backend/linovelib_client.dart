@@ -62,6 +62,12 @@ class LinovelibClient {
   final _bookCache = <String, Map<String, dynamic>>{};
   final _catalogCache = <String, Map<String, dynamic>>{};
 
+  /// Same desktop Chrome UA as Playwright MCP (`navigator.userAgent`).
+  /// Always pin it — do not reuse a stale WebView UA from [appdata].
+  static const _ua = webUA;
+
+  Map<String, String> get _uaHeaders => const {'User-Agent': _ua};
+
   Future<void> init() async {
     try {
       await ensureSession();
@@ -111,7 +117,7 @@ class LinovelibClient {
   /// without this fallback the Verify button loops forever.
   Future<({int status, String html, String url})> _getHtml(String url) async {
     try {
-      final res = await _http.getHtml(url);
+      final res = await _http.getHtml(url, headers: _uaHeaders);
       if (_isCfHtml(res.html)) {
         throw CloudflareException(url);
       }
@@ -128,16 +134,12 @@ class LinovelibClient {
 
   Future<String> _fetchHtmlViaWebView(String url) async {
     final completer = Completer<String>();
-    final ua = (appdata.implicitData['ua'] is String &&
-            (appdata.implicitData['ua'] as String).isNotEmpty)
-        ? appdata.implicitData['ua'] as String
-        : webUA;
 
     late final HeadlessInAppWebView headless;
     headless = HeadlessInAppWebView(
       webViewEnvironment: AppWebview.webViewEnvironment,
       initialSettings: InAppWebViewSettings(
-        userAgent: ua,
+        userAgent: _ua,
         javaScriptEnabled: true,
         thirdPartyCookiesEnabled: true,
       ),
@@ -159,11 +161,9 @@ class LinovelibClient {
             SingleInstanceCookieJar.instance
                 ?.saveFromResponse(Uri.parse('$_base/'), cookies);
           }
-          final nextUa = await controller.getUA();
-          if (nextUa != null && nextUa.isNotEmpty) {
-            appdata.implicitData['ua'] = nextUa;
-            appdata.writeImplicitData();
-          }
+          // Keep app UA pinned to Playwright MCP desktop Chrome.
+          appdata.implicitData['ua'] = _ua;
+          appdata.writeImplicitData();
           if (!completer.isCompleted) completer.complete(html);
           await headless.dispose();
         } catch (e, s) {
@@ -218,9 +218,12 @@ class LinovelibClient {
 
   Future<bool> passSearchGuard() async {
     try {
-      await _http.getHtml('$_base/');
-      await _http.getHtml('$_base/S6/?search_guard=css');
-      final js = await _http.getHtml('$_base/S6/?search_guard=js');
+      await _http.getHtml('$_base/', headers: _uaHeaders);
+      await _http.getHtml('$_base/S6/?search_guard=css', headers: _uaHeaders);
+      final js = await _http.getHtml(
+        '$_base/S6/?search_guard=js',
+        headers: _uaHeaders,
+      );
       final m = _searchJsCookieRe.firstMatch(js.html);
       if (m != null) {
         final part = m.group(1)!.split(';').first;
@@ -232,10 +235,14 @@ class LinovelibClient {
       // Site JS redeems at 120ms / 800ms / 2000ms; one immediate redeem is often
       // too early for POST /S6/ to accept the ticket.
       final ts = DateTime.now().millisecondsSinceEpoch;
-      await _http.getHtml('$_base/S6/?search_guard=redeem&r=$ts');
+      await _http.getHtml(
+        '$_base/S6/?search_guard=redeem&r=$ts',
+        headers: _uaHeaders,
+      );
       await Future<void>.delayed(const Duration(milliseconds: 800));
       await _http.getHtml(
         '$_base/S6/?search_guard=redeem&r=${DateTime.now().millisecondsSinceEpoch}',
+        headers: _uaHeaders,
       );
       final jar = SingleInstanceCookieJar.instance;
       if (jar == null) return false;
@@ -253,11 +260,12 @@ class LinovelibClient {
         (_rankPaths[type] ?? _rankPaths['monthvisit']!).replaceAll('{page}', '$page');
     final res = await _getHtml('$_base$path');
     final doc = parseHtml(res.html);
-    final items = _parseRank(doc);
+    final aids = _extractAidsFromRoot(doc.documentElement ?? doc.body!);
+    final items = await _enrichAids(aids);
     final pagerMax = parseHtmlMaxPage(doc);
     final maxPage = inferMaxPage(
       page,
-      items.length,
+      aids.length,
       fullPageSize: 20,
       parsed: pagerMax,
     );
@@ -271,13 +279,17 @@ class LinovelibClient {
     };
   }
 
-  /// Homepage recommendation blocks (.top-title / .top-title-two).
+  /// Homepage recommendation blocks — scrape IDs only, enrich via detail pages.
+  /// Same contract as search: list HTML → aids → [bookDetail] for name/cover.
   Future<Map<String, dynamic>> home() async {
     await ensureSession();
     final res = await _getHtml('$_base/');
     final doc = parseHtml(res.html);
-    final sections = <Map<String, dynamic>>[];
+    final sectionAids = <({String title, List<String> aids})>[];
     final seenTitles = <String>{};
+    final allAids = <String>[];
+    final allSeen = <String>{};
+
     for (final titleEl in doc.querySelectorAll('.top-title, .top-title-two')) {
       var title = cleanText(titleEl.text).replaceAll('更多', '').trim();
       if (title.isEmpty || title.length > 24) continue;
@@ -288,165 +300,53 @@ class LinovelibClient {
         section = section.parent;
       }
       if (section == null) continue;
-      final items = <Map<String, dynamic>>[];
-      final seen = <String>{};
-
-      // Rank-style lists: <li><a class="title">…</a><a class="author">…</a>
-      for (final li in section.querySelectorAll('li')) {
-        final titleA = li.querySelector('a.title') ??
-            li.querySelector("a[href*='/novel/']");
-        if (titleA == null) continue;
-        final href = titleA.attributes['href'] ?? '';
-        final aid = _extractAid(href);
-        if (aid.isEmpty || !seen.add(aid)) continue;
-        var name = cleanText(titleA.attributes['title'] ?? titleA.text);
-        if (name.length < 2) {
-          name = cleanText(li.querySelector('img')?.attributes['alt']);
-        }
-        if (name.length < 2) continue;
-        final authorA = li.querySelector('a.author, a.author2');
-        final author = cleanText(
-          authorA?.attributes['title'] ?? authorA?.text,
-        );
-        final img = li.querySelector('img');
-        var cover = lazyImgSrc(img, _base);
-        if (cover.isEmpty) {
-          cover = linovelibCoverUrl(aid);
-        }
-        items.add({
-          'aid': aid,
-          'name': name,
-          'cover': cover,
-          'author': author,
-          'author_raw': author,
-        });
+      final aids = _extractAidsFromRoot(section);
+      if (aids.length < 3) continue;
+      sectionAids.add((title: title, aids: aids));
+      for (final id in aids) {
+        if (allSeen.add(id)) allAids.add(id);
       }
+    }
 
-      // Featured cards: .mind-book / .book-info
-      if (items.length < 3) {
-        for (final card in section.querySelectorAll(
-          '.mind-book, .book-info, .book-info1, .img-book',
-        )) {
-          final titleA = card.querySelector(
-                'a.bookname, a.title, a[href*="/novel/"]',
-              ) ??
-              card.querySelector('a[href*="/novel/"]');
-          if (titleA == null) continue;
-          final href = titleA.attributes['href'] ?? '';
-          final aid = _extractAid(href);
-          if (aid.isEmpty || !seen.add(aid)) continue;
-          var name = cleanText(titleA.attributes['title'] ?? titleA.text);
-          if (name.length < 2) continue;
-          final authorA = card.querySelector(
-            'a.author, a.author2, .author-text a, .author-text',
-          );
-          var author = cleanText(
-            authorA?.attributes['title'] ?? authorA?.text,
-          );
-          author = author.replaceFirst(RegExp(r'^作者[:：]?'), '').trim();
-          final img = card.querySelector('img');
-          var cover = lazyImgSrc(img, _base);
-          if (cover.isEmpty) {
-            cover = linovelibCoverUrl(aid);
-          } else {
-            cover = preferHttps(cover);
-          }
-          items.add({
-            'aid': aid,
-            'name': name,
-            'cover': cover,
-            'author': author,
-            'author_raw': author,
-          });
-        }
-      }
-
-      // Last resort: bare novel links
-      if (items.length < 3) {
-        for (final a in section.querySelectorAll('a[href*="/novel/"]')) {
-          final href = a.attributes['href'] ?? '';
-          final aid = _extractAid(href);
-          if (aid.isEmpty || !seen.add(aid)) continue;
-          final name = cleanText(a.attributes['title'] ?? a.text);
-          if (name.length < 2) continue;
-          Element? host = a.parent;
-          String author = '';
-          for (var i = 0; i < 4 && host != null; i++) {
-            final authorA = host.querySelector('a.author, a.author2');
-            if (authorA != null) {
-              author = cleanText(authorA.attributes['title'] ?? authorA.text);
-              break;
-            }
-            host = host.parent;
-          }
-          final img = a.querySelector('img') ?? a.parent?.querySelector('img');
-          var cover = lazyImgSrc(img, _base);
-          if (cover.isEmpty) {
-            cover = linovelibCoverUrl(aid);
-          } else {
-            cover = preferHttps(cover);
-          }
-          items.add({
-            'aid': aid,
-            'name': name,
-            'cover': cover,
-            'author': author,
-            'author_raw': author,
-          });
-        }
-      }
+    final enriched = await _enrichAids(allAids);
+    final byId = {for (final b in enriched) '${b['aid']}': b};
+    final sections = <Map<String, dynamic>>[];
+    for (final s in sectionAids) {
+      final items = <Map<String, dynamic>>[
+        for (final id in s.aids)
+          if (byId[id] != null) Map<String, dynamic>.from(byId[id]!),
+      ];
       if (items.length < 3) continue;
-      sections.add({'title': title, 'items': items});
+      sections.add({'title': s.title, 'items': items});
     }
     return {'sections': sections};
   }
 
-  List<Map<String, dynamic>> _parseRank(Document doc) {
-    final items = <Map<String, dynamic>>[];
+  /// Ordered unique novel IDs under [root] (list / section / rank page).
+  List<String> _extractAidsFromRoot(Element root) {
+    final aids = <String>[];
     final seen = <String>{};
-    for (final a in doc.querySelectorAll('.rank_d_b_name a')) {
-      final href = a.attributes['href'] ?? '';
-      final aid = _extractAid(href);
-      if (aid.isEmpty || seen.contains(aid)) continue;
-      seen.add(aid);
-      var author = '';
-      Element? intro = a.parent;
-      while (intro != null) {
-        final cls = intro.classes;
-        if (cls.contains('rank_d_book_intro') || cls.contains('rank_d_list')) {
-          break;
-        }
-        intro = intro.parent;
-      }
-      final cate = intro?.querySelector('.rank_d_b_cate');
-      if (cate != null) {
-        final authorA = cate.querySelector('a[href*="authorarticle"]') ??
-            cate.querySelector('a');
-        author = cleanText(authorA?.text);
-        if (author.isEmpty) {
-          author = cleanText(cate.text).split('|').first.trim();
-        }
-      }
-      Element? book = a.parent;
-      while (book != null && !book.classes.contains('rank_d_book_intro') &&
-          !book.classes.contains('rank_d_list')) {
-        book = book.parent;
-      }
-      final img = book?.querySelector('img') ??
-          a.parent?.querySelector('img');
-      var cover = lazyImgSrc(img, _base);
-      if (cover.isEmpty) {
-        cover = linovelibCoverUrl(aid);
-      }
-      items.add({
-        'name': cleanText(a.text),
-        'author': author,
-        'author_raw': author,
-        'aid': aid,
-        'cover': cover,
-      });
+
+    void add(String aid) {
+      if (aid.isEmpty || !seen.add(aid)) return;
+      aids.add(aid);
     }
-    return items;
+
+    // Rank page titles.
+    for (final a in root.querySelectorAll('.rank_d_b_name a')) {
+      add(_extractAid(a.attributes['href'] ?? ''));
+    }
+    if (aids.isNotEmpty) return aids;
+
+    for (final a in root.querySelectorAll('a[href*="/novel/"]')) {
+      final name = cleanText(a.attributes['title'] ?? a.text);
+      if (name == '书籍详情' || name == '加入书架' || name == '立即阅读') {
+        continue;
+      }
+      // Only /novel/{aid}.html — chapter URLs don't match _aidRe.
+      add(_extractAid(a.attributes['href'] ?? ''));
+    }
+    return aids;
   }
 
   Future<Map<String, dynamic>> search(
@@ -459,25 +359,8 @@ class LinovelibClient {
       final url =
           '$_base/authorarticle/${Uri.encodeComponent(keyword)}.html';
       final res = await _getHtml(url);
-      var items = _parseSearch(parseHtml(res.html));
-      if (items.isEmpty) {
-        final seen = <String>{};
-        for (final a in parseHtml(res.html).querySelectorAll("a[href*='/novel/']")) {
-          final href = a.attributes['href'] ?? '';
-          if (!_aidRe.hasMatch(href)) continue;
-          final aid = _extractAid(href);
-          final name = cleanText(a.text);
-          if (aid.isEmpty || name.isEmpty || seen.contains(aid)) continue;
-          seen.add(aid);
-          items.add({
-            'name': name,
-            'author': keyword,
-            'author_raw': keyword,
-            'aid': aid,
-            'cover': linovelibCoverUrl(aid),
-          });
-        }
-      }
+      final aids = _extractSearchAids(parseHtml(res.html));
+      final items = await _enrichAids(aids);
       return {
         'type': type,
         'keyword': keyword,
@@ -497,6 +380,7 @@ class LinovelibClient {
         '$_base/S6/',
         {'searchkey': keyword},
         headers: {
+          'User-Agent': _ua,
           'Origin': _base,
           'Referer': '$_base/',
         },
@@ -507,6 +391,7 @@ class LinovelibClient {
           '$_base/S6/',
           {'searchkey': keyword},
           headers: {
+            'User-Agent': _ua,
             'Origin': _base,
             'Referer': '$_base/',
           },
@@ -525,11 +410,12 @@ class LinovelibClient {
     }
 
     final doc = parseHtml(html);
-    final items = _parseSearch(doc);
+    final aids = _extractSearchAids(doc);
+    final items = await _enrichAids(aids);
     final pagerMax = parseHtmlMaxPage(doc);
     final maxPage = inferMaxPage(
       page,
-      items.length,
+      aids.length,
       fullPageSize: 20,
       parsed: pagerMax,
     );
@@ -548,16 +434,12 @@ class LinovelibClient {
     final completer = Completer<String>();
     var submitted = false;
     final kwJson = jsonEncode(keyword);
-    final ua = (appdata.implicitData['ua'] is String &&
-            (appdata.implicitData['ua'] as String).isNotEmpty)
-        ? appdata.implicitData['ua'] as String
-        : webUA;
 
     late final HeadlessInAppWebView headless;
     headless = HeadlessInAppWebView(
       webViewEnvironment: AppWebview.webViewEnvironment,
       initialSettings: InAppWebViewSettings(
-        userAgent: ua,
+        userAgent: _ua,
         javaScriptEnabled: true,
         thirdPartyCookiesEnabled: true,
       ),
@@ -628,11 +510,8 @@ class LinovelibClient {
               SingleInstanceCookieJar.instance
                   ?.saveFromResponse(Uri.parse('$_base/'), cookies);
             }
-            final nextUa = await controller.getUA();
-            if (nextUa != null && nextUa.isNotEmpty) {
-              appdata.implicitData['ua'] = nextUa;
-              appdata.writeImplicitData();
-            }
+            appdata.implicitData['ua'] = _ua;
+            appdata.writeImplicitData();
             if (!completer.isCompleted) completer.complete(html);
             await headless.dispose();
           }
@@ -682,83 +561,86 @@ class LinovelibClient {
     }
   }
 
-  List<Map<String, dynamic>> _parseSearch(Document doc) {
-    final items = <Map<String, dynamic>>[];
+  /// Search / list HTML → ordered unique book IDs only (ignore list name/cover).
+  ///
+  /// Matches site markup verified via Playwright: prefer `.search-result-list`
+  /// rows, then any `/novel/{aid}.html` link (cover-only links included).
+  List<String> _extractSearchAids(Document doc) {
+    final aids = <String>[];
     final seen = <String>{};
-    final blocks = doc.querySelectorAll(
-      '.search-result-list .se-result-book, .se-result-book',
-    );
-    for (final block in blocks) {
-      Element? titleA;
-      for (final a in block.querySelectorAll("a[href*='/novel/']")) {
-        final href = a.attributes['href'] ?? '';
-        if (!_aidRe.hasMatch(href)) continue;
-        final text = cleanText(a.text);
-        if (text.isNotEmpty && text != '书籍详情' && text != '加入书架') {
-          titleA = a;
+
+    void add(String aid) {
+      if (aid.isEmpty || !seen.add(aid)) return;
+      aids.add(aid);
+    }
+
+    void addFrom(Element root) {
+      for (final a in root.querySelectorAll('a[href*="/novel/"]')) {
+        final label = cleanText(a.attributes['title'] ?? a.text);
+        if (label == '书籍详情' || label == '加入书架' || label == '立即阅读') {
+          continue;
+        }
+        add(_extractAid(a.attributes['href'] ?? ''));
+      }
+    }
+
+    final rows = doc.querySelectorAll('.search-result-list');
+    if (rows.isNotEmpty) {
+      for (final row in rows) {
+        // One ID per result row (first novel link — often the cover <a>).
+        String? rowAid;
+        for (final a in row.querySelectorAll('a[href*="/novel/"]')) {
+          final aid = _extractAid(a.attributes['href'] ?? '');
+          if (aid.isEmpty) continue;
+          rowAid = aid;
           break;
         }
+        if (rowAid != null) add(rowAid);
       }
-      titleA ??= block.querySelector("a[href*='/novel/']");
-      if (titleA == null) continue;
-      final aid = _extractAid(titleA.attributes['href'] ?? '');
-      final name = cleanText(titleA.text);
-      if (aid.isEmpty || name.isEmpty || seen.contains(aid)) continue;
-      seen.add(aid);
-      var author = '';
-      final authorA = block.querySelector(
-        'a[href*="authorarticle"], a.author, a.author2',
-      );
-      if (authorA != null) {
-        author = cleanText(authorA.attributes['title'] ?? authorA.text);
-      }
-      if (author.isEmpty) {
-        final infoEl = block.querySelector(
-          '.bookinfo, .se-result-infos p, .se-result-infos',
-        );
-        if (infoEl != null) {
-          final info = cleanText(infoEl.text);
-          if (info.contains('|')) {
-            author = cleanText(info.split('|').first);
-          } else {
-            final m = RegExp(r'作者[:：]\s*([^\s|/]+)').firstMatch(info);
-            if (m != null) author = cleanText(m.group(1));
+      if (aids.isNotEmpty) return aids;
+    }
+
+    addFrom(doc.documentElement ?? doc.body!);
+    return aids;
+  }
+
+  /// Fill name/author/cover/intro from `/novel/{aid}.html` only ([bookDetail]).
+  /// Hollow / error detail pages are dropped (e.g. empty shells in search hits).
+  Future<List<Map<String, dynamic>>> _enrichAids(List<String> aids) async {
+    if (aids.isEmpty) return [];
+    const chunk = 4;
+    final out = <Map<String, dynamic>>[];
+    for (var i = 0; i < aids.length; i += chunk) {
+      final end = (i + chunk > aids.length) ? aids.length : i + chunk;
+      final slice = aids.sublist(i, end);
+      final parts = await Future.wait(slice.map((aid) async {
+        try {
+          final info = await bookDetail(aid);
+          if (info['hollow'] == true) {
+            Log.warning('Linovelib', 'enrich skip hollow aid=$aid');
+            return null;
           }
+          final author = '${info['author_raw'] ?? info['author'] ?? ''}';
+          final cover = '${info['cover'] ?? ''}'.trim();
+          return <String, dynamic>{
+            'aid': aid,
+            'name': '${info['name'] ?? ''}',
+            'author': author,
+            'author_raw': author,
+            'cover': cover.isNotEmpty ? cover : linovelibCoverUrl(aid),
+            'status': '${info['status'] ?? ''}',
+            'intro': '${info['intro'] ?? ''}',
+          };
+        } catch (e) {
+          Log.warning('Linovelib', 'enrich aid=$aid: $e');
+          return null;
         }
-      }
-      author = author.replaceFirst(RegExp(r'^作者[:：]?'), '').trim();
-      final img = block.querySelector('img');
-      var cover = lazyImgSrc(img, _base);
-      if (cover.isEmpty) {
-        cover = linovelibCoverUrl(aid);
-      }
-      items.add({
-        'name': name,
-        'author': author,
-        'author_raw': author,
-        'aid': aid,
-        'cover': cover,
-      });
-    }
-    if (items.isEmpty) {
-      for (final a in doc.querySelectorAll("a[href*='/novel/']")) {
-        final href = a.attributes['href'] ?? '';
-        if (!_aidRe.hasMatch(href)) continue;
-        final aid = _extractAid(href);
-        final name = cleanText(a.text);
-        if (aid.isEmpty || name.isEmpty || seen.contains(aid)) continue;
-        if (name == '书籍详情' || name == '加入书架') continue;
-        seen.add(aid);
-        items.add({
-          'name': name,
-          'author': '',
-          'author_raw': '',
-          'aid': aid,
-          'cover': linovelibCoverUrl(aid),
-        });
+      }));
+      for (final p in parts) {
+        if (p != null) out.add(p);
       }
     }
-    return items;
+    return out;
   }
 
   Future<Map<String, dynamic>> bookDetail(String aid) async {
@@ -775,8 +657,14 @@ class LinovelibClient {
     final updateTime = _meta(doc, ['og:novel:update_time', 'update']);
     final tags = _meta(doc, ['og:novel:tags']);
     var cover = preferHttps(absUrl(_base, _meta(doc, ['og:image', 'pic'])));
-    if (cover.isEmpty) {
-      cover = linovelibCoverUrl(aid);
+    // Soft error / empty shells (e.g. search hit aid=5272, ~1.6KB, no meta).
+    final looksError = name.toLowerCase() == 'error';
+    final looksShell = res.html.length < 3000 &&
+        name.isEmpty &&
+        authorRaw.isEmpty &&
+        cover.isEmpty;
+    if (looksError || looksShell) {
+      name = '';
     }
     var intro = '';
     final dec = doc.querySelector('.book-dec');
@@ -812,6 +700,10 @@ class LinovelibClient {
     if (_looksLikeSiteNotice(intro)) {
       intro = _meta(doc, ['og:description', 'description']) ?? '';
     }
+    final hollow = name.isEmpty && authorRaw.isEmpty && cover.isEmpty;
+    if (!hollow && cover.isEmpty) {
+      cover = linovelibCoverUrl(aid);
+    }
     // Only fields consumed by _loadComicInfo / cards. No 分类.
     final data = <String, dynamic>{
       'aid': aid,
@@ -822,8 +714,12 @@ class LinovelibClient {
       'tags': tags,
       'cover': cover,
       'intro': intro,
+      'hollow': hollow,
     };
-    _bookCache[aid] = Map.from(data);
+    // Do not cache hollow shells — may be transient rate-limit pages.
+    if (!hollow) {
+      _bookCache[aid] = Map.from(data);
+    }
     return data;
   }
 

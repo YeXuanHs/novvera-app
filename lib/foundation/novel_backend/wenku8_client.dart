@@ -448,11 +448,14 @@ class Wenku8Client {
   }
 
   /// Homepage recommendation blocks — still website HTML (discover unchanged).
+  /// Homepage blocks — scrape book IDs only; name/author/cover from App API.
   Future<Map<String, dynamic>> home() async {
     await ensureAccount();
     final res = await _http.getHtml('$_base/index.php', preferGbk: true);
     final doc = parseHtml(res.html);
-    final sections = <Map<String, dynamic>>[];
+    final sectionAids = <({String title, List<String> aids})>[];
+    final allAids = <String>[];
+    final allSeen = <String>{};
     const skip = [
       '公告',
       '登录',
@@ -476,29 +479,72 @@ class Wenku8Client {
         content = titleEl.parent;
       }
       if (content == null) continue;
-      final items = <Map<String, dynamic>>[];
+      final aids = <String>[];
       final seen = <String>{};
       for (final a in content.querySelectorAll('a[href]')) {
         final href = a.attributes['href'] ?? '';
         final aid = _extractAid(href);
         if (aid == null || !seen.add(aid)) continue;
-        var name = cleanText(a.attributes['title'] ?? a.text);
-        if (name.length < 2) continue;
-        if (RegExp(r'更多|查看|登录|注册|首页').hasMatch(name)) continue;
-        // Always use App-API cover scheme; website CDN 404s for many aids.
-        final cover = wenku8CoverUrl(aid);
-        items.add({
-          'aid': aid,
-          'name': name,
-          'cover': cover,
-          'author': '',
-          'author_raw': '',
-        });
+        final label = cleanText(a.attributes['title'] ?? a.text);
+        if (RegExp(r'更多|查看|登录|注册|首页').hasMatch(label)) continue;
+        aids.add(aid);
+        if (allSeen.add(aid)) allAids.add(aid);
       }
+      if (aids.length < 3) continue;
+      sectionAids.add((title: title, aids: aids));
+    }
+
+    final enriched = await _enrichAids(allAids);
+    final byId = {for (final b in enriched) '${b['aid']}': b};
+    final sections = <Map<String, dynamic>>[];
+    for (final s in sectionAids) {
+      final items = <Map<String, dynamic>>[
+        for (final id in s.aids)
+          if (byId[id] != null) Map<String, dynamic>.from(byId[id]!),
+      ];
       if (items.length < 3) continue;
-      sections.add({'title': title, 'items': items});
+      sections.add({'title': s.title, 'items': items});
     }
     return {'sections': sections};
+  }
+
+  /// Fill name/author/cover from App API [bookDetail] (covers via [wenku8CoverUrl]).
+  Future<List<Map<String, dynamic>>> _enrichAids(List<String> aids) async {
+    if (aids.isEmpty) return [];
+    const chunk = 6;
+    final out = <Map<String, dynamic>>[];
+    for (var i = 0; i < aids.length; i += chunk) {
+      final end = (i + chunk > aids.length) ? aids.length : i + chunk;
+      final slice = aids.sublist(i, end);
+      final parts = await Future.wait(slice.map((aid) async {
+        try {
+          final info = await bookDetail(aid);
+          final author = '${info['author_raw'] ?? info['author'] ?? ''}';
+          return {
+            'aid': aid,
+            'name': '${info['name'] ?? ''}',
+            'author': author,
+            'author_raw': author,
+            'cover': '${info['cover'] ?? ''}'.isNotEmpty
+                ? '${info['cover']}'
+                : wenku8CoverUrl(aid),
+            'status': '${info['status'] ?? ''}',
+            'intro': '${info['intro'] ?? ''}',
+          };
+        } catch (e) {
+          Log.warning('Wenku8', 'enrich aid=$aid: $e');
+          return {
+            'aid': aid,
+            'name': '小说_$aid',
+            'author': '',
+            'author_raw': '',
+            'cover': wenku8CoverUrl(aid),
+          };
+        }
+      }));
+      out.addAll(parts);
+    }
+    return out;
   }
 
   /// Search via App API.

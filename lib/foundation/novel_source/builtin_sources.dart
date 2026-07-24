@@ -244,22 +244,13 @@ ComicSource _buildSource({
     null,
     null,
     null,
-    // Tag chips open search on the **same** source as the book.
-    // 状态 / 更新时间 are metadata only (no jump). 分类 is not shown.
+    // Only 哔哩轻小说 supports tag/keyword search from detail chips.
+    // wenku8 / huanmeng have no usable tag search — keep chips non-clickable.
     (namespace, tag) {
+      if (key != 'linovelib') return null;
       const nonSearch = {'状态', '更新时间', 'Upload Time', 'Update Time', '分类'};
       if (nonSearch.contains(namespace)) return null;
-      final attrs = <String, dynamic>{'text': tag};
-      if (key == 'wenku8') {
-        if (namespace == '作者') {
-          attrs['options'] = ['author'];
-        } else if (namespace == '标签') {
-          attrs['options'] = ['tag'];
-        } else {
-          attrs['options'] = ['mixed'];
-        }
-      }
-      return PageJumpTarget(key, 'search', attrs);
+      return PageJumpTarget(key, 'search', {'text': tag});
     },
     null,
     null,
@@ -281,10 +272,14 @@ Map<String, dynamic> _imageLoadingConfig(String sourceKey, String imageKey) {
       ? imageKey
       : normalizeNovelImageUrl(imageKey);
   final ua = appdata.implicitData['ua'];
+  // Linovelib covers / HTML must use Playwright MCP desktop Chrome UA.
+  final effectiveUa = sourceKey == 'linovelib'
+      ? webUA
+      : ((ua is String && ua.isNotEmpty) ? ua : webUA);
   return {
     'url': url,
     'headers': {
-      'user-agent': (ua is String && ua.isNotEmpty) ? ua : webUA,
+      'user-agent': effectiveUa,
       'Referer': referer,
       'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
     },
