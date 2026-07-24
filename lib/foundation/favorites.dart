@@ -14,17 +14,17 @@ import 'package:novvera/utils/tags_translation.dart';
 import 'dart:io';
 
 import 'app.dart';
-import 'comic_source/comic_source.dart';
-import 'comic_type.dart';
+import 'book_source/book_source.dart';
+import 'book_type.dart';
 
 String _getTimeString(DateTime time) {
   return time.toIso8601String().replaceFirst("T", " ").substring(0, 19);
 }
 
-class FavoriteItem implements Comic {
+class FavoriteItem implements Book {
   String name;
   String author;
-  ComicType type;
+  BookType type;
   @override
   List<String> tags;
   @override
@@ -47,7 +47,7 @@ class FavoriteItem implements Comic {
   FavoriteItem.fromRow(Row row)
       : name = row["name"],
         author = row["author"],
-        type = ComicType(row["type"]),
+        type = BookType(row["type"]),
         tags = (row["tags"] as String).split(","),
         id = row["id"],
         coverPath = row["cover_path"],
@@ -78,9 +78,9 @@ class FavoriteItem implements Comic {
   @override
   String get description {
     var time = this.time.substring(0, 10);
-    return appdata.settings['comicDisplayMode'] == 'detailed'
-        ? "$time | ${type == ComicType.local ? 'local' : type.comicSource?.name ?? "Unknown"}"
-        : "${type.comicSource?.name ?? "Unknown"} | $time";
+    return appdata.settings['bookDisplayMode'] == 'detailed'
+        ? "$time | ${type == BookType.local ? 'local' : type.bookSource?.name ?? "Unknown"}"
+        : "${type.bookSource?.name ?? "Unknown"} | $time";
   }
 
   @override
@@ -93,9 +93,9 @@ class FavoriteItem implements Comic {
   int? get maxPage => null;
 
   @override
-  String get sourceKey => type == ComicType.local
+  String get sourceKey => type == BookType.local
       ? 'local'
-      : type.comicSource?.key ?? "Unknown:${type.value}";
+      : type.bookSource?.key ?? "Unknown:${type.value}";
 
   @override
   double? get stars => null;
@@ -138,7 +138,7 @@ class FavoriteItem implements Comic {
       name: json["name"],
       author: json["author"],
       coverPath: json["coverPath"],
-      type: ComicType(type),
+      type: BookType(type),
       tags: List<String>.from(json["tags"] ?? []),
     );
   }
@@ -185,7 +185,7 @@ class FavoriteItemWithUpdateInfo extends FavoriteItem {
   @override
   String get description {
     var updateTime = this.updateTime ?? "Unknown";
-    var sourceName = type.comicSource?.name ?? "Unknown";
+    var sourceName = type.bookSource?.name ?? "Unknown";
     return "$updateTime | $sourceName";
   }
 
@@ -216,11 +216,11 @@ class LocalFavoritesManager with ChangeNotifier {
 
   var _hashedIds = <int, int>{};
 
-  int get totalComics {
+  int get totalBooks {
     return _hashedIds.length;
   }
 
-  int folderComics(String folder) {
+  int folderBooks(String folder) {
     return counts[folder] ?? 0;
   }
 
@@ -250,14 +250,14 @@ class LocalFavoritesManager with ChangeNotifier {
           alter table "$folder"
           add column translated_tags TEXT;
         """);
-        var comics = getFolderComics(folder);
-        for (var comic in comics) {
-          var translatedTags = _translateTags(comic.tags);
+        var books = getFolderBooks(folder);
+        for (var book in books) {
+          var translatedTags = _translateTags(book.tags);
           _db.execute("""
             update "$folder"
             set translated_tags = ?
             where id == ? and type == ?;
-          """, [translatedTags, comic.id, comic.type.value]);
+          """, [translatedTags, book.id, book.type.value]);
         }
       } else {
         break;
@@ -323,7 +323,7 @@ class LocalFavoritesManager with ChangeNotifier {
     });
   }
 
-  List<String> find(String id, ComicType type) {
+  List<String> find(String id, BookType type) {
     var res = <String>[];
     for (var folder in folderNames) {
       var rows = _db.select("""
@@ -414,7 +414,7 @@ class LocalFavoritesManager with ChangeNotifier {
       """).firstOrNull?["min_value"] ?? 0;
   }
 
-  List<FavoriteItem> getFolderComics(String folder) {
+  List<FavoriteItem> getFolderBooks(String folder) {
     var rows = _db.select("""
         select * from "$folder"
         ORDER BY display_order;
@@ -422,7 +422,7 @@ class LocalFavoritesManager with ChangeNotifier {
     return rows.map((element) => FavoriteItem.fromRow(element)).toList();
   }
 
-  static Future<List<FavoriteItem>> _getFolderComicsAsync(
+  static Future<List<FavoriteItem>> _getFolderBooksAsync(
       String folder, Pointer<void> p) {
     return Isolate.run(() {
       var db = sqlite3.fromPointer(p);
@@ -434,40 +434,40 @@ class LocalFavoritesManager with ChangeNotifier {
     });
   }
 
-  /// Start a new isolate to get the comics in the folder
-  Future<List<FavoriteItem>> getFolderComicsAsync(String folder) {
-    return _getFolderComicsAsync(folder, _db.handle);
+  /// Start a new isolate to get the books in the folder
+  Future<List<FavoriteItem>> getFolderBooksAsync(String folder) {
+    return _getFolderBooksAsync(folder, _db.handle);
   }
 
-  List<FavoriteItem> getAllComics() {
+  List<FavoriteItem> getAllBooks() {
     var res = <FavoriteItem>{};
     for (final folder in folderNames) {
-      var comics = _db.select("""
+      var books = _db.select("""
         select * from "$folder";
       """);
-      res.addAll(comics.map((element) => FavoriteItem.fromRow(element)));
+      res.addAll(books.map((element) => FavoriteItem.fromRow(element)));
     }
     return res.toList();
   }
 
-  static Future<List<FavoriteItem>> _getAllComicsAsync(
+  static Future<List<FavoriteItem>> _getAllBooksAsync(
       List<String> folders, Pointer<void> p) {
     return Isolate.run(() {
       var db = sqlite3.fromPointer(p);
       var res = <FavoriteItem>{};
       for (final folder in folders) {
-        var comics = db.select("""
+        var books = db.select("""
           select * from "$folder";
         """);
-        res.addAll(comics.map((element) => FavoriteItem.fromRow(element)));
+        res.addAll(books.map((element) => FavoriteItem.fromRow(element)));
       }
       return res.toList();
     });
   }
 
-  /// Start a new isolate to get all the comics
-  Future<List<FavoriteItem>> getAllComicsAsync() {
-    return _getAllComicsAsync(folderNames, _db.handle);
+  /// Start a new isolate to get all the books
+  Future<List<FavoriteItem>> getAllBooksAsync() {
+    return _getAllBooksAsync(folderNames, _db.handle);
   }
 
   void addTagTo(String folder, String id, String tag) {
@@ -479,13 +479,13 @@ class LocalFavoritesManager with ChangeNotifier {
     notifyListeners();
   }
 
-  List<FavoriteItemWithFolderInfo> allComics() {
+  List<FavoriteItemWithFolderInfo> allBooks() {
     var res = <FavoriteItemWithFolderInfo>[];
     for (final folder in folderNames) {
-      var comics = _db.select("""
+      var books = _db.select("""
         select * from "$folder";
       """);
-      res.addAll(comics.map((element) =>
+      res.addAll(books.map((element) =>
           FavoriteItemWithFolderInfo(FavoriteItem.fromRow(element), folder)));
     }
     return res;
@@ -566,7 +566,7 @@ class LocalFavoritesManager with ChangeNotifier {
     return (res.first["source_key"], res.first["source_folder"]);
   }
 
-  bool comicExists(String folder, String id, ComicType type) {
+  bool bookExists(String folder, String id, BookType type) {
     var res = _db.select("""
       select * from "$folder"
       where id == ? and type == ?;
@@ -574,13 +574,13 @@ class LocalFavoritesManager with ChangeNotifier {
     return res.isNotEmpty;
   }
 
-  FavoriteItem getComic(String folder, String id, ComicType type) {
+  FavoriteItem getBook(String folder, String id, BookType type) {
     var res = _db.select("""
       select * from "$folder"
       where id == ? and type == ?;
     """, [id, type.value]);
     if (res.isEmpty) {
-      throw Exception("Comic not found");
+      throw Exception("Book not found");
     }
     return FavoriteItem.fromRow(res.first);
   }
@@ -596,9 +596,9 @@ class LocalFavoritesManager with ChangeNotifier {
     return res.join(",");
   }
 
-  /// add comic to a folder.
+  /// add book to a folder.
   /// return true if success, false if already exists
-  bool addComic(String folder, FavoriteItem comic,
+  bool addBook(String folder, FavoriteItem book,
       [int? order, String? updateTime]) {
     if (!existsFolder(folder)) {
       throw Exception("Folder does not exists");
@@ -606,19 +606,19 @@ class LocalFavoritesManager with ChangeNotifier {
     var res = _db.select("""
       select * from "$folder"
       where id == ? and type == ?;
-    """, [comic.id, comic.type.value]);
+    """, [book.id, book.type.value]);
     if (res.isNotEmpty) {
       return false;
     }
-    var translatedTags = _translateTags(comic.tags);
+    var translatedTags = _translateTags(book.tags);
     final params = [
-      comic.id,
-      comic.name,
-      comic.author,
-      comic.type.value,
-      comic.tags.join(","),
-      comic.coverPath,
-      comic.time,
+      book.id,
+      book.name,
+      book.author,
+      book.type.value,
+      book.tags.join(","),
+      book.coverPath,
+      book.time,
       translatedTags
     ];
     if (order != null) {
@@ -646,7 +646,7 @@ class LocalFavoritesManager with ChangeNotifier {
           update "$folder"
           set last_update_time = ?
           where id == ? and type == ?;
-        """, [updateTime, comic.id, comic.type.value]);
+        """, [updateTime, book.id, book.type.value]);
       }
     }
     if (counts[folder] == null) {
@@ -654,14 +654,14 @@ class LocalFavoritesManager with ChangeNotifier {
     } else {
       counts[folder] = counts[folder]! + 1;
     }
-    var hash = comic.id.hashCode ^ comic.type.value;
+    var hash = book.id.hashCode ^ book.type.value;
     _hashedIds[hash] = (_hashedIds[hash] ?? 0) + 1;
     notifyListeners();
     return true;
   }
 
   void moveFavorite(
-      String sourceFolder, String targetFolder, String id, ComicType type) {
+      String sourceFolder, String targetFolder, String id, BookType type) {
     if (!existsFolder(sourceFolder)) {
       throw Exception("Source folder does not exist");
     }
@@ -788,7 +788,7 @@ class LocalFavoritesManager with ChangeNotifier {
     notifyListeners();
   }
 
-  void deleteComicWithId(String folder, String id, ComicType type) {
+  void deleteBookWithId(String folder, String id, BookType type) {
     LocalFavoriteImageProvider.delete(id, type.value);
     _db.execute("""
       delete from "$folder"
@@ -803,55 +803,55 @@ class LocalFavoritesManager with ChangeNotifier {
     notifyListeners();
   }
 
-  void batchDeleteComics(String folder, List<FavoriteItem> comics) {
+  void batchDeleteBooks(String folder, List<FavoriteItem> books) {
     _db.execute("BEGIN TRANSACTION");
     try {
-      for (var comic in comics) {
-        LocalFavoriteImageProvider.delete(comic.id, comic.type.value);
+      for (var book in books) {
+        LocalFavoriteImageProvider.delete(book.id, book.type.value);
         _db.execute("""
           delete from "$folder"
           where id == ? and type == ?;
-        """, [comic.id, comic.type.value]);
+        """, [book.id, book.type.value]);
       }
       if (counts[folder] != null) {
-        counts[folder] = counts[folder]! - comics.length;
+        counts[folder] = counts[folder]! - books.length;
       } else {
         counts[folder] = count(folder);
       }
     } catch (e) {
-      Log.error("Batch Delete Comics", e.toString());
+      Log.error("Batch Delete Books", e.toString());
       _db.execute("ROLLBACK");
       return;
     }
     _db.execute("COMMIT");
-    for (var comic in comics) {
-      reduceHashedId(comic.id, comic.type.value);
+    for (var book in books) {
+      reduceHashedId(book.id, book.type.value);
     }
     notifyListeners();
   }
 
-  void batchDeleteComicsInAllFolders(List<ComicID> comics) {
+  void batchDeleteBooksInAllFolders(List<BookID> books) {
     _db.execute("BEGIN TRANSACTION");
     var folderNames = _getFolderNamesWithDB();
     try {
-      for (var comic in comics) {
-        LocalFavoriteImageProvider.delete(comic.id, comic.type.value);
+      for (var book in books) {
+        LocalFavoriteImageProvider.delete(book.id, book.type.value);
         for (var folder in folderNames) {
           _db.execute("""
             delete from "$folder"
             where id == ? and type == ?;
-          """, [comic.id, comic.type.value]);
+          """, [book.id, book.type.value]);
         }
       }
     } catch (e) {
-      Log.error("Batch Delete Comics in All Folders", e.toString());
+      Log.error("Batch Delete Books in All Folders", e.toString());
       _db.execute("ROLLBACK");
       return;
     }
     initCounts();
     _db.execute("COMMIT");
-    for (var comic in comics) {
-      var hash = comic.id.hashCode ^ comic.type.value;
+    for (var book in books) {
+      var hash = book.id.hashCode ^ book.type.value;
       _hashedIds.remove(hash);
     }
     notifyListeners();
@@ -860,13 +860,13 @@ class LocalFavoritesManager with ChangeNotifier {
   Future<int> removeInvalid() async {
     int count = 0;
     await Future.microtask(() {
-      var all = allComics();
+      var all = allBooks();
       for (var c in all) {
-        var comicSource = c.type.comicSource;
-        if ((c.type == ComicType.local &&
+        var bookSource = c.type.bookSource;
+        if ((c.type == BookType.local &&
                 LocalManager().find(c.id, c.type) == null) ||
-            (c.type != ComicType.local && comicSource == null)) {
-          deleteComicWithId(c.folder, c.id, c.type);
+            (c.type != BookType.local && bookSource == null)) {
+          deleteBookWithId(c.folder, c.id, c.type);
           count++;
         }
       }
@@ -933,7 +933,7 @@ class LocalFavoritesManager with ChangeNotifier {
     notifyListeners();
   }
 
-  void onRead(String id, ComicType type) async {
+  void onRead(String id, BookType type) async {
     if (appdata.settings['moveFavoriteAfterRead'] == "none") {
       markAsRead(id, type);
       return;
@@ -987,59 +987,59 @@ class LocalFavoritesManager with ChangeNotifier {
       SELECT * FROM "$folder" 
       WHERE name LIKE ? OR author LIKE ? OR tags LIKE ? OR translated_tags LIKE ?;
     """, [keyword, keyword, keyword, keyword]);
-    var comics = res.map((e) => FavoriteItem.fromRow(e)).toList();
-    bool test(FavoriteItem comic, String keyword) {
-      if (comic.name.contains(keyword)) {
+    var books = res.map((e) => FavoriteItem.fromRow(e)).toList();
+    bool test(FavoriteItem book, String keyword) {
+      if (book.name.contains(keyword)) {
         return true;
-      } else if (comic.author.contains(keyword)) {
+      } else if (book.author.contains(keyword)) {
         return true;
-      } else if (comic.tags.any((element) => element.contains(keyword))) {
+      } else if (book.tags.any((element) => element.contains(keyword))) {
         return true;
       }
       return false;
     }
 
     for (var i = 1; i < keywordList.length; i++) {
-      comics =
-          comics.where((element) => test(element, keywordList[i])).toList();
+      books =
+          books.where((element) => test(element, keywordList[i])).toList();
     }
-    return comics;
+    return books;
   }
 
   List<FavoriteItem> search(String keyword) {
     var keywordList = keyword.split(" ");
     keyword = keywordList.first;
-    var comics = <FavoriteItem>{};
+    var books = <FavoriteItem>{};
     for (var table in folderNames) {
       keyword = "%$keyword%";
       var res = _db.select("""
         SELECT * FROM "$table" 
         WHERE name LIKE ? OR author LIKE ? OR tags LIKE ? OR translated_tags LIKE ?;
       """, [keyword, keyword, keyword, keyword]);
-      for (var comic in res) {
-        comics.add(FavoriteItem.fromRow(comic));
+      for (var book in res) {
+        books.add(FavoriteItem.fromRow(book));
       }
-      if (comics.length > 200) {
+      if (books.length > 200) {
         break;
       }
     }
 
-    bool test(FavoriteItem comic, String keyword) {
+    bool test(FavoriteItem book, String keyword) {
       keyword = keyword.trim();
       if (keyword.isEmpty) {
         return true;
       }
-      if (comic.name.contains(keyword)) {
+      if (book.name.contains(keyword)) {
         return true;
-      } else if (comic.author.contains(keyword)) {
+      } else if (book.author.contains(keyword)) {
         return true;
-      } else if (comic.tags.any((element) => element.contains(keyword))) {
+      } else if (book.tags.any((element) => element.contains(keyword))) {
         return true;
       }
       return false;
     }
 
-    return comics.where((element) {
+    return books.where((element) {
       for (var i = 1; i < keywordList.length; i++) {
         if (!test(element, keywordList[i])) {
           return false;
@@ -1058,23 +1058,23 @@ class LocalFavoritesManager with ChangeNotifier {
     notifyListeners();
   }
 
-  bool isExist(String id, ComicType type) {
+  bool isExist(String id, BookType type) {
     var hash = id.hashCode ^ type.value;
     return _hashedIds.containsKey(hash);
   }
 
-  void updateInfo(String folder, FavoriteItem comic, [bool notify = true]) {
+  void updateInfo(String folder, FavoriteItem book, [bool notify = true]) {
     _db.execute("""
       update "$folder"
       set name = ?, author = ?, cover_path = ?, tags = ?
       where id == ? and type == ?;
     """, [
-      comic.name,
-      comic.author,
-      comic.coverPath,
-      comic.tags.join(","),
-      comic.id,
-      comic.type.value
+      book.name,
+      book.author,
+      book.coverPath,
+      book.tags.join(","),
+      book.id,
+      book.type.value
     ]);
     if (notify) {
       notifyListeners();
@@ -1088,7 +1088,7 @@ class LocalFavoritesManager with ChangeNotifier {
     return jsonEncode({
       "info": "Generated by Novvera",
       "name": folder,
-      "comics": res.map((e) => FavoriteItem.fromRow(e).toJson()).toList(),
+      "books": res.map((e) => FavoriteItem.fromRow(e).toJson()).toList(),
     });
   }
 
@@ -1106,9 +1106,9 @@ class LocalFavoritesManager with ChangeNotifier {
       folder = "$folder($i)";
     }
     createFolder(folder);
-    for (var comic in data["comics"]) {
+    for (var book in data["books"]) {
       try {
-        addComic(folder, FavoriteItem.fromJson(comic));
+        addBook(folder, FavoriteItem.fromJson(book));
       } catch (e) {
         Log.error("Import Data", e.toString());
       }
@@ -1149,7 +1149,7 @@ class LocalFavoritesManager with ChangeNotifier {
   void updateUpdateTime(
     String folder,
     String id,
-    ComicType type,
+    BookType type,
     String updateTime,
   ) {
     var oldTime = _db.select("""
@@ -1173,7 +1173,7 @@ class LocalFavoritesManager with ChangeNotifier {
   void updateCheckTime(
     String folder,
     String id,
-    ComicType type,
+    BookType type,
   ) {
     _db.execute("""
       update "$folder"
@@ -1209,7 +1209,7 @@ class LocalFavoritesManager with ChangeNotifier {
         .toList();
   }
 
-  List<FavoriteItemWithUpdateInfo> getComicsWithUpdatesInfo(String folder) {
+  List<FavoriteItemWithUpdateInfo> getBooksWithUpdatesInfo(String folder) {
     if (!existsFolder(folder)) {
       return [];
     }
@@ -1228,7 +1228,7 @@ class LocalFavoritesManager with ChangeNotifier {
         .toList();
   }
 
-  void markAsRead(String id, ComicType type) {
+  void markAsRead(String id, BookType type) {
     var folder = appdata.settings['followUpdatesFolder'];
     if (!existsFolder(folder)) {
       return;

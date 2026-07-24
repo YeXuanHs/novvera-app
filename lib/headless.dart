@@ -2,9 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/widgets.dart';
 import 'package:novvera/utils/data_sync.dart';
-import 'package:novvera/foundation/comic_source/comic_source.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
 import 'package:novvera/foundation/log.dart';
-import 'package:novvera/pages/comic_source_page.dart';
+import 'package:novvera/pages/book_source_page.dart';
 import 'package:novvera/init.dart';
 import 'package:novvera/foundation/follow_updates.dart';
 import 'package:novvera/foundation/appdata.dart';
@@ -52,9 +52,9 @@ Future<void> runHeadlessMode(List<String> args) async {
       break;
     case 'updatescript':
       if (subCommand == 'all') {
-        cliPrint({'status': 'running', 'message': 'Checking for comic source script updates...'});
-        await ComicSourcePage.checkComicSourceUpdate();
-        var updates = ComicSourceManager().availableUpdates;
+        cliPrint({'status': 'running', 'message': 'Checking for book source script updates...'});
+        await BookSourcePage.checkBookSourceUpdate();
+        var updates = BookSourceManager().availableUpdates;
         if (updates.isEmpty) {
           cliPrint({'status': 'success', 'message': 'No updates found.'});
         } else {
@@ -64,7 +64,7 @@ Future<void> runHeadlessMode(List<String> args) async {
           var updated = 0;
           cliPrint({
             'status': 'running',
-            'message': 'Updating all comic source scripts...',
+            'message': 'Updating all book source scripts...',
             'data': {
               'total': total,
               'current': 0,
@@ -73,7 +73,7 @@ Future<void> runHeadlessMode(List<String> args) async {
             }
           });
           for (var key in updates.keys) {
-            var source = ComicSource.find(key);
+            var source = BookSource.find(key);
             if (source != null) {
               current++;
               var data = {
@@ -87,7 +87,7 @@ Future<void> runHeadlessMode(List<String> args) async {
                 }
               };
               try {
-                await ComicSourcePage.update(source, false);
+                await BookSourcePage.update(source, false);
                 updated++;
                 cliPrint({
                   'status': 'running',
@@ -123,33 +123,33 @@ Future<void> runHeadlessMode(List<String> args) async {
       }
       break;
     case 'updatesubscribe':
-      cliPrint({'status': 'running', 'message': 'Updating subscribed comics...'});
+      cliPrint({'status': 'running', 'message': 'Updating subscribed books...'});
       var folder = appdata.settings["followUpdatesFolder"];
       if (folder == null) {
         cliPrint({'status': 'error', 'message': 'Follow updates folder is not configured.'});
         exit(1);
       }
 
-      var updateIndex = args.indexOf('--update-comic-by-id-type');
+      var updateIndex = args.indexOf('--update-book-by-id-type');
       if (updateIndex != -1) {
         var id = args[updateIndex + 1];
         var type = args[updateIndex + 2];
-        var comics = LocalFavoritesManager().getComicsWithUpdatesInfo(folder);
-        var comic = comics.firstWhere((c) => c.id == id && c.type.sourceKey == type);
+        var books = LocalFavoritesManager().getBooksWithUpdatesInfo(folder);
+        var book = books.firstWhere((c) => c.id == id && c.type.sourceKey == type);
         
-        var result = await updateComic(comic, folder);
+        var result = await updateBook(book, folder);
         
         Map<String, dynamic> data = {
           'current': 1,
           'total': 1,
-          'comic': {
-            'id': comic.id,
-            'name': comic.name,
-            'coverUrl': comic.coverPath,
-            'author': comic.author,
-            'type': comic.type.sourceKey,
-            'updateTime': comic.updateTime,
-            'tags': comic.tags,
+          'book': {
+            'id': book.id,
+            'name': book.name,
+            'coverUrl': book.coverPath,
+            'author': book.author,
+            'type': book.type.sourceKey,
+            'updateTime': book.updateTime,
+            'tags': book.tags,
           }
         };
 
@@ -176,10 +176,10 @@ Future<void> runHeadlessMode(List<String> args) async {
         });
 
         await Future.delayed(const Duration(milliseconds: 500));
-        var json = await getUpdatedComicsAsJson(folder);
+        var json = await getUpdatedBooksAsJson(folder);
         cliPrint({
           'status': result.errorMessage != null ? 'error' : 'success',
-          'message': 'Updated comics list.',
+          'message': 'Updated books list.',
           'data': jsonDecode(json),
         });
       } else {
@@ -194,15 +194,15 @@ Future<void> runHeadlessMode(List<String> args) async {
             'current': progress.current,
             'total': progress.total,
           };
-          if (progress.comic != null) {
-            data['comic'] = {
-              'id': progress.comic!.id,
-              'name': progress.comic!.name,
-              'coverUrl': progress.comic!.coverPath,
-              'author': progress.comic!.author,
-              'type': progress.comic!.type.sourceKey,
-              'updateTime': progress.comic!.updateTime,
-              'tags': progress.comic!.tags,
+          if (progress.book != null) {
+            data['book'] = {
+              'id': progress.book!.id,
+              'name': progress.book!.name,
+              'coverUrl': progress.book!.coverPath,
+              'author': progress.book!.author,
+              'type': progress.book!.type.sourceKey,
+              'updateTime': progress.book!.updateTime,
+              'tags': progress.book!.tags,
             };
           }
           var message = 'Progress';
@@ -226,10 +226,10 @@ Future<void> runHeadlessMode(List<String> args) async {
           }
         });
         await Future.delayed(const Duration(milliseconds: 500));
-        var json = await getUpdatedComicsAsJson(folder);
+        var json = await getUpdatedBooksAsJson(folder);
         cliPrint({
           'status': errors > 0 ? 'error' : 'success',
-          'message': 'Updated comics list.',
+          'message': 'Updated books list.',
           'data': jsonDecode(json),
         });
       }

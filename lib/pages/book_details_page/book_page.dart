@@ -10,8 +10,8 @@ import 'package:novvera/components/components.dart';
 import 'package:novvera/components/rich_comment_content.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/appdata.dart';
-import 'package:novvera/foundation/comic_source/comic_source.dart';
-import 'package:novvera/foundation/comic_type.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
+import 'package:novvera/foundation/book_type.dart';
 import 'package:novvera/foundation/consts.dart';
 import 'package:novvera/foundation/favorites.dart';
 import 'package:novvera/foundation/history.dart';
@@ -27,7 +27,6 @@ import 'package:novvera/network/cache.dart';
 import 'package:novvera/network/images.dart';
 import 'package:novvera/pages/favorites/favorites_page.dart';
 import 'package:novvera/pages/reader/reader.dart';
-import 'package:novvera/utils/epub.dart';
 import 'package:novvera/utils/file_type.dart';
 import 'package:novvera/utils/io.dart';
 import 'package:novvera/utils/tags_translation.dart';
@@ -48,8 +47,8 @@ part 'actions.dart';
 
 part 'cover_viewer.dart';
 
-class ComicPage extends StatefulWidget {
-  const ComicPage({
+class BookPage extends StatefulWidget {
+  const BookPage({
     super.key,
     required this.id,
     required this.sourceKey,
@@ -69,11 +68,11 @@ class ComicPage extends StatefulWidget {
   final int? heroID;
 
   @override
-  State<ComicPage> createState() => _ComicPageState();
+  State<BookPage> createState() => _BookPageState();
 }
 
-class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
-    with _ComicPageActions {
+class _BookPageState extends LoadingState<BookPage, BookDetails>
+    with _BookPageActions {
   @override
   History? history;
 
@@ -89,14 +88,14 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
   void onReadEnd() {
     history ??= HistoryManager().find(
       widget.id,
-      ComicType(widget.sourceKey.hashCode),
+      BookType(widget.sourceKey.hashCode),
     );
     update();
   }
 
   @override
   Widget buildLoading() {
-    return _ComicPageLoadingPlaceHolder(
+    return _BookPageLoadingPlaceHolder(
       cover: widget.cover,
       title: widget.title,
       sourceKey: widget.sourceKey,
@@ -109,22 +108,22 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
   Widget buildError() {
     final isDownloaded = LocalManager().isDownloaded(
       widget.id,
-      ComicType.fromKey(widget.sourceKey),
+      BookType.fromKey(widget.sourceKey),
     );
     Widget? action;
     if (isDownloaded) {
       action = FilledButton.tonal(
         child: Text("Read".tl),
         onPressed: () {
-          final localComic = LocalManager().find(
+          final localBook = LocalManager().find(
             widget.id,
-            ComicType.fromKey(widget.sourceKey),
+            BookType.fromKey(widget.sourceKey),
           );
-          if (localComic == null) {
-            context.showMessage(message: "Local comic not found".tl);
+          if (localBook == null) {
+            context.showMessage(message: "Local book not found".tl);
             return;
           }
-          localComic.read();
+          localBook.read();
         },
       );
     }
@@ -134,13 +133,38 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
   @override
   void initState() {
     scrollController.addListener(onScroll);
+    LocalManager().addListener(_onLocalChange);
     super.initState();
   }
 
   @override
   void dispose() {
     scrollController.removeListener(onScroll);
+    LocalManager().removeListener(_onLocalChange);
     super.dispose();
+  }
+
+  void _onLocalChange() {
+    if (!mounted || data == null) return;
+    _refreshDownloadedFlag();
+    setState(() {});
+  }
+
+  void _refreshDownloadedFlag() {
+    final c = data;
+    if (c == null) return;
+    if (c.chapters == null) {
+      isDownloaded =
+          LocalManager().isDownloaded(c.id, c.bookType, 0);
+      return;
+    }
+    final local = LocalManager().find(c.id, c.bookType);
+    if (local == null) {
+      isDownloaded = false;
+      return;
+    }
+    isDownloaded =
+        local.downloadedChapters.length >= c.chapters!.length;
   }
 
   @override
@@ -149,7 +173,7 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
   }
 
   @override
-  ComicDetails get comic => data!;
+  BookDetails get book => data!;
 
   void onScroll() {
     var offset =
@@ -179,7 +203,7 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
   var isFirst = true;
 
   @override
-  Widget buildContent(BuildContext context, ComicDetails data) {
+  Widget buildContent(BuildContext context, BookDetails data) {
     return Scaffold(
       floatingActionButton: showFAB
           ? FloatingActionButton(
@@ -215,29 +239,29 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
   }
 
   @override
-  Future<Res<ComicDetails>> loadData() async {
+  Future<Res<BookDetails>> loadData() async {
     if (widget.sourceKey == 'local') {
-      var localComic = LocalManager().find(widget.id, ComicType.local);
-      if (localComic == null) {
-        return const Res.error('Local comic not found');
+      var localBook = LocalManager().find(widget.id, BookType.local);
+      if (localBook == null) {
+        return const Res.error('Local book not found');
       }
-      var history = HistoryManager().find(widget.id, ComicType.local);
+      var history = HistoryManager().find(widget.id, BookType.local);
       if (isFirst) {
         Future.microtask(() {
           App.rootContext.to(() {
             return Reader(
-              type: ComicType.local,
+              type: BookType.local,
               cid: widget.id,
-              name: localComic.title,
-              chapters: localComic.chapters,
+              name: localBook.title,
+              chapters: localBook.chapters,
               initialPage: history?.page,
               initialChapter: history?.ep,
               initialChapterGroup: history?.group,
               history:
                   history ??
-                  History.fromModel(model: localComic, ep: 0, page: 0),
-              author: localComic.subTitle ?? '',
-              tags: localComic.tags,
+                  History.fromModel(model: localBook, ep: 0, page: 0),
+              author: localBook.subTitle ?? '',
+              tags: localBook.tags,
             );
           });
           App.mainNavigatorKey!.currentContext!.pop();
@@ -245,52 +269,52 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
         isFirst = false;
       }
       await Future.delayed(const Duration(milliseconds: 200));
-      return const Res.error('Local comic');
+      return const Res.error('Local book');
     }
-    var comicSource = ComicSource.find(widget.sourceKey);
-    if (comicSource == null) {
-      return const Res.error('Comic source not found');
+    var bookSource = BookSource.find(widget.sourceKey);
+    if (bookSource == null) {
+      return const Res.error('Book source not found');
     }
     isAddToLocalFav = LocalFavoritesManager().isExist(
       widget.id,
-      ComicType(widget.sourceKey.hashCode),
+      BookType(widget.sourceKey.hashCode),
     );
     history = HistoryManager().find(
       widget.id,
-      ComicType(widget.sourceKey.hashCode),
+      BookType(widget.sourceKey.hashCode),
     );
-    return comicSource.loadComicInfo!(widget.id);
+    return bookSource.loadBookInfo!(widget.id);
   }
 
   /// Prefer freshly loaded cover over the optional hero/history cover.
   /// History may hold a stale/junk URL (e.g. huanmeng og:image bait).
   String get _displayCover {
-    final loaded = comic.cover.trim();
+    final loaded = book.cover.trim();
     if (loaded.isNotEmpty) return loaded;
     return (widget.cover ?? '').trim();
   }
 
   @override
   Future<void> onDataLoaded() async {
-    isLiked = comic.isLiked ?? false;
-    isFavorite = comic.isFavorite ?? false;
+    isLiked = book.isLiked ?? false;
+    isFavorite = book.isFavorite ?? false;
     // Refresh history cover when detail has a better URL.
     final hist = history;
-    final loaded = comic.cover.trim();
+    final loaded = book.cover.trim();
     if (hist != null &&
         loaded.isNotEmpty &&
         hist.cover.trim() != loaded) {
       hist.cover = loaded;
-      hist.title = comic.title;
-      if (comic.subTitle != null && comic.subTitle!.isNotEmpty) {
-        hist.subtitle = comic.subTitle!;
+      hist.title = book.title;
+      if (book.subTitle != null && book.subTitle!.isNotEmpty) {
+        hist.subtitle = book.subTitle!;
       }
       HistoryManager().addHistory(hist);
     }
     // For sources with multi-folder favorites, prefer querying folders to get accurate favorite status
     // Some sources may not set isFavorite reliably when multi-folder is enabled
-    if (comicSource.favoriteData?.loadFolders != null && comicSource.isLogged) {
-      var res = await comicSource.favoriteData!.loadFolders!(comic.id);
+    if (bookSource.favoriteData?.loadFolders != null && bookSource.isLogged) {
+      var res = await bookSource.favoriteData!.loadFolders!(book.id);
       if (!res.error) {
         if (res.subData is List) {
           var list = List<String>.from(res.subData);
@@ -299,8 +323,10 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
         }
       }
     }
-    if (comic.chapters == null) {
-      isDownloaded = LocalManager().isDownloaded(comic.id, comic.comicType, 0);
+    if (book.chapters == null) {
+      isDownloaded = LocalManager().isDownloaded(book.id, book.bookType, 0);
+    } else {
+      _refreshDownloadedFlag();
     }
   }
 
@@ -309,7 +335,7 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
       title: AnimatedOpacity(
         opacity: showAppbarTitle ? 1.0 : 0.0,
         duration: const Duration(milliseconds: 200),
-        child: Text(comic.title),
+        child: Text(book.title),
       ),
       actions: [
         IconButton(
@@ -349,8 +375,8 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
                 child: AnimatedImage(
                   image: CachedImageProvider(
                     _displayCover,
-                    sourceKey: comic.sourceKey,
-                    cid: comic.id,
+                    sourceKey: book.sourceKey,
+                    cid: book.id,
                   ),
                   width: double.infinity,
                   height: double.infinity,
@@ -363,14 +389,14 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SelectableText(comic.title, style: ts.s18),
-                if (comic.subTitle != null)
+                SelectableText(book.title, style: ts.s18),
+                if (book.subTitle != null)
                   SelectableText(
-                    comic.subTitle!,
+                    book.subTitle!,
                     style: ts.s14,
                   ).paddingVertical(4),
                 Text(
-                  (ComicSource.find(comic.sourceKey)?.name) ?? '',
+                  (BookSource.find(book.sourceKey)?.name) ?? '',
                   style: ts.s12,
                 ),
               ],
@@ -435,10 +461,10 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
                 onLongPressed: quickFavorite,
                 iconColor: context.useTextColor(Colors.purple),
               ),
-              if (comicSource.commentsLoader != null)
+              if (bookSource.commentsLoader != null)
                 _ActionButton(
                   icon: const Icon(Icons.comment),
-                  text: (comic.commentCount ?? 'Comments'.tl).toString(),
+                  text: (book.commentCount ?? 'Comments'.tl).toString(),
                   onPressed: showComments,
                   iconColor: context.useTextColor(Colors.green),
                 ),
@@ -485,7 +511,7 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
                   const SizedBox(width: 8),
                   Builder(
                     builder: (context) {
-                      bool haveChapter = comic.chapters != null;
+                      bool haveChapter = book.chapters != null;
                       var page = history!.page;
                       var ep = history!.ep;
                       var group = history!.group;
@@ -495,14 +521,14 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
                         String? groupName;
                         try {
                           if (group == null) {
-                            epName = comic.chapters!.titles.elementAt(
-                              math.min(ep - 1, comic.chapters!.length - 1),
+                            epName = book.chapters!.titles.elementAt(
+                              math.min(ep - 1, book.chapters!.length - 1),
                             );
                           } else {
-                            groupName = comic.chapters!.groups.elementAt(
+                            groupName = book.chapters!.groups.elementAt(
                               group - 1,
                             );
-                            epName = comic.chapters!
+                            epName = book.chapters!
                                 .getGroupByIndex(group - 1)
                                 .values
                                 .elementAt(ep - 1);
@@ -511,14 +537,14 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
                           // ignore
                         }
                         text = groupName == null
-                            ? isNovelSource(comic.sourceKey)
+                            ? isNovelSource(book.sourceKey)
                                 ? "${"Last Reading".tl}: $epName"
                                 : "${"Last Reading".tl}: $epName P$page"
-                            : isNovelSource(comic.sourceKey)
+                            : isNovelSource(book.sourceKey)
                                 ? "${"Last Reading".tl}: $groupName $epName"
                                 : "${"Last Reading".tl}: $groupName $epName P$page";
                       } else {
-                        text = isNovelSource(comic.sourceKey)
+                        text = isNovelSource(book.sourceKey)
                             ? "Last Reading".tl
                             : "${"Last Reading".tl}: P$page";
                       }
@@ -536,7 +562,7 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
   }
 
   Widget buildDescription() {
-    if (comic.description == null || comic.description!.trim().isEmpty) {
+    if (book.description == null || book.description!.trim().isEmpty) {
       return const SliverPadding(padding: EdgeInsets.zero);
     }
     return SliverLazyToBoxAdapter(
@@ -545,7 +571,7 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
           ListTile(title: Text("Description".tl)),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: SelectableText(comic.description!).fixWidth(double.infinity),
+            child: SelectableText(book.description!).fixWidth(double.infinity),
           ),
           const SizedBox(height: 16),
           const Divider(),
@@ -555,11 +581,11 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
   }
 
   Widget buildInfo() {
-    if (comic.tags.isEmpty &&
-        comic.uploader == null &&
-        comic.uploadTime == null &&
-        comic.uploadTime == null &&
-        comic.maxPage == null) {
+    if (book.tags.isEmpty &&
+        book.uploader == null &&
+        book.uploadTime == null &&
+        book.uploadTime == null &&
+        book.maxPage == null) {
       return const SliverPadding(padding: EdgeInsets.zero);
     }
 
@@ -661,26 +687,26 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
     }
 
     bool enableTranslation =
-        App.locale.languageCode == 'zh' && comicSource.enableTagsTranslate;
+        App.locale.languageCode == 'zh' && bookSource.enableTagsTranslate;
 
     return SliverLazyToBoxAdapter(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ListTile(title: Text("Information".tl)),
-          if (comic.stars != null)
+          if (book.stars != null)
             Row(
               children: [
-                StarRating(value: comic.stars!, size: 24, onTap: starRating),
+                StarRating(value: book.stars!, size: 24, onTap: starRating),
                 const SizedBox(width: 8),
-                Text(comic.stars!.toStringAsFixed(2)),
+                Text(book.stars!.toStringAsFixed(2)),
               ],
             ).paddingLeft(16).paddingVertical(8),
-          for (var e in comic.tags.entries)
+          for (var e in book.tags.entries)
             buildWrap(
               children: [
                 if (e.value.isNotEmpty)
-                  buildTag(text: e.key.ts(comicSource.key), isTitle: true),
+                  buildTag(text: e.key.ts(bookSource.key), isTitle: true),
                 for (var tag in e.value)
                   buildTag(
                     text: enableTranslation
@@ -689,7 +715,7 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
                             e.key.toLowerCase(),
                           )
                         : tag,
-                    onTap: comicSource.handleClickTagEvent
+                    onTap: bookSource.handleClickTagEvent
                                 ?.call(e.key, tag) !=
                             null
                         ? () => onTapTag(tag, e.key)
@@ -697,32 +723,32 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
                   ),
               ],
             ),
-          if (comic.uploader != null)
+          if (book.uploader != null)
             buildWrap(
               children: [
                 buildTag(text: 'Uploader'.tl, isTitle: true),
-                buildTag(text: comic.uploader!),
+                buildTag(text: book.uploader!),
               ],
             ),
-          if (comic.uploadTime != null)
+          if (book.uploadTime != null)
             buildWrap(
               children: [
                 buildTag(text: 'Upload Time'.tl, isTitle: true),
-                buildTag(text: formatTime(comic.uploadTime!)),
+                buildTag(text: formatTime(book.uploadTime!)),
               ],
             ),
-          if (comic.updateTime != null)
+          if (book.updateTime != null)
             buildWrap(
               children: [
                 buildTag(text: 'Update Time'.tl, isTitle: true),
-                buildTag(text: formatTime(comic.updateTime!)),
+                buildTag(text: formatTime(book.updateTime!)),
               ],
             ),
-          if (comic.maxPage != null)
+          if (book.maxPage != null)
             buildWrap(
               children: [
                 buildTag(text: 'Pages'.tl, isTitle: true),
-                buildTag(text: comic.maxPage.toString()),
+                buildTag(text: book.maxPage.toString()),
               ],
             ),
           const SizedBox(height: 12),
@@ -733,52 +759,52 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
   }
 
   Widget buildChapters() {
-    if (comic.chapters == null) {
+    if (book.chapters == null) {
       return const SliverPadding(padding: EdgeInsets.zero);
     }
-    return _ComicChapters(
+    return _BookChapters(
       history: history,
-      groupedMode: comic.chapters!.isGrouped,
+      groupedMode: book.chapters!.isGrouped,
     );
   }
 
   Widget buildThumbnails() {
-    if (comic.thumbnails == null && comicSource.loadComicThumbnail == null) {
+    if (book.thumbnails == null && bookSource.loadBookThumbnail == null) {
       return const SliverPadding(padding: EdgeInsets.zero);
     }
-    return const _ComicThumbnails();
+    return const _BookThumbnails();
   }
 
   Widget buildRecommend() {
-    if (comic.recommend == null || comic.recommend!.isEmpty) {
+    if (book.recommend == null || book.recommend!.isEmpty) {
       return const SliverPadding(padding: EdgeInsets.zero);
     }
     return SliverMainAxisGroup(
       slivers: [
         SliverToBoxAdapter(child: ListTile(title: Text("Related".tl))),
-        SliverGridComics(comics: comic.recommend!),
+        SliverGridBooks(books: book.recommend!),
       ],
     );
   }
 
   Widget buildComments() {
-    if (comic.comments == null || comic.comments!.isEmpty) {
+    if (book.comments == null || book.comments!.isEmpty) {
       return const SliverPadding(padding: EdgeInsets.zero);
     }
-    return _CommentsPart(comments: comic.comments!, showMore: showComments);
+    return _CommentsPart(comments: book.comments!, showMore: showComments);
   }
 
   void _viewCover(BuildContext context) {
     final imageProvider = CachedImageProvider(
       _displayCover,
-      sourceKey: comic.sourceKey,
-      cid: comic.id,
+      sourceKey: book.sourceKey,
+      cid: book.id,
     );
 
     context.to(
       () => _CoverViewer(
         imageProvider: imageProvider,
-        title: comic.title,
+        title: book.title,
         heroTag: "cover${widget.heroID}",
       ),
     );
@@ -788,8 +814,8 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
     try {
       final imageProvider = CachedImageProvider(
         _displayCover,
-        sourceKey: comic.sourceKey,
-        cid: comic.id,
+        sourceKey: book.sourceKey,
+        cid: book.id,
       );
 
       final imageStream = imageProvider.resolve(const ImageConfiguration());
@@ -1162,8 +1188,8 @@ class _SelectDownloadChapterState extends State<_SelectDownloadChapter> {
   }
 }
 
-class _ComicPageLoadingPlaceHolder extends StatelessWidget {
-  const _ComicPageLoadingPlaceHolder({
+class _BookPageLoadingPlaceHolder extends StatelessWidget {
+  const _BookPageLoadingPlaceHolder({
     this.cover,
     this.title,
     required this.sourceKey,

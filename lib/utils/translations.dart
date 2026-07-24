@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/services.dart';
-import 'package:novvera/foundation/comic_source/comic_source.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
 import '../foundation/app.dart';
 
 extension AppTranslation on String {
@@ -36,18 +36,18 @@ extension AppTranslation on String {
     };
   }
 
-  /// Translate a string using specified comic source
+  /// Translate a string using specified book source
   String ts(String sourceKey) {
-    var comicSource = ComicSource.find(sourceKey);
-    if (comicSource == null || comicSource.translations == null) {
+    var bookSource = BookSource.find(sourceKey);
+    if (bookSource == null || bookSource.translations == null) {
       return this;
     }
     var locale = App.locale;
     var lc = locale.languageCode;
     var cc = locale.countryCode;
     var key = "$lc${cc == null ? "" : "_$cc"}";
-    return (comicSource.translations![key] ??
-            comicSource.translations![lc])?[this] ??
+    return (bookSource.translations![key] ??
+            bookSource.translations![lc])?[this] ??
         this;
   }
 }

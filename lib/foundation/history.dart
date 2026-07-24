@@ -8,8 +8,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart' show ChangeNotifier;
 import 'package:sqlite3/sqlite3.dart';
-import 'package:novvera/foundation/comic_source/comic_source.dart';
-import 'package:novvera/foundation/comic_type.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
+import 'package:novvera/foundation/book_type.dart';
 import 'package:novvera/foundation/favorites.dart';
 import 'package:novvera/foundation/image_provider/image_favorites_provider.dart';
 import 'package:novvera/foundation/log.dart';
@@ -23,7 +23,7 @@ import 'consts.dart';
 
 part "image_favorites.dart";
 
-typedef HistoryType = ComicType;
+typedef HistoryType = BookType;
 
 abstract mixin class HistoryMixin {
   String get title;
@@ -39,7 +39,7 @@ abstract mixin class HistoryMixin {
   HistoryType get historyType;
 }
 
-class History implements Comic {
+class History implements Book {
   HistoryType type;
 
   DateTime time;
@@ -167,9 +167,9 @@ class History implements Comic {
   String? get language => null;
 
   @override
-  String get sourceKey => type == ComicType.local
+  String get sourceKey => type == BookType.local
       ? 'local'
-      : type.comicSource?.key ?? "Unknown:${type.value}";
+      : type.bookSource?.key ?? "Unknown:${type.value}";
 
   @override
   double? get stars => null;
@@ -325,7 +325,7 @@ void clearUnfavoritedHistory() {
     """);
     for (var element in idAndTypes) {
       final id = element["id"] as String;
-      final type = ComicType(element["type"] as int);
+      final type = BookType(element["type"] as int);
       if (!LocalFavoritesManager().isExist(id, type)) {
         _db.execute("""
           delete from history
@@ -342,7 +342,7 @@ void clearUnfavoritedHistory() {
   notifyListeners();
 }
 
-  void remove(String id, ComicType type) async {
+  void remove(String id, BookType type) async {
     _db.execute("""
       delete from history
       where id == ? and type == ?;
@@ -366,7 +366,7 @@ void clearUnfavoritedHistory() {
     }
   }
 
-  History? find(String id, ComicType type) {
+  History? find(String id, BookType type) {
     if (_cachedHistoryIds == null) {
       updateCache();
     }
@@ -418,7 +418,7 @@ void clearUnfavoritedHistory() {
     _db.dispose();
   }
 
-  void batchDeleteHistories(List<ComicID> histories) {
+  void batchDeleteHistories(List<BookID> histories) {
     if (histories.isEmpty) return;
     _db.execute('BEGIN TRANSACTION;');
     try {
@@ -437,12 +437,12 @@ void clearUnfavoritedHistory() {
     notifyListeners();
   }
 
-  /// Refresh history info from comic source.
+  /// Refresh history info from book source.
   /// Fetches the latest cover, title and subtitle from the source.
   /// Keeps the reading progress (ep, page, etc.).
   Future<bool> refreshHistoryInfo(History history) async {
     if (history.sourceKey == 'local') {
-      // Local comics don't need refresh
+      // Local books don't need refresh
       return false;
     }
 
@@ -452,15 +452,15 @@ void clearUnfavoritedHistory() {
   /// Internal method to refresh a single history
   /// Retries up to 3 times on failure with 2 second delay between retries
   Future<bool> _refreshSingleHistory(History history) async {
-    var comicSource = ComicSource.find(history.sourceKey);
-    if (comicSource == null || comicSource.loadComicInfo == null) {
+    var bookSource = BookSource.find(history.sourceKey);
+    if (bookSource == null || bookSource.loadBookInfo == null) {
       return false;
     }
 
     int retries = 3;
     while (true) {
       try {
-        var res = await comicSource.loadComicInfo!(history.id);
+        var res = await bookSource.loadBookInfo!(history.id);
         if (res.error) {
           await Future.delayed(const Duration(seconds: 2));
           retries--;
@@ -470,14 +470,14 @@ void clearUnfavoritedHistory() {
           continue;
         }
 
-        var comicDetails = res.data;
+        var bookDetails = res.data;
         // Update history info while keeping reading progress
         var updatedHistory = History.fromMap({
           'type': history.type.value,
           'time': history.time.millisecondsSinceEpoch,
-          'title': comicDetails.title,
-          'subtitle': comicDetails.subTitle ?? '',
-          'cover': comicDetails.cover,
+          'title': bookDetails.title,
+          'subtitle': bookDetails.subTitle ?? '',
+          'cover': bookDetails.cover,
           'ep': history.ep,
           'page': history.page,
           'id': history.id,
@@ -499,7 +499,7 @@ void clearUnfavoritedHistory() {
     }
   }
 
-  /// Refresh all histories from comic sources.
+  /// Refresh all histories from book sources.
   /// Returns a stream with progress updates.
   /// From e0ea449c.
   Stream<RefreshProgress> refreshAllHistoriesStream() {

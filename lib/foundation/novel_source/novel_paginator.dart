@@ -70,7 +70,9 @@ List<NovelBlock> parseNovelBlocks(
   for (final raw in content.split('\n')) {
     final trimmed = raw.trimRight().trim();
     if (trimmed.isEmpty) continue;
-    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    if (trimmed.startsWith('http://') ||
+        trimmed.startsWith('https://') ||
+        trimmed.startsWith('file://')) {
       if (seenImages.add(trimmed)) {
         blocks.add(NovelImageBlock(trimmed));
       }

@@ -1,5 +1,5 @@
 import 'package:novvera/foundation/appdata.dart';
-import 'package:novvera/foundation/comic_source/comic_source.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
 import 'package:novvera/foundation/consts.dart';
 import 'package:novvera/foundation/novel_api/novel_api_client.dart';
 import 'package:novvera/foundation/novel_backend/novel_http.dart';
@@ -26,7 +26,7 @@ String novelBookUrl(String sourceKey, String aid) {
 ///
 /// - **发现 (Explore)**: homepage recommendation sections (multipart)
 /// - **分类 (Categories)**: per-source ranks / tags matching the site or App API
-List<ComicSource> createBuiltinNovelSources() {
+List<BookSource> createBuiltinNovelSources() {
   return [
     _buildSource(name: '轻小说文库', key: 'wenku8'),
     _buildSource(name: '哔哩轻小说', key: 'linovelib'),
@@ -147,7 +147,7 @@ List<CategoryItem> _rankCategoryItems(String key, Map<String, String> types) {
       .toList();
 }
 
-ComicSource _buildSource({
+BookSource _buildSource({
   required String name,
   required String key,
 }) {
@@ -181,7 +181,7 @@ ComicSource _buildSource({
     enableRankingPage: false,
   );
 
-  final categoryComicsData = CategoryComicsData(
+  final categoryBooksData = CategoryBooksData(
     options: const [],
     load: (category, param, options, page) {
       final type = _resolveRankType(key, category, param, options);
@@ -206,12 +206,12 @@ ComicSource _buildSource({
   // Author-only search is only reached via detail-page author chip (options=author).
   final List<SearchOptions>? searchOptions = null;
 
-  return ComicSource(
+  return BookSource(
     name,
     key,
     null,
     categoryData,
-    categoryComicsData,
+    categoryBooksData,
     null,
     explorePages,
     SearchPageData(
@@ -227,10 +227,10 @@ ComicSource _buildSource({
       null,
     ),
     null,
-    (id) => _loadComicInfo(key, id),
+    (id) => _loadBookInfo(key, id),
     null,
     (id, ep) => _loadChapterPages(key, id, ep),
-    (imageKey, comicId, epId) async => _imageLoadingConfig(key, imageKey),
+    (imageKey, bookId, epId) async => _imageLoadingConfig(key, imageKey),
     (imageKey) => _imageLoadingConfig(key, imageKey),
     'builtin:$key',
     '',
@@ -296,7 +296,7 @@ String _fallbackCover(String sourceKey, String aid) {
   };
 }
 
-Comic _itemToComic(Map<String, dynamic> item, String sourceKey) {
+Book _itemToBook(Map<String, dynamic> item, String sourceKey) {
   final aid = '${item['aid'] ?? ''}';
   final title = (item['name'] ?? item['title'] ?? '').toString();
   var cover = (item['cover'] ?? '').toString().trim();
@@ -323,7 +323,7 @@ Comic _itemToComic(Map<String, dynamic> item, String sourceKey) {
   author = author.replaceFirst(RegExp(r'^作者[:：]\s*'), '').trim();
 
   // List / search cards: title + author + cover only (no tag chips).
-  return Comic(
+  return Book(
     title,
     cover,
     aid,
@@ -344,13 +344,13 @@ Future<Res<List<ExplorePagePart>>> _loadHome(String source) async {
     for (final sec in sections) {
       final title = (sec['title'] ?? '').toString();
       if (title.isEmpty) continue;
-      final comics = (sec['items'] as List? ?? [])
+      final books = (sec['items'] as List? ?? [])
           .whereType<Map>()
-          .map((e) => _itemToComic(Map<String, dynamic>.from(e), source))
-          .where((c) => c.id.isNotEmpty && c.title.isNotEmpty)
+          .map((e) => _itemToBook(Map<String, dynamic>.from(e), source))
+          .where((b) => b.id.isNotEmpty && b.title.isNotEmpty)
           .toList();
-      if (comics.isEmpty) continue;
-      parts.add(ExplorePagePart(title, comics, null));
+      if (books.isEmpty) continue;
+      parts.add(ExplorePagePart(title, books, null));
     }
     if (parts.isEmpty) {
       return Res.error('主页暂无推荐分区');
@@ -361,7 +361,7 @@ Future<Res<List<ExplorePagePart>>> _loadHome(String source) async {
   }
 }
 
-Future<Res<List<Comic>>> _loadRank(String source, String type, int page) async {
+Future<Res<List<Book>>> _loadRank(String source, String type, int page) async {
   try {
     final data = await NovelApiClient.instance.get(
       source,
@@ -370,7 +370,7 @@ Future<Res<List<Comic>>> _loadRank(String source, String type, int page) async {
     );
     final items = (data['items'] as List? ?? [])
         .whereType<Map>()
-        .map((e) => _itemToComic(Map<String, dynamic>.from(e), source))
+        .map((e) => _itemToBook(Map<String, dynamic>.from(e), source))
         .toList();
     final pagerMax = int.tryParse('${data['pager_max'] ?? ''}');
     final maxPage = inferMaxPage(
@@ -410,7 +410,7 @@ String _resolveRankType(
   return types.keys.first;
 }
 
-Future<Res<List<Comic>>> _loadSearch(
+Future<Res<List<Book>>> _loadSearch(
   String source,
   String keyword,
   int page,
@@ -436,7 +436,7 @@ Future<Res<List<Comic>>> _loadSearch(
     );
     final items = (data['items'] as List? ?? [])
         .whereType<Map>()
-        .map((e) => _itemToComic(Map<String, dynamic>.from(e), source))
+        .map((e) => _itemToBook(Map<String, dynamic>.from(e), source))
         .where((c) => c.id.isNotEmpty)
         .toList();
     final pagerMax = int.tryParse('${data['pager_max'] ?? ''}');
@@ -456,7 +456,7 @@ Future<Res<List<Comic>>> _loadSearch(
   }
 }
 
-Future<Res<ComicDetails>> _loadComicInfo(String source, String id) async {
+Future<Res<BookDetails>> _loadBookInfo(String source, String id) async {
   try {
     final info = await NovelApiClient.instance.get(
       source,
@@ -520,7 +520,7 @@ Future<Res<ComicDetails>> _loadComicInfo(String source, String id) async {
       }
     }
 
-    final details = ComicDetails.fromJson({
+    final details = BookDetails.fromJson({
       'title': title,
       'subtitle': authorRaw,
       'cover': cover,
@@ -528,7 +528,7 @@ Future<Res<ComicDetails>> _loadComicInfo(String source, String id) async {
       'tags': tags,
       'chapters': grouped,
       'sourceKey': source,
-      'comicId': id,
+      'bookId': id,
       'isFavorite': false,
       'updateTime': updateTime,
       'url': novelBookUrl(source, id),
@@ -566,9 +566,56 @@ Future<Res<Map<String, dynamic>>> loadNovelChapter(
   }
 }
 
+/// Build reader page keys from chapter payload (`content` + `images`).
+///
+/// Used by online fetch and offline local downloads.
+List<String> buildNovelReaderPages({
+  required String content,
+  List<String> trailingImages = const [],
+}) {
+  NovelPageCache.clear();
+  final blocks = parseNovelBlocks(
+    content,
+    trailingImages: trailingImages
+        .map(normalizeNovelImageUrl)
+        .where((e) =>
+            e.startsWith('http') ||
+            e.startsWith('file://') ||
+            e.startsWith('/'))
+        .toList(),
+  );
+  final normalized = <NovelBlock>[];
+  for (final b in blocks) {
+    if (b is NovelImageBlock) {
+      final url = normalizeNovelImageUrl(b.url);
+      if (url.startsWith('http') ||
+          url.startsWith('file://') ||
+          url.startsWith('/')) {
+        normalized.add(NovelImageBlock(url));
+      }
+    } else {
+      normalized.add(b);
+    }
+  }
+  NovelPageCache.setBlocks(normalized);
+
+  final pages = <String>[];
+  for (final b in normalized) {
+    if (b is NovelImageBlock) {
+      pages.add(b.url);
+    } else if (b is NovelTextBlock) {
+      pages.add(NovelPageCache.put(b.text));
+    }
+  }
+  if (pages.isEmpty) {
+    pages.add(NovelPageCache.put('（本章无内容）'));
+  }
+  return pages;
+}
+
 /// Build Venera Reader pages for novels: ordered text/image blocks.
 ///
-/// Returns an initial key list (paragraph-level text + images) so the comic
+/// Returns an initial key list (paragraph-level text + images) so the book
 /// reader shell has something to show before gallery re-paginates to fill the
 /// viewport. Continuous mode ignores per-line keys and uses [NovelPageCache.blocks].
 Future<Res<List<String>>> _loadChapterPages(
@@ -582,46 +629,15 @@ Future<Res<List<String>>> _loadChapterPages(
     if (res.error) {
       return Res.error(res.errorMessage ?? 'load chapter failed');
     }
-    NovelPageCache.clear();
     final data = res.data;
     final text = (data['content'] ?? '').toString();
     final trailingImages = (data['images'] as List? ?? [])
-        .map((e) => normalizeNovelImageUrl(e.toString()))
-        .where((e) => e.startsWith('http'))
+        .map((e) => e.toString())
         .toList();
-
-    final blocks = parseNovelBlocks(
-      text,
+    return Res(buildNovelReaderPages(
+      content: text,
       trailingImages: trailingImages,
-    );
-    // Normalize image URLs in blocks.
-    final normalized = <NovelBlock>[];
-    for (final b in blocks) {
-      if (b is NovelImageBlock) {
-        final url = normalizeNovelImageUrl(b.url);
-        if (url.startsWith('http')) {
-          normalized.add(NovelImageBlock(url));
-        }
-      } else {
-        normalized.add(b);
-      }
-    }
-    NovelPageCache.setBlocks(normalized);
-
-    // Seed reader.images: one key per block (text paragraphs / images).
-    // Gallery mode will replace this with viewport-fill pages on layout.
-    final pages = <String>[];
-    for (final b in normalized) {
-      if (b is NovelImageBlock) {
-        pages.add(b.url);
-      } else if (b is NovelTextBlock) {
-        pages.add(NovelPageCache.put(b.text));
-      }
-    }
-    if (pages.isEmpty) {
-      pages.add(NovelPageCache.put('（本章无内容）'));
-    }
-    return Res(pages);
+    ));
   } catch (e) {
     return Res.error(e.toString());
   }

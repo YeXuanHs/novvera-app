@@ -21,7 +21,7 @@ class DebugPageState extends State<DebugPage> {
           title: "Reload Configs".tl,
           actionTitle: "Reload".tl,
           callback: () {
-            ComicSourceManager().reload();
+            BookSourceManager().reload();
           },
         ).toSliver(),
         _CallbackSetting(

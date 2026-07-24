@@ -3,25 +3,25 @@ import 'package:sliver_tools/sliver_tools.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 import 'package:novvera/components/components.dart';
 import 'package:novvera/foundation/app.dart';
-import 'package:novvera/foundation/comic_source/comic_source.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
 import 'package:novvera/foundation/consts.dart';
 import 'package:novvera/foundation/favorites.dart';
 import 'package:novvera/foundation/history.dart';
 import 'package:novvera/foundation/local.dart';
 import 'package:novvera/foundation/log.dart';
-import 'package:novvera/pages/comic_details_page/comic_page.dart';
-import 'package:novvera/pages/comic_source_page.dart';
+import 'package:novvera/pages/book_details_page/book_page.dart';
+import 'package:novvera/pages/book_source_page.dart';
 import 'package:novvera/pages/downloading_page.dart';
 import 'package:novvera/pages/follow_updates_page.dart';
 import 'package:novvera/pages/history_page.dart';
 import 'package:novvera/pages/image_favorites_page/image_favorites_page.dart';
 import 'package:novvera/pages/search_page.dart';
 import 'package:novvera/utils/data_sync.dart';
-import 'package:novvera/utils/import_comic.dart';
+import 'package:novvera/utils/import_novel.dart';
 import 'package:novvera/utils/tags_translation.dart';
 import 'package:novvera/utils/translations.dart';
 
-import 'local_comics_page.dart';
+import 'local_books_page.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -36,7 +36,7 @@ class HomePage extends StatelessWidget {
         const _History(),
         const _Local(),
         const FollowUpdatesWidget(),
-        // Comic source management UI removed (builtin novel sources only)
+        // Book source management UI removed (builtin novel sources only)
         const ImageFavorites(),
         SliverPadding(padding: EdgeInsets.only(top: context.padding.bottom)),
       ],
@@ -303,12 +303,12 @@ class _HistoryState extends State<_History> {
                     itemCount: history.length,
                     itemBuilder: (context, index) {
                       final heroID = history[index].id.hashCode;
-                      return SimpleComicTile(
-                        comic: history[index],
+                      return SimpleBookTile(
+                        book: history[index],
                         heroID: heroID,
                         onTap: () {
                           context.to(
-                            () => ComicPage(
+                            () => BookPage(
                               id: history[index].id,
                               sourceKey: history[index].type.sourceKey,
                               cover: history[index].cover,
@@ -337,10 +337,10 @@ class _Local extends StatefulWidget {
 }
 
 class _LocalState extends State<_Local> {
-  late List<LocalComic> local;
+  late List<LocalBook> local;
   late int count;
 
-  void onLocalComicsChange() {
+  void onLocalBooksChange() {
     setState(() {
       local = LocalManager().getRecent();
       count = LocalManager().count;
@@ -351,13 +351,13 @@ class _LocalState extends State<_Local> {
   void initState() {
     local = LocalManager().getRecent();
     count = LocalManager().count;
-    LocalManager().addListener(onLocalComicsChange);
+    LocalManager().addListener(onLocalBooksChange);
     super.initState();
   }
 
   @override
   void dispose() {
-    LocalManager().removeListener(onLocalComicsChange);
+    LocalManager().removeListener(onLocalBooksChange);
     super.dispose();
   }
 
@@ -376,7 +376,7 @@ class _LocalState extends State<_Local> {
         child: InkWell(
           borderRadius: BorderRadius.circular(8),
           onTap: () {
-            context.to(() => const LocalComicsPage());
+            context.to(() => const LocalBooksPage());
           },
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -413,12 +413,12 @@ class _LocalState extends State<_Local> {
                     itemCount: local.length,
                     itemBuilder: (context, index) {
                       final heroID = local[index].id.hashCode;
-                      return SimpleComicTile(
-                        comic: local[index],
+                      return SimpleBookTile(
+                        book: local[index],
                         heroID: heroID,
                         onTap: () {
                           context.to(
-                            () => ComicPage(
+                            () => BookPage(
                               id: local[index].id,
                               sourceKey: local[index].sourceKey,
                               cover: local[index].cover,
@@ -470,20 +470,20 @@ class _LocalState extends State<_Local> {
       barrierDismissible: false,
       context: App.rootContext,
       builder: (context) {
-        return const _ImportComicsWidget();
+        return const _ImportBooksWidget();
       },
     );
   }
 }
 
-class _ImportComicsWidget extends StatefulWidget {
-  const _ImportComicsWidget();
+class _ImportBooksWidget extends StatefulWidget {
+  const _ImportBooksWidget();
 
   @override
-  State<_ImportComicsWidget> createState() => _ImportComicsWidgetState();
+  State<_ImportBooksWidget> createState() => _ImportBooksWidgetState();
 }
 
-class _ImportComicsWidgetState extends State<_ImportComicsWidget> {
+class _ImportBooksWidgetState extends State<_ImportBooksWidget> {
   int type = 0;
 
   bool loading = false;
@@ -511,17 +511,15 @@ class _ImportComicsWidgetState extends State<_ImportComicsWidget> {
     String info = [
       "Select a directory which contains the book files.".tl,
       "Select a directory which contains the book directories.".tl,
-      "Select an archive file (cbz, zip, 7z, cb7)".tl,
-      "Select a directory which contains multiple archive files.".tl,
-      "Select an EhViewer database and a download folder.".tl,
+      "Select an EPUB file.".tl,
+      "Select a directory which contains multiple EPUB files.".tl,
       "Scan the current local path and restore the local database.".tl,
     ][type];
     List<String> importMethods = [
       "Single Book".tl,
       "Multiple Books".tl,
-      "An archive file".tl,
-      "Multiple archive files".tl,
-      "EhViewer downloads".tl,
+      "An EPUB file".tl,
+      "Multiple EPUB files".tl,
       "Restore local downloads".tl,
     ];
 
@@ -541,7 +539,7 @@ class _ImportComicsWidgetState extends State<_ImportComicsWidget> {
               onChanged: (value) {
                 setState(() {
                   type = value ?? type;
-                  if (type == 5) {
+                  if (type == 4) {
                     selectedFolder = null;
                   }
                 });
@@ -557,7 +555,7 @@ class _ImportComicsWidgetState extends State<_ImportComicsWidget> {
                       value: index,
                     );
                   }),
-                  if (type != 4 && type != 5)
+                  if (type != 4)
                     ListTile(
                       title: Text("Add to favorites".tl),
                       trailing: Select(
@@ -575,7 +573,7 @@ class _ImportComicsWidgetState extends State<_ImportComicsWidget> {
                       !App.isMacOS &&
                       type != 2 &&
                       type != 3 &&
-                      type != 5)
+                      type != 4)
                     CheckboxListTile(
                         enabled: true,
                         title: Text("Copy to app local path".tl),
@@ -591,23 +589,6 @@ class _ImportComicsWidgetState extends State<_ImportComicsWidget> {
               ),
           ),
       actions: [
-        Button.text(
-          child: Row(
-            children: [
-              Icon(
-                Icons.help_outline,
-                size: 18,
-                color: context.colorScheme.primary,
-              ),
-              const SizedBox(width: 8),
-              Text("help".tl),
-            ],
-          ),
-          onPressed: () {
-            launchUrlString(
-                "https://github.com/venera-app/venera/blob/master/doc/import_comic.md");
-          },
-        ).fixWidth(90).paddingRight(8),
         Button.filled(
           isLoading: loading,
           onPressed: selectAndImport,
@@ -623,20 +604,19 @@ class _ImportComicsWidgetState extends State<_ImportComicsWidget> {
     setState(() {
       loading = true;
     });
-    var importer = ImportComic(
+    var importer = ImportNovel(
         selectedFolder: selectedFolder, copyToLocal: copyToLocalFolder);
     var result = switch (type) {
       0 => await importer.directory(true),
       1 => await importer.directory(false),
-      2 => await importer.cbz(),
-      3 => await importer.multipleCbz(),
-      4 => await importer.ehViewer(),
-      5 => await importer.localDownloads(),
-      int() => true,
+      2 => await importer.epub(),
+      3 => await importer.multipleEpub(),
+      4 => await importer.localDownloads(),
+      _ => false,
     };
     if (result) {
       context.pop();
-    } else {
+    } else if (mounted) {
       setState(() {
         loading = false;
       });
@@ -644,39 +624,39 @@ class _ImportComicsWidgetState extends State<_ImportComicsWidget> {
   }
 }
 
-class _ComicSourceWidget extends StatefulWidget {
-  const _ComicSourceWidget();
+class _BookSourceWidget extends StatefulWidget {
+  const _BookSourceWidget();
 
   @override
-  State<_ComicSourceWidget> createState() => _ComicSourceWidgetState();
+  State<_BookSourceWidget> createState() => _BookSourceWidgetState();
 }
 
-class _ComicSourceWidgetState extends State<_ComicSourceWidget> {
-  late List<String> comicSources;
+class _BookSourceWidgetState extends State<_BookSourceWidget> {
+  late List<String> bookSources;
 
-  void onComicSourceChange() {
+  void onBookSourceChange() {
     setState(() {
-      comicSources = ComicSource.all().map((e) => e.name).toList();
+      bookSources = BookSource.all().map((e) => e.name).toList();
     });
   }
 
   @override
   void initState() {
-    comicSources = ComicSource.all().map((e) => e.name).toList();
-    ComicSourceManager().addListener(onComicSourceChange);
+    bookSources = BookSource.all().map((e) => e.name).toList();
+    BookSourceManager().addListener(onBookSourceChange);
     super.initState();
   }
 
   @override
   void dispose() {
-    ComicSourceManager().removeListener(onComicSourceChange);
+    BookSourceManager().removeListener(onBookSourceChange);
     super.dispose();
   }
 
   int get _availableUpdates {
     int c = 0;
-    ComicSourceManager().availableUpdates.forEach((key, version) {
-      var source = ComicSource.find(key);
+    BookSourceManager().availableUpdates.forEach((key, version) {
+      var source = BookSource.find(key);
       if (source != null) {
         if (compareSemVer(version, source.version)) {
           c++;
@@ -701,7 +681,7 @@ class _ComicSourceWidgetState extends State<_ComicSourceWidget> {
         child: InkWell(
           borderRadius: BorderRadius.circular(8),
           onTap: () {
-            context.to(() => const ComicSourcePage());
+            context.to(() => const BookSourcePage());
           },
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -722,20 +702,20 @@ class _ComicSourceWidgetState extends State<_ComicSourceWidget> {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child:
-                          Text(comicSources.length.toString(), style: ts.s12),
+                          Text(bookSources.length.toString(), style: ts.s12),
                     ),
                     const Spacer(),
                     const Icon(Icons.arrow_right),
                   ],
                 ),
               ).paddingHorizontal(16),
-              if (comicSources.isNotEmpty)
+              if (bookSources.isNotEmpty)
                 SizedBox(
                   width: double.infinity,
                   child: Wrap(
                     runSpacing: 8,
                     spacing: 8,
-                    children: comicSources.map((e) {
+                    children: bookSources.map((e) {
                       return Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 2),
@@ -946,7 +926,7 @@ class _ImageFavoritesState extends State<ImageFavorites> {
                     const Spacer(),
                     buildTypeButton(1, "Authors".tl),
                     const Spacer(),
-                    buildTypeButton(2, "Comics".tl),
+                    buildTypeButton(2, "Books".tl),
                     const Spacer(),
                   ],
                 ),

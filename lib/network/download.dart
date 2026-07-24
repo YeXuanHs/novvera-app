@@ -1,14 +1,18 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:isolate';
+import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart' show ChangeNotifier;
 import 'package:flutter_saf/flutter_saf.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/appdata.dart';
-import 'package:novvera/foundation/comic_source/comic_source.dart';
-import 'package:novvera/foundation/comic_type.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
+import 'package:novvera/foundation/book_type.dart';
 import 'package:novvera/foundation/local.dart';
 import 'package:novvera/foundation/log.dart';
+import 'package:novvera/foundation/novel_backend/novel_http.dart';
+import 'package:novvera/foundation/novel_source/builtin_sources.dart';
 import 'package:novvera/foundation/res.dart';
 import 'package:novvera/network/images.dart';
 import 'package:novvera/utils/ext.dart';
@@ -41,22 +45,26 @@ abstract class DownloadTask with ChangeNotifier {
 
   String get message;
 
-  /// root path for the comic. If null, the task is not scheduled.
+  /// root path for the book. If null, the task is not scheduled.
   String? path;
 
   /// convert current state to json, which can be used to restore the task
   Map<String, dynamic> toJson();
 
-  LocalComic toLocalComic();
+  LocalBook toLocalBook();
 
   String get id;
 
-  ComicType get comicType;
+  BookType get bookType;
 
   static DownloadTask? fromJson(Map<String, dynamic> json) {
     switch (json["type"]) {
       case "ImagesDownloadTask":
         return ImagesDownloadTask.fromJson(json);
+      case "ArchiveDownloadTask":
+        return ArchiveDownloadTask.fromJson(json);
+      case "NovelDownloadTask":
+        return NovelDownloadTask.fromJson(json);
       default:
         return null;
     }
@@ -66,45 +74,45 @@ abstract class DownloadTask with ChangeNotifier {
   bool operator ==(Object other) {
     return other is DownloadTask &&
         other.id == id &&
-        other.comicType == comicType;
+        other.bookType == bookType;
   }
 
   @override
-  int get hashCode => Object.hash(id, comicType);
+  int get hashCode => Object.hash(id, bookType);
 }
 
 class ImagesDownloadTask extends DownloadTask with _TransferSpeedMixin {
-  final ComicSource source;
+  final BookSource source;
 
-  final String comicId;
+  final String bookId;
 
-  /// comic details. If null, the comic details will be fetched from the source.
-  ComicDetails? comic;
+  /// book details. If null, the book details will be fetched from the source.
+  BookDetails? book;
 
   /// chapters to download. If null, all chapters will be downloaded.
   final List<String>? chapters;
 
   @override
-  String get id => comicId;
+  String get id => bookId;
 
   @override
-  ComicType get comicType => ComicType(source.key.hashCode);
+  BookType get bookType => BookType(source.key.hashCode);
 
-  String? comicTitle;
+  String? bookTitle;
 
   ImagesDownloadTask({
     required this.source,
-    required this.comicId,
-    this.comic,
+    required this.bookId,
+    this.book,
     this.chapters,
-    this.comicTitle,
+    this.bookTitle,
   });
 
   @override
   void cancel() {
     _isRunning = false;
     LocalManager().removeTask(this);
-    var local = LocalManager().find(id, comicType);
+    var local = LocalManager().find(id, bookType);
     if (path != null) {
       if (local == null) {
         Future.sync(() async {
@@ -134,7 +142,7 @@ class ImagesDownloadTask extends DownloadTask with _TransferSpeedMixin {
   }
 
   @override
-  String? get cover => _cover ?? comic?.cover;
+  String? get cover => _cover ?? book?.cover;
 
   @override
   String get message => _message;
@@ -168,7 +176,7 @@ class ImagesDownloadTask extends DownloadTask with _TransferSpeedMixin {
 
   bool _isError = false;
 
-  String _message = "Fetching comic info...";
+  String _message = "Fetching book info...";
 
   String? _cover;
 
@@ -208,7 +216,7 @@ class ImagesDownloadTask extends DownloadTask with _TransferSpeedMixin {
         }
       }
       Directory saveTo;
-      if (comic!.chapters != null) {
+      if (book!.chapters != null) {
         saveTo = Directory(FilePath.join(
           path!,
           LocalManager.getChapterDirectoryName(
@@ -247,11 +255,11 @@ class ImagesDownloadTask extends DownloadTask with _TransferSpeedMixin {
     notifyListeners();
     runRecorder();
 
-    if (comic == null) {
-      _message = "Fetching comic info...";
+    if (book == null) {
+      _message = "Fetching book info...";
       notifyListeners();
       var res = await _runWithRetry(() async {
-        var r = await source.loadComicInfo!(comicId);
+        var r = await source.loadBookInfo!(bookId);
         if (r.error) {
           throw r.errorMessage!;
         } else {
@@ -265,16 +273,16 @@ class ImagesDownloadTask extends DownloadTask with _TransferSpeedMixin {
         _setError("Error: ${res.errorMessage}");
         return;
       } else {
-        comic = res.data;
+        book = res.data;
       }
     }
 
     if (path == null) {
       try {
         var dir = await LocalManager().findValidDirectory(
-          comicId,
-          comicType,
-          comic!.title,
+          bookId,
+          bookType,
+          book!.title,
         );
         if (!(await dir.exists())) {
           await dir.create();
@@ -295,7 +303,7 @@ class ImagesDownloadTask extends DownloadTask with _TransferSpeedMixin {
       var res = await _runWithRetry(() async {
         Uint8List? data;
         await for (var progress
-            in ImageDownloader.loadThumbnail(comic!.cover, source.key)) {
+            in ImageDownloader.loadThumbnail(book!.cover, source.key)) {
           if (progress.imageBytes != null) {
             data = progress.imageBytes;
           }
@@ -320,11 +328,11 @@ class ImagesDownloadTask extends DownloadTask with _TransferSpeedMixin {
     }
 
     if (_images == null) {
-      if (comic!.chapters == null) {
+      if (book!.chapters == null) {
         _message = "Fetching image list...";
         notifyListeners();
         var res = await _runWithRetry(() async {
-          var r = await source.loadComicPages!(comicId, null);
+          var r = await source.loadBookPages!(bookId, null);
           if (r.error) {
             throw r.errorMessage!;
           } else {
@@ -347,8 +355,8 @@ class ImagesDownloadTask extends DownloadTask with _TransferSpeedMixin {
         _totalCount = 0;
         int cpCount = 0;
         int totalCpCount =
-            chapters?.length ?? comic!.chapters!.allChapters.length;
-        for (var i in comic!.chapters!.allChapters.keys) {
+            chapters?.length ?? book!.chapters!.allChapters.length;
+        for (var i in book!.chapters!.allChapters.keys) {
           if (chapters != null && !chapters!.contains(i)) {
             continue;
           }
@@ -359,7 +367,7 @@ class ImagesDownloadTask extends DownloadTask with _TransferSpeedMixin {
           _message = "Fetching image list ($cpCount/$totalCpCount)...";
           notifyListeners();
           var res = await _runWithRetry(() async {
-            var r = await source.loadComicPages!(comicId, i);
+            var r = await source.loadBookPages!(bookId, i);
             if (r.error) {
               throw r.errorMessage!;
             } else {
@@ -430,15 +438,15 @@ class ImagesDownloadTask extends DownloadTask with _TransferSpeedMixin {
   int get speed => currentSpeed;
 
   @override
-  String get title => comic?.title ?? comicTitle ?? "Loading...";
+  String get title => book?.title ?? bookTitle ?? "Loading...";
 
   @override
   Map<String, dynamic> toJson() {
     return {
       "type": "ImagesDownloadTask",
       "source": source.key,
-      "comicId": comicId,
-      "comic": comic?.toJson(),
+      "bookId": bookId,
+      "book": book?.toJson(),
       "chapters": chapters,
       "path": path,
       "cover": _cover,
@@ -464,10 +472,10 @@ class ImagesDownloadTask extends DownloadTask with _TransferSpeedMixin {
     }
 
     return ImagesDownloadTask(
-      source: ComicSource.find(json["source"])!,
-      comicId: json["comicId"],
-      comic:
-          json["comic"] == null ? null : ComicDetails.fromJson(json["comic"]),
+      source: BookSource.find(json["source"])!,
+      bookId: json["bookId"],
+      book:
+          json["book"] == null ? null : BookDetails.fromJson(json["book"]),
       chapters: ListOrNull.from(json["chapters"]),
     )
       ..path = json["path"]
@@ -486,19 +494,19 @@ class ImagesDownloadTask extends DownloadTask with _TransferSpeedMixin {
   bool get isPaused => !_isRunning;
 
   @override
-  LocalComic toLocalComic() {
-    return LocalComic(
-      id: comic!.id,
+  LocalBook toLocalBook() {
+    return LocalBook(
+      id: book!.id,
       title: title,
-      subtitle: comic!.subTitle ?? '',
-      tags: comic!.tags.entries.expand((e) {
+      subtitle: book!.subTitle ?? '',
+      tags: book!.tags.entries.expand((e) {
         return e.value.map((v) => "${e.key}:$v");
       }).toList(),
       directory: Directory(path!).name,
-      chapters: comic!.chapters,
+      chapters: book!.chapters,
       cover: File(_cover!.split("file://").last).name,
-      comicType: ComicType(source.key.hashCode),
-      downloadedChapters: chapters ?? comic?.chapters?.ids.toList() ?? [],
+      bookType: BookType(source.key.hashCode),
+      downloadedChapters: chapters ?? book?.chapters?.ids.toList() ?? [],
       createdAt: DateTime.now(),
     );
   }
@@ -506,13 +514,13 @@ class ImagesDownloadTask extends DownloadTask with _TransferSpeedMixin {
   @override
   bool operator ==(Object other) {
     if (other is ImagesDownloadTask) {
-      return other.comicId == comicId && other.source.key == source.key;
+      return other.bookId == bookId && other.source.key == source.key;
     }
     return false;
   }
 
   @override
-  int get hashCode => Object.hash(comicId, source.key);
+  int get hashCode => Object.hash(bookId, source.key);
 }
 
 Future<Res<T>> _runWithRetry<T>(Future<T> Function() task,
@@ -568,8 +576,8 @@ class _ImageDownloadWrapper {
   void start() async {
     int lastBytes = 0;
     try {
-      await for (var p in ImageDownloader.loadComicImageUnwrapped(
-          image, task.source.key, task.comicId, chapter)) {
+      await for (var p in ImageDownloader.loadBookImageUnwrapped(
+          image, task.source.key, task.bookId, chapter)) {
         if (isCancelled) {
           return;
         }
@@ -656,20 +664,20 @@ abstract mixin class _TransferSpeedMixin {
 class ArchiveDownloadTask extends DownloadTask {
   final String archiveUrl;
 
-  final ComicDetails comic;
+  final BookDetails book;
 
-  late ComicSource source;
+  late BookSource source;
 
-  /// Download comic by archive url
+  /// Download book by archive url
   ///
-  /// Currently only support zip file and comics without chapters
-  ArchiveDownloadTask(this.archiveUrl, this.comic) {
-    source = ComicSource.find(comic.sourceKey)!;
+  /// Currently only support zip file and books without chapters
+  ArchiveDownloadTask(this.archiveUrl, this.book) {
+    source = BookSource.find(book.sourceKey)!;
   }
 
   FileDownloader? _downloader;
 
-  String _message = "Fetching comic info...";
+  String _message = "Fetching book info...";
 
   bool _isRunning = false;
 
@@ -695,13 +703,13 @@ class ArchiveDownloadTask extends DownloadTask {
   }
 
   @override
-  ComicType get comicType => ComicType(source.key.hashCode);
+  BookType get bookType => BookType(source.key.hashCode);
 
   @override
-  String? get cover => comic.cover;
+  String? get cover => book.cover;
 
   @override
-  String get id => comic.id;
+  String get id => book.id;
 
   @override
   bool get isError => _isError;
@@ -742,9 +750,9 @@ class ArchiveDownloadTask extends DownloadTask {
 
     if (path == null) {
       var dir = await LocalManager().findValidDirectory(
-        comic.id,
-        comicType,
-        comic.title,
+        book.id,
+        bookType,
+        book.title,
       );
       if (!(await dir.exists())) {
         try {
@@ -824,14 +832,14 @@ class ArchiveDownloadTask extends DownloadTask {
   int get speed => _speed;
 
   @override
-  String get title => comic.title;
+  String get title => book.title;
 
   @override
   Map<String, dynamic> toJson() {
     return {
       "type": "ArchiveDownloadTask",
       "archiveUrl": archiveUrl,
-      "comic": comic.toJson(),
+      "book": book.toJson(),
       "path": path,
     };
   }
@@ -842,7 +850,7 @@ class ArchiveDownloadTask extends DownloadTask {
     }
     return ArchiveDownloadTask(
       json["archiveUrl"],
-      ComicDetails.fromJson(json["comic"]),
+      BookDetails.fromJson(json["book"]),
     )..path = json["path"];
   }
 
@@ -860,20 +868,403 @@ class ArchiveDownloadTask extends DownloadTask {
   }
 
   @override
-  LocalComic toLocalComic() {
-    return LocalComic(
-      id: comic.id,
+  LocalBook toLocalBook() {
+    return LocalBook(
+      id: book.id,
       title: title,
-      subtitle: comic.subTitle ?? '',
-      tags: comic.tags.entries.expand((e) {
+      subtitle: book.subTitle ?? '',
+      tags: book.tags.entries.expand((e) {
         return e.value.map((v) => "${e.key}:$v");
       }).toList(),
       directory: Directory(path!).name,
       chapters: null,
       cover: _findCover(),
-      comicType: ComicType(source.key.hashCode),
+      bookType: BookType(source.key.hashCode),
       downloadedChapters: [],
       createdAt: DateTime.now(),
     );
   }
+}
+
+/// Offline novel download → [LocalManager] (same UX as Venera local library).
+///
+/// Each chapter is stored as `chapter.json` (+ illustration files).
+/// Desktop may pass [saveRoot] (folder picker); mobile uses [LocalManager.path].
+class NovelDownloadTask extends DownloadTask with _TransferSpeedMixin {
+  final BookSource source;
+  final String bookId;
+  BookDetails? book;
+  final List<String>? chapters;
+  final String? saveRoot;
+  String? bookTitle;
+
+  NovelDownloadTask({
+    required this.source,
+    required this.bookId,
+    this.book,
+    this.chapters,
+    this.saveRoot,
+    this.bookTitle,
+  });
+
+  @override
+  String get id => bookId;
+
+  @override
+  BookType get bookType => BookType(source.key.hashCode);
+
+  bool _isRunning = false;
+  bool _isError = false;
+  String _message = "Pending...";
+  String? _cover;
+  int _done = 0;
+  int _total = 0;
+  int _chapterIndex = 0;
+
+  bool get _useAbsoluteDirectory =>
+      saveRoot != null && saveRoot!.trim().isNotEmpty;
+
+  @override
+  double get progress {
+    if (_total <= 0) return 0;
+    return (_done / _total).clamp(0.0, 1.0);
+  }
+
+  @override
+  bool get isError => _isError;
+
+  @override
+  bool get isPaused => !_isRunning;
+
+  @override
+  int get speed => currentSpeed;
+
+  @override
+  String? get cover => _cover ?? book?.cover;
+
+  @override
+  String get message => _message;
+
+  @override
+  String get title => book?.title ?? bookTitle ?? "Loading...";
+
+  @override
+  void cancel() {
+    _isRunning = false;
+    LocalManager().removeTask(this);
+    if (path != null && LocalManager().find(id, bookType) == null) {
+      try {
+        Directory(path!).deleteSync(recursive: true);
+      } catch (e) {
+        Log.error("Download", "Failed to delete directory: $e");
+      }
+    }
+  }
+
+  @override
+  void pause() {
+    if (!_isRunning) return;
+    _isRunning = false;
+    _message = "Paused";
+    stopRecorder();
+    notifyListeners();
+    LocalManager().saveCurrentDownloadingTasks();
+  }
+
+  void _setError(String message) {
+    _isRunning = false;
+    _isError = true;
+    _message = message;
+    notifyListeners();
+    stopRecorder();
+  }
+
+  String _directoryForDb() {
+    if (path == null) return '';
+    if (_useAbsoluteDirectory) return path!;
+    final root = LocalManager().path;
+    if (path!.startsWith(root)) {
+      return Directory(path!).name;
+    }
+    return path!;
+  }
+
+  @override
+  void resume() async {
+    if (_isRunning) return;
+    _isRunning = true;
+    _isError = false;
+    notifyListeners();
+    runRecorder();
+
+    if (book == null) {
+      _message = "Fetching book info...";
+      notifyListeners();
+      final res = await _runWithRetry(() async {
+        final r = await source.loadBookInfo!(bookId);
+        if (r.error) throw r.errorMessage!;
+        return r.data;
+      });
+      if (!_isRunning) return;
+      if (res.error) {
+        _setError("Error: ${res.errorMessage}");
+        return;
+      }
+      book = res.data;
+    }
+
+    if (book!.chapters == null || book!.chapters!.length == 0) {
+      _setError("Error: No chapters");
+      return;
+    }
+
+    final toDownload = chapters ?? book!.chapters!.ids.toList();
+    _total = toDownload.length;
+    _done = _chapterIndex.clamp(0, _total);
+
+    if (path == null) {
+      try {
+        if (_useAbsoluteDirectory) {
+          final name = sanitizeFileName(book!.title, maxLength: 80);
+          final dir = Directory(FilePath.join(saveRoot!, name));
+          if (!dir.existsSync()) await dir.create(recursive: true);
+          path = dir.path;
+        } else {
+          final dir = await LocalManager().findValidDirectory(
+            bookId,
+            bookType,
+            book!.title,
+          );
+          if (!(await dir.exists())) await dir.create();
+          path = dir.path;
+        }
+      } catch (e, s) {
+        Log.error("Download", e.toString(), s);
+        _setError("Error: $e");
+        return;
+      }
+    }
+
+    await LocalManager().saveCurrentDownloadingTasks();
+
+    if (_cover == null) {
+      _message = "Downloading cover...";
+      notifyListeners();
+      try {
+        await for (final progress
+            in ImageDownloader.loadThumbnail(book!.cover, source.key)) {
+          if (progress.imageBytes != null) {
+            var ext = detectFileType(progress.imageBytes!).ext;
+            if (ext.startsWith('.')) ext = ext.substring(1);
+            if (ext.isEmpty) ext = 'jpg';
+            final file = File(FilePath.join(path!, 'cover.$ext'));
+            await file.writeAsBytes(progress.imageBytes!);
+            _cover = 'file://${file.path}';
+            break;
+          }
+        }
+      } catch (e) {
+        Log.warning("Download", "cover failed: $e");
+      }
+    }
+
+    while (_chapterIndex < toDownload.length) {
+      if (!_isRunning) return;
+      final chapId = toDownload[_chapterIndex];
+      final chapTitle = book!.chapters!.allChapters[chapId] ?? chapId;
+      _message = "Downloading ${_done + 1}/$_total · $chapTitle";
+      notifyListeners();
+
+      final chapDirName = LocalManager.getChapterDirectoryName(chapId);
+      final chapDir = Directory(FilePath.join(path!, chapDirName));
+      if (!chapDir.existsSync()) {
+        await chapDir.create(recursive: true);
+      }
+      final outFile = File(FilePath.join(chapDir.path, 'chapter.json'));
+      if (outFile.existsSync()) {
+        _done++;
+        _chapterIndex++;
+        await LocalManager().saveCurrentDownloadingTasks();
+        continue;
+      }
+
+      final res = await loadNovelChapter(source.key, bookId, chapId);
+      if (!_isRunning) return;
+      if (res.error) {
+        _setError("Error: ${res.errorMessage}");
+        return;
+      }
+
+      final data = res.data;
+      var content = (data['content'] ?? '').toString();
+      final trailing = (data['images'] as List? ?? [])
+          .map((e) => e.toString())
+          .where((e) => e.startsWith('http'))
+          .toList();
+
+      final urlToLocal = <String, String>{};
+      var imgIndex = 0;
+
+      Future<String?> saveImage(String url) async {
+        final normalized = normalizeNovelImageUrl(url);
+        if (!normalized.startsWith('http')) return null;
+        if (urlToLocal.containsKey(normalized)) return urlToLocal[normalized];
+        try {
+          await for (final p in ImageDownloader.loadBookImage(
+            normalized,
+            source.key,
+            bookId,
+            chapId,
+          )) {
+            if (p.imageBytes != null) {
+              var ext = detectFileType(p.imageBytes!).ext;
+              if (ext.startsWith('.')) ext = ext.substring(1);
+              if (ext.isEmpty) {
+                final pathLower =
+                    Uri.tryParse(normalized)?.path.toLowerCase() ?? '';
+                ext = pathLower.contains('.png')
+                    ? 'png'
+                    : pathLower.contains('.webp')
+                        ? 'webp'
+                        : 'jpg';
+              }
+              final name = 'img$imgIndex.$ext';
+              imgIndex++;
+              await File(FilePath.join(chapDir.path, name))
+                  .writeAsBytes(p.imageBytes!);
+              urlToLocal[normalized] = name;
+              return name;
+            }
+          }
+        } catch (e) {
+          Log.warning("Download", "image $normalized: $e");
+        }
+        return null;
+      }
+
+      final allUrls = <String>{};
+      for (final line in content.split('\n')) {
+        final t = line.trim();
+        if (t.startsWith('http://') || t.startsWith('https://')) {
+          allUrls.add(normalizeNovelImageUrl(t));
+        }
+      }
+      for (final u in trailing) {
+        allUrls.add(normalizeNovelImageUrl(u));
+      }
+
+      for (final u in allUrls) {
+        if (!_isRunning) return;
+        await saveImage(u);
+      }
+
+      content = content.split('\n').map((line) {
+        final t = line.trim();
+        if (t.startsWith('http://') || t.startsWith('https://')) {
+          final local = urlToLocal[normalizeNovelImageUrl(t)];
+          return local ?? line;
+        }
+        return line;
+      }).join('\n');
+
+      final localImages = urlToLocal.values.toList();
+      await outFile.writeAsString(jsonEncode({
+        'content': content,
+        'images': localImages,
+        'title': chapTitle,
+      }));
+
+      _done++;
+      _chapterIndex++;
+      _message = "$_done/$_total";
+      notifyListeners();
+      await LocalManager().saveCurrentDownloadingTasks();
+    }
+
+    LocalManager().completeTask(this);
+    stopRecorder();
+  }
+
+  @override
+  void onNextSecond(Timer t) {
+    notifyListeners();
+    super.onNextSecond(t);
+  }
+
+  @override
+  LocalBook toLocalBook() {
+    var coverName = 'cover.jpg';
+    try {
+      for (final f in Directory(path!).listSync()) {
+        if (f is File && f.name.startsWith('cover.')) {
+          coverName = f.name;
+          break;
+        }
+      }
+    } catch (_) {}
+    return LocalBook(
+      id: book!.id,
+      title: title,
+      subtitle: book!.subTitle ?? '',
+      tags: book!.tags.entries.expand((e) {
+        return e.value.map((v) => "${e.key}:$v");
+      }).toList(),
+      directory: _directoryForDb(),
+      chapters: book!.chapters,
+      cover: coverName,
+      bookType: BookType(source.key.hashCode),
+      downloadedChapters: chapters ?? book?.chapters?.ids.toList() ?? [],
+      createdAt: DateTime.now(),
+    );
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {
+      "type": "NovelDownloadTask",
+      "source": source.key,
+      "bookId": bookId,
+      "book": book?.toJson(),
+      "chapters": chapters,
+      "saveRoot": saveRoot,
+      "path": path,
+      "cover": _cover,
+      "done": _done,
+      "total": _total,
+      "chapterIndex": _chapterIndex,
+      "bookTitle": bookTitle,
+    };
+  }
+
+  static NovelDownloadTask? fromJson(Map<String, dynamic> json) {
+    if (json["type"] != "NovelDownloadTask") return null;
+    final src = BookSource.find(json["source"]);
+    if (src == null) return null;
+    return NovelDownloadTask(
+      source: src,
+      bookId: json["bookId"],
+      book: json["book"] == null
+          ? null
+          : BookDetails.fromJson(json["book"]),
+      chapters: ListOrNull.from(json["chapters"]),
+      saveRoot: json["saveRoot"] as String?,
+      bookTitle: json["bookTitle"] as String?,
+    )
+      ..path = json["path"]
+      .._cover = json["cover"]
+      .._done = json["done"] ?? 0
+      .._total = json["total"] ?? 0
+      .._chapterIndex = json["chapterIndex"] ?? 0;
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (other is NovelDownloadTask) {
+      return other.bookId == bookId && other.source.key == source.key;
+    }
+    return false;
+  }
+
+  @override
+  int get hashCode => Object.hash(bookId, source.key);
 }

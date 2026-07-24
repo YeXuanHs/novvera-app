@@ -2,29 +2,27 @@ import 'package:flutter/material.dart';
 import 'package:novvera/components/components.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/appdata.dart';
-import 'package:novvera/foundation/comic_type.dart';
+import 'package:novvera/foundation/book_type.dart';
 import 'package:novvera/foundation/local.dart';
 import 'package:novvera/foundation/log.dart';
-import 'package:novvera/pages/comic_details_page/comic_page.dart';
+import 'package:novvera/pages/book_details_page/book_page.dart';
 import 'package:novvera/pages/downloading_page.dart';
 import 'package:novvera/pages/favorites/favorites_page.dart';
-import 'package:novvera/utils/cbz.dart';
 import 'package:novvera/utils/epub.dart';
 import 'package:novvera/utils/io.dart';
-import 'package:novvera/utils/pdf.dart';
 import 'package:novvera/utils/translations.dart';
 import 'package:zip_flutter/zip_flutter.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
-class LocalComicsPage extends StatefulWidget {
-  const LocalComicsPage({super.key});
+class LocalBooksPage extends StatefulWidget {
+  const LocalBooksPage({super.key});
 
   @override
-  State<LocalComicsPage> createState() => _LocalComicsPageState();
+  State<LocalBooksPage> createState() => _LocalBooksPageState();
 }
 
-class _LocalComicsPageState extends State<LocalComicsPage> {
-  late List<LocalComic> comics;
+class _LocalBooksPageState extends State<LocalBooksPage> {
+  late List<LocalBook> books;
 
   late LocalSortType sortType;
 
@@ -34,16 +32,16 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
 
   bool multiSelectMode = false;
 
-  Map<LocalComic, bool> selectedComics = {};
+  Map<LocalBook, bool> selectedBooks = {};
 
   void update() {
     if (keyword.isEmpty) {
       setState(() {
-        comics = LocalManager().getComics(sortType);
+        books = LocalManager().getBooks(sortType);
       });
     } else {
       setState(() {
-        comics = LocalManager().search(keyword);
+        books = LocalManager().search(keyword);
       });
     }
   }
@@ -52,7 +50,7 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
   void initState() {
     var sort = appdata.implicitData["local_sort"] ?? "name";
     sortType = LocalSortType.fromString(sort);
-    comics = LocalManager().getComics(sortType);
+    books = LocalManager().getBooks(sortType);
     LocalManager().addListener(update);
     super.initState();
   }
@@ -117,11 +115,11 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
         icon: Icons.delete_outline,
         text: "Delete".tl,
         onClick: () {
-          deleteComics(selectedComics.keys.toList()).then((value) {
+          deleteBooks(selectedBooks.keys.toList()).then((value) {
             if (value) {
               setState(() {
                 multiSelectMode = false;
-                selectedComics.clear();
+                selectedBooks.clear();
               });
             }
           });
@@ -131,51 +129,51 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
         icon: Icons.favorite_border,
         text: "Add to favorites".tl,
         onClick: () {
-          addFavorite(selectedComics.keys.toList());
+          addFavorite(selectedBooks.keys.toList());
         },
       ),
-      if (selectedComics.length == 1)
+      if (selectedBooks.length == 1)
         MenuEntry(
           icon: Icons.folder_open,
           text: "Open Folder".tl,
           onClick: () {
-            openComicFolder(selectedComics.keys.first);
+            openBookFolder(selectedBooks.keys.first);
           },
         ),
-      if (selectedComics.length == 1)
+      if (selectedBooks.length == 1)
         MenuEntry(
           icon: Icons.chrome_reader_mode_outlined,
           text: "View Detail".tl,
           onClick: () {
-            context.to(() => ComicPage(
-                  id: selectedComics.keys.first.id,
-                  sourceKey: selectedComics.keys.first.sourceKey,
+            context.to(() => BookPage(
+                  id: selectedBooks.keys.first.id,
+                  sourceKey: selectedBooks.keys.first.sourceKey,
                 ));
           },
         ),
-      if (selectedComics.isNotEmpty)
-        ...exportActions(selectedComics.keys.toList()),
+      if (selectedBooks.isNotEmpty)
+        ...exportActions(selectedBooks.keys.toList()),
     ]);
   }
 
   void selectAll() {
     setState(() {
-      selectedComics = comics.asMap().map((k, v) => MapEntry(v, true));
+      selectedBooks = books.asMap().map((k, v) => MapEntry(v, true));
     });
   }
 
   void deSelect() {
     setState(() {
-      selectedComics.clear();
+      selectedBooks.clear();
     });
   }
 
   void invertSelection() {
     setState(() {
-      comics.asMap().forEach((k, v) {
-        selectedComics[v] = !selectedComics.putIfAbsent(v, () => false);
+      books.asMap().forEach((k, v) {
+        selectedBooks[v] = !selectedBooks.putIfAbsent(v, () => false);
       });
-      selectedComics.removeWhere((k, v) => !v);
+      selectedBooks.removeWhere((k, v) => !v);
     });
   }
 
@@ -239,7 +237,7 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
                     if (multiSelectMode) {
                       setState(() {
                         multiSelectMode = false;
-                        selectedComics.clear();
+                        selectedBooks.clear();
                       });
                     } else {
                       context.pop();
@@ -251,7 +249,7 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
                 ),
               ),
               title: multiSelectMode
-                  ? Text(selectedComics.length.toString())
+                  ? Text(selectedBooks.length.toString())
                   : Text("Local".tl),
               actions: multiSelectMode ? selectActions : normalActions,
             )
@@ -267,7 +265,7 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
                     if (multiSelectMode) {
                       setState(() {
                         multiSelectMode = false;
-                        selectedComics.clear();
+                        selectedBooks.clear();
                       });
                     } else {
                       setState(() {
@@ -280,7 +278,7 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
                 ),
               ),
               title: multiSelectMode
-                  ? Text(selectedComics.length.toString())
+                  ? Text(selectedBooks.length.toString())
                   : TextField(
                       autofocus: true,
                       decoration: InputDecoration(
@@ -294,32 +292,32 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
                     ),
               actions: multiSelectMode ? selectActions : null,
             ),
-          SliverGridComics(
-            comics: comics,
-            selections: selectedComics,
+          SliverGridBooks(
+            books: books,
+            selections: selectedBooks,
             onLongPressed: (c, heroID) {
               setState(() {
                 multiSelectMode = true;
-                selectedComics[c as LocalComic] = true;
+                selectedBooks[c as LocalBook] = true;
               });
             },
             onTap: (c, heroID) {
               if (multiSelectMode) {
                 setState(() {
-                  if (selectedComics.containsKey(c as LocalComic)) {
-                    selectedComics.remove(c);
+                  if (selectedBooks.containsKey(c as LocalBook)) {
+                    selectedBooks.remove(c);
                   } else {
-                    selectedComics[c] = true;
+                    selectedBooks[c] = true;
                   }
-                  if (selectedComics.isEmpty) {
+                  if (selectedBooks.isEmpty) {
                     multiSelectMode = false;
                   }
                 });
               } else {
                 // prevent dirty data
-                var comic =
-                    LocalManager().find(c.id, ComicType.fromKey(c.sourceKey))!;
-                comic.read();
+                var book =
+                    LocalManager().find(c.id, BookType.fromKey(c.sourceKey))!;
+                book.read();
               }
             },
             menuBuilder: (c) {
@@ -328,24 +326,24 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
                   icon: Icons.folder_open,
                   text: "Open Folder".tl,
                   onClick: () {
-                    openComicFolder(c as LocalComic);
+                    openBookFolder(c as LocalBook);
                   },
                 ),
                 MenuEntry(
                   icon: Icons.delete,
                   text: "Delete".tl,
                   onClick: () {
-                    deleteComics([c as LocalComic]).then((value) {
+                    deleteBooks([c as LocalBook]).then((value) {
                       if (value && multiSelectMode) {
                         setState(() {
                           multiSelectMode = false;
-                          selectedComics.clear();
+                          selectedBooks.clear();
                         });
                       }
                     });
                   },
                 ),
-                ...exportActions([c as LocalComic]),
+                ...exportActions([c as LocalBook]),
               ];
             },
           ),
@@ -360,7 +358,7 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
         if (multiSelectMode) {
           setState(() {
             multiSelectMode = false;
-            selectedComics.clear();
+            selectedBooks.clear();
           });
         } else if (searchMode) {
           setState(() {
@@ -374,12 +372,12 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
     );
   }
 
-  Future<bool> deleteComics(List<LocalComic> comics) async {
+  Future<bool> deleteBooks(List<LocalBook> books) async {
     bool isDeleted = false;
     await showDialog(
       context: App.rootContext,
       builder: (context) {
-        bool removeComicFile = true;
+        bool removeBookFile = true;
         bool removeFavoriteAndHistory = true;
         return StatefulBuilder(builder: (context, state) {
           return ContentDialog(
@@ -397,30 +395,30 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
                 ),
                 CheckboxListTile(
                   title: Text("Also remove files on disk".tl),
-                  value: removeComicFile,
+                  value: removeBookFile,
                   onChanged: (v) {
                     state(() {
-                      removeComicFile = !removeComicFile;
+                      removeBookFile = !removeBookFile;
                     });
                   },
                 )
               ],
             ),
             actions: [
-              if (comics.length == 1 && comics.first.hasChapters)
+              if (books.length == 1 && books.first.hasChapters)
                 TextButton(
                   child: Text("Delete Chapters".tl),
                   onPressed: () {
                     context.pop();
-                    showDeleteChaptersPopWindow(context, comics.first);
+                    showDeleteChaptersPopWindow(context, books.first);
                   },
                 ),
               FilledButton(
                 onPressed: () {
                   context.pop();
-                  LocalManager().batchDeleteComics(
-                    comics,
-                    removeComicFile,
+                  LocalManager().batchDeleteBooks(
+                    books,
+                    removeBookFile,
                     removeFavoriteAndHistory,
                   );
                   isDeleted = true;
@@ -435,38 +433,25 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
     return isDeleted;
   }
 
-  List<MenuEntry> exportActions(List<LocalComic> comics) {
+  List<MenuEntry> exportActions(List<LocalBook> books) {
+    // Light-novel app: local library exports EPUB only.
     return [
-      MenuEntry(
-        icon: Icons.outbox_outlined,
-        text: "Export as cbz".tl,
-        onClick: () {
-          exportComics(comics, CBZ.export, ".cbz");
-        },
-      ),
-      MenuEntry(
-        icon: Icons.picture_as_pdf_outlined,
-        text: "Export as pdf".tl,
-        onClick: () async {
-          exportComics(comics, createPdfFromComicIsolate, ".pdf");
-        },
-      ),
       MenuEntry(
         icon: Icons.import_contacts_outlined,
         text: "Export as epub".tl,
         onClick: () async {
-          exportComics(comics, createEpubWithLocalComic, ".epub");
+          exportBooks(books, createNovelEpubFromLocalBook, ".epub");
         },
-      )
+      ),
     ];
   }
 
-  /// Export given comics to a file
-  void exportComics(
-      List<LocalComic> comics, ExportComicFunc export, String ext) async {
+  /// Export given books to a file.
+  void exportBooks(
+      List<LocalBook> books, ExportBookFunc export, String ext) async {
     var current = 0;
-    var cacheDir = FilePath.join(App.cachePath, 'comics_export');
-    var outFile = FilePath.join(App.cachePath, 'comics_export.zip');
+    var cacheDir = FilePath.join(App.cachePath, 'books_export');
+    var outFile = FilePath.join(App.cachePath, 'books_export.zip');
     bool canceled = false;
     if (Directory(cacheDir).existsSync()) {
       Directory(cacheDir).deleteSync(recursive: true);
@@ -475,33 +460,31 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
     var loadingController = showLoadingDialog(
       context,
       allowCancel: true,
-      message: "${"Exporting".tl} $current/${comics.length}",
-      withProgress: comics.length > 1,
+      message: "${"Exporting".tl} $current/${books.length}",
+      withProgress: books.length > 1,
       onCancel: () {
         canceled = true;
       },
     );
     try {
       var fileName = "";
-      // For each comic, export it to a file
-      for (var comic in comics) {
+      for (var book in books) {
         fileName = FilePath.join(
           cacheDir,
-          sanitizeFileName(comic.title, maxLength: 100) + ext,
+          sanitizeFileName(book.title, maxLength: 100) + ext,
         );
-        await export(comic, fileName);
+        await export(book, fileName);
         current++;
-        if (comics.length > 1) {
+        if (books.length > 1) {
           loadingController
-              .setMessage("${"Exporting".tl} $current/${comics.length}");
-          loadingController.setProgress(current / comics.length);
+              .setMessage("${"Exporting".tl} $current/${books.length}");
+          loadingController.setProgress(current / books.length);
         }
         if (canceled) {
           return;
         }
       }
-      // For single comic, just save the file
-      if (comics.length == 1) {
+      if (books.length == 1) {
         await saveFile(
           file: File(fileName),
           filename: File(fileName).name,
@@ -510,7 +493,6 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
         loadingController.close();
         return;
       }
-      // For multiple comics, compress the folder
       loadingController.setProgress(null);
       loadingController.setMessage("Compressing".tl);
       await ZipFile.compressFolderAsync(cacheDir, outFile);
@@ -519,7 +501,7 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
         return;
       }
     } catch (e, s) {
-      Log.error("Export Comics", e, s);
+      Log.error("Export Books", e, s);
       context.showMessage(message: e.toString());
       loadingController.close();
       return;
@@ -528,20 +510,20 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
     }
     await saveFile(
       file: File(outFile),
-      filename: "comics_export.zip",
+      filename: "books_export.zip",
     );
     loadingController.close();
     File(outFile).deleteIgnoreError();
   }
 }
 
-typedef ExportComicFunc = Future<File> Function(
-    LocalComic comic, String outFilePath);
+typedef ExportBookFunc = Future<File> Function(
+    LocalBook book, String outFilePath);
 
-/// Opens the folder containing the comic in the system file explorer
-Future<void> openComicFolder(LocalComic comic) async {
+/// Opens the folder containing the book in the system file explorer
+Future<void> openBookFolder(LocalBook book) async {
   try {
-    final folderPath = comic.baseDir;
+    final folderPath = book.baseDir;
 
     if (App.isWindows) {
       await Process.run('explorer', [folderPath]);
@@ -573,7 +555,7 @@ Future<void> openComicFolder(LocalComic comic) async {
       await launchUrlString('file://$folderPath');
     }
   } catch (e, s) {
-    Log.error("Open Folder", "Failed to open comic folder: $e", s);
+    Log.error("Open Folder", "Failed to open book folder: $e", s);
     // Show error message to user
     if (App.rootContext.mounted) {
       App.rootContext.showMessage(message: "Failed to open folder: $e");
@@ -581,7 +563,7 @@ Future<void> openComicFolder(LocalComic comic) async {
   }
 }
 
-void showDeleteChaptersPopWindow(BuildContext context, LocalComic comic) {
+void showDeleteChaptersPopWindow(BuildContext context, LocalBook book) {
   var chapters = <String>[];
 
   showPopUpWidget(
@@ -593,10 +575,10 @@ void showDeleteChaptersPopWindow(BuildContext context, LocalComic comic) {
           children: [
             Expanded(
               child: ListView.builder(
-                itemCount: comic.downloadedChapters.length,
+                itemCount: book.downloadedChapters.length,
                 itemBuilder: (context, index) {
-                  var id = comic.downloadedChapters[index];
-                  var chapter = comic.chapters![id] ?? "Unknown Chapter";
+                  var id = book.downloadedChapters[index];
+                  var chapter = book.chapters![id] ?? "Unknown Chapter";
                   return CheckboxListTile(
                     title: Text(chapter),
                     value: chapters.contains(id),
@@ -621,7 +603,7 @@ void showDeleteChaptersPopWindow(BuildContext context, LocalComic comic) {
                   FilledButton(
                     onPressed: () {
                       Future.delayed(const Duration(milliseconds: 200), () {
-                        LocalManager().deleteComicChapters(comic, chapters);
+                        LocalManager().deleteBookChapters(book, chapters);
                       });
                       App.rootContext.pop();
                     },

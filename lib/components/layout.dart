@@ -76,9 +76,9 @@ class SliverGridDelegateWithFixedHeight extends SliverGridDelegate {
 class SliverGridDelegateWithComics extends SliverGridDelegate {
   SliverGridDelegateWithComics();
 
-  final bool useBriefMode = appdata.settings['comicDisplayMode'] == 'brief';
+  final bool useBriefMode = appdata.settings['bookDisplayMode'] == 'brief';
 
-  final double scale = (appdata.settings['comicTileScale'] as num).toDouble();
+  final double scale = (appdata.settings['bookTileScale'] as num).toDouble();
 
   @override
   SliverGridLayout getLayout(SliverConstraints constraints) {

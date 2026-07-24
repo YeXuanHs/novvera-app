@@ -50,7 +50,7 @@ class _ReaderImagesState extends State<_ReaderImages> {
   void load() async {
     if (inProgress) return;
     inProgress = true;
-    if (reader.type == ComicType.local ||
+    if (reader.type == BookType.local ||
         (LocalManager().isDownloaded(
           reader.cid,
           reader.type,
@@ -81,7 +81,7 @@ class _ReaderImagesState extends State<_ReaderImages> {
       }
     } else {
       var cp = reader.widget.chapters?.ids.elementAtOrNull(reader.chapter - 1);
-      var res = await reader.type.comicSource!.loadComicPages!(
+      var res = await reader.type.bookSource!.loadBookPages!(
         reader.widget.cid,
         cp,
       );
@@ -185,7 +185,7 @@ class _GalleryModeState extends State<_GalleryMode>
       return false;
     }
     if (reader.widget.chapters == null) return false;
-    var source = ComicSource.find(reader.type.sourceKey);
+    var source = BookSource.find(reader.type.sourceKey);
     if (source?.chapterCommentsLoader == null) return false;
     return appdata.settings.getReaderSetting(
               reader.cid,
@@ -213,7 +213,7 @@ class _GalleryModeState extends State<_GalleryMode>
     return showChapterCommentsAtEnd && pageIndex == totalImagePages + 1;
   }
 
-  var imageStates = <State<ComicImage>>{};
+  var imageStates = <State<BookImage>>{};
 
   bool isLongPressing = false;
 
@@ -287,15 +287,15 @@ class _GalleryModeState extends State<_GalleryMode>
   }
 
   Widget _buildChapterCommentsPage() {
-    var source = ComicSource.find(reader.type.sourceKey);
+    var source = BookSource.find(reader.type.sourceKey);
     var chapters = reader.widget.chapters;
     if (source == null || chapters == null) return const SizedBox();
     var chapterIndex = reader.chapter - 1;
     return _EmbeddedChapterCommentsPage(
-      comicId: reader.cid,
+      bookId: reader.cid,
       epId: chapters.ids.elementAt(chapterIndex),
       source: source,
-      comicTitle: reader.widget.name,
+      bookTitle: reader.widget.name,
       chapterTitle: chapters.titles.elementAt(chapterIndex),
     );
   }
@@ -331,7 +331,7 @@ class _GalleryModeState extends State<_GalleryMode>
     return keys;
   }
 
-  /// Apply [keys] to the comic-shell image list; preserve page when possible.
+  /// Apply [keys] to the book-shell image list; preserve page when possible.
   void _applyNovelGalleryKeys(List<String> keys, {int? preferPage}) {
     if (keys.isEmpty) return;
     final page = (preferPage ?? reader.page).clamp(1, keys.length);
@@ -674,7 +674,7 @@ class _GalleryModeState extends State<_GalleryMode>
     if (images.length == 2) {
       imageWidgets = [
         Expanded(
-          child: ComicImage(
+          child: BookImage(
             width: double.infinity,
             height: double.infinity,
             image: _createImageProviderFromKey(
@@ -691,7 +691,7 @@ class _GalleryModeState extends State<_GalleryMode>
           ),
         ),
         Expanded(
-          child: ComicImage(
+          child: BookImage(
             width: double.infinity,
             height: double.infinity,
             image: _createImageProviderFromKey(
@@ -717,7 +717,7 @@ class _GalleryModeState extends State<_GalleryMode>
           startIndex,
         );
         return Expanded(
-          child: ComicImage(
+          child: BookImage(
             image: imageProvider,
             fit: BoxFit.contain,
             onInit: (state) => imageStates.add(state),
@@ -936,7 +936,7 @@ class _ContinuousModeState extends State<_ContinuousMode>
   /// To handle the tap event, we need to know if the user was scrolling before the delay.
   bool delayedIsScrolling = false;
 
-  var imageStates = <State<ComicImage>>{};
+  var imageStates = <State<BookImage>>{};
 
   void delayedSetIsScrolling(bool value) {
     Future.delayed(
@@ -1088,7 +1088,7 @@ class _ContinuousModeState extends State<_ContinuousMode>
   @override
   Widget build(BuildContext context) {
     // Novels: continuous mode = one vertical scroll of paragraphs + images.
-    // Do not use per-line list items or comic limitImageWidth.
+    // Do not use per-line list items or book limitImageWidth.
     if (reader.isNovel) {
       return _buildNovelContinuous(context);
     }
@@ -1138,7 +1138,7 @@ class _ContinuousModeState extends State<_ContinuousMode>
 
         return ColoredBox(
           color: context.colorScheme.surface,
-          child: ComicImage(
+          child: BookImage(
             filterQuality: FilterQuality.medium,
             image: image,
             width: width,
@@ -1375,7 +1375,7 @@ class _ContinuousModeState extends State<_ContinuousMode>
         if (b is NovelImageBlock) {
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
-            child: ComicImage(
+            child: BookImage(
               filterQuality: FilterQuality.medium,
               image: _createImageProviderFromKey(b.url, context, index + 1),
               width: double.infinity,
@@ -1656,7 +1656,7 @@ ImageProvider _createImageProviderFromKey(
   var reader = context.reader;
   return ReaderImageProvider(
     imageKey,
-    reader.type.comicSource?.key,
+    reader.type.bookSource?.key,
     reader.cid,
     reader.eid,
     reader.page,
@@ -1733,8 +1733,8 @@ void _preDownloadImage(int page, BuildContext context) {
   }
   var cid = reader.cid;
   var eid = reader.eid;
-  var sourceKey = reader.type.comicSource?.key;
-  ImageDownloader.loadComicImage(imageKey, sourceKey, cid, eid);
+  var sourceKey = reader.type.bookSource?.key;
+  ImageDownloader.loadBookImage(imageKey, sourceKey, cid, eid);
 }
 
 class _SwipeChangeChapterProgress extends StatefulWidget {

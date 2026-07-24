@@ -50,7 +50,7 @@ class _EpubZipEntry {
 
 List<int> _utf8(String s) => utf8.encode(s);
 
-Future<File> createEpubComic(
+Future<File> createEpubBook(
     EpubData data, String cacheDir, String outFilePath) async {
   final coverExt = data.cover.extension;
   final coverMime = FileType.fromExtension(coverExt).mime;
@@ -216,33 +216,33 @@ ${navMap.toString()}
   return File(outFilePath);
 }
 
-Future<File> createEpubWithLocalComic(
-    LocalComic comic, String outFilePath) async {
+Future<File> createEpubWithLocalBook(
+    LocalBook book, String outFilePath) async {
   var chapters = <String, List<File>>{};
-  if (comic.chapters == null) {
-    chapters[comic.title] =
-        (await LocalManager().getImages(comic.id, comic.comicType, 0))
+  if (book.chapters == null) {
+    chapters[book.title] =
+        (await LocalManager().getImages(book.id, book.bookType, 0))
             .map((e) => File(e))
             .toList();
   } else {
-    for (var chapter in comic.downloadedChapters) {
-      chapters[comic.chapters![chapter]!] =
-          (await LocalManager().getImages(comic.id, comic.comicType, chapter))
+    for (var chapter in book.downloadedChapters) {
+      chapters[book.chapters![chapter]!] =
+          (await LocalManager().getImages(book.id, book.bookType, chapter))
               .map((e) => File(e))
               .toList();
     }
   }
   var data = EpubData(
-    title: comic.title,
-    author: comic.subtitle,
-    cover: comic.coverFile,
+    title: book.title,
+    author: book.subtitle,
+    cover: book.coverFile,
     chapters: chapters,
   );
 
   final cacheDir = App.cachePath;
 
   return Isolate.run(() => overrideIO(() async {
-        return createEpubComic(data, cacheDir, outFilePath);
+        return createEpubBook(data, cacheDir, outFilePath);
       }));
 }
 
@@ -459,4 +459,86 @@ Future<File> createNovelEpubWithImages(
   String outFilePath,
 ) {
   return createNovelEpub(data, cacheDir, outFilePath, images);
+}
+
+/// Export offline novel folders (`chapter.json`) to EPUB.
+Future<File> createNovelEpubFromLocalBook(
+  LocalBook book,
+  String outFilePath,
+) async {
+  if (!book.hasChapters) {
+    throw StateError('Not a chaptered novel');
+  }
+  final chapters = <String, String>{};
+  final embedded = <String, List<int>>{};
+  var imgIndex = 0;
+
+  for (final chapId in book.downloadedChapters) {
+    final chapDir = Directory(FilePath.join(
+      book.baseDir,
+      LocalManager.getChapterDirectoryName(chapId),
+    ));
+    final jsonFile = File(FilePath.join(chapDir.path, 'chapter.json'));
+    if (!jsonFile.existsSync()) continue;
+
+    final map = jsonDecode(jsonFile.readAsStringSync()) as Map;
+    final title = (map['title'] ?? book.chapters![chapId] ?? chapId).toString();
+    final content = (map['content'] ?? '').toString();
+    final body = StringBuffer();
+
+    for (final raw in content.split('\n')) {
+      final t = raw.trim();
+      if (t.isEmpty) continue;
+      if (t.startsWith('file://')) {
+        final path = t.substring(7);
+        try {
+          final bytes = File(path).readAsBytesSync();
+          var ext = detectFileType(bytes).ext;
+          if (ext.startsWith('.')) ext = ext.substring(1);
+          if (ext.isEmpty) ext = 'jpg';
+          final rel = 'images/export$imgIndex.$ext';
+          imgIndex++;
+          embedded[rel] = bytes;
+          body.writeln('    <p><img src="$rel" alt="illustration"/></p>');
+        } catch (_) {}
+      } else if (t.startsWith('http://') || t.startsWith('https://')) {
+        body.writeln(
+          '    <p><img src="${_xmlEscape(t)}" alt="illustration"/></p>',
+        );
+      } else {
+        body.writeln('    <p>${_xmlEscape(t)}</p>');
+      }
+    }
+    if (body.isEmpty) {
+      body.writeln('    <p>（本章无内容）</p>');
+    }
+    chapters[title] = body.toString();
+  }
+
+  if (chapters.isEmpty) {
+    throw StateError('No chapter content');
+  }
+
+  List<int>? coverBytes;
+  var coverExt = 'jpg';
+  try {
+    if (book.coverFile.existsSync()) {
+      coverBytes = await book.coverFile.readAsBytes();
+      coverExt = detectFileType(coverBytes).ext.replaceFirst('.', '');
+      if (coverExt.isEmpty) coverExt = 'jpg';
+    }
+  } catch (_) {}
+
+  return createNovelEpubWithImages(
+    NovelEpubData(
+      title: book.title,
+      author: book.subtitle,
+      chapters: chapters,
+      coverBytes: coverBytes,
+      coverExt: coverExt,
+    ),
+    embedded,
+    App.cachePath,
+    outFilePath,
+  );
 }

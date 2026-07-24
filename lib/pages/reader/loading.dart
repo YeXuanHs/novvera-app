@@ -41,54 +41,54 @@ class _ReaderWithLoadingState
 
   @override
   Future<Res<ReaderProps>> loadData() async {
-    var comicSource = ComicSource.find(widget.sourceKey);
+    var bookSource = BookSource.find(widget.sourceKey);
     var history = HistoryManager().find(
       widget.id,
-      ComicType.fromKey(widget.sourceKey),
+      BookType.fromKey(widget.sourceKey),
     );
-    if (comicSource == null) {
-      var localComic = LocalManager().find(
+    if (bookSource == null) {
+      var localBook = LocalManager().find(
         widget.id,
-        ComicType.fromKey(widget.sourceKey),
+        BookType.fromKey(widget.sourceKey),
       );
-      if (localComic == null) {
-        return Res.error("comic not found");
+      if (localBook == null) {
+        return Res.error("book not found");
       }
       return Res(
         ReaderProps(
-          type: ComicType.fromKey(widget.sourceKey),
+          type: BookType.fromKey(widget.sourceKey),
           cid: widget.id,
-          name: localComic.title,
-          chapters: localComic.chapters,
+          name: localBook.title,
+          chapters: localBook.chapters,
           history: history ??
               History.fromModel(
-                model: localComic,
+                model: localBook,
                 ep: 0,
                 page: 0,
               ),
-          author: localComic.subtitle,
-          tags: localComic.tags,
+          author: localBook.subtitle,
+          tags: localBook.tags,
         ),
       );
     } else {
-      var comic = await comicSource.loadComicInfo!(widget.id);
-      if (comic.error) {
-        return Res.fromErrorRes(comic);
+      var book = await bookSource.loadBookInfo!(widget.id);
+      if (book.error) {
+        return Res.fromErrorRes(book);
       }
       return Res(
         ReaderProps(
-          type: ComicType.fromKey(widget.sourceKey),
+          type: BookType.fromKey(widget.sourceKey),
           cid: widget.id,
-          name: comic.data.title,
-          chapters: comic.data.chapters,
+          name: book.data.title,
+          chapters: book.data.chapters,
           history: history ??
               History.fromModel(
-                model: comic.data,
+                model: book.data,
                 ep: 0,
                 page: 0,
               ),
-          author: comic.data.findAuthor() ?? "",
-          tags: comic.data.plainTags,
+          author: book.data.findAuthor() ?? "",
+          tags: book.data.plainTags,
         ),
       );
     }
@@ -96,13 +96,13 @@ class _ReaderWithLoadingState
 }
 
 class ReaderProps {
-  final ComicType type;
+  final BookType type;
 
   final String cid;
 
   final String name;
 
-  final ComicChapters? chapters;
+  final BookChapters? chapters;
 
   final History history;
 

@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'package:flutter_7zip/flutter_7zip.dart';
 import 'package:novvera/foundation/app.dart';
-import 'package:novvera/foundation/comic_source/comic_source.dart';
-import 'package:novvera/foundation/comic_type.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
+import 'package:novvera/foundation/book_type.dart';
 import 'package:novvera/foundation/local.dart';
 import 'package:novvera/utils/ext.dart';
 import 'package:novvera/utils/file_type.dart';
@@ -59,7 +59,7 @@ class ComicChapter {
   ComicChapter({required this.title, required this.start, required this.end});
 }
 
-/// Comic Book Archive. Currently supports CBZ, ZIP and 7Z formats.
+/// Book Book Archive. Currently supports CBZ, ZIP and 7Z formats.
 abstract class CBZ {
   static Future<FileType> checkType(File file) async {
     var header = <int>[];
@@ -81,7 +81,7 @@ abstract class CBZ {
     }
   }
 
-  static Future<LocalComic> import(File file) async {
+  static Future<LocalBook> import(File file) async {
     var cache = Directory(FilePath.join(App.cachePath, 'cbz_import'));
     if (cache.existsSync()) cache.deleteSync(recursive: true);
     cache.createSync();
@@ -105,7 +105,7 @@ abstract class CBZ {
     );
     var old = LocalManager().findByName(metaData.title);
     if (old != null) {
-      throw Exception('Comic with name ${metaData.title} already exists');
+      throw Exception('Book with name ${metaData.title} already exists');
     }
     var files = cache.listSync().whereType<File>().toList();
     files.removeWhere((e) {
@@ -169,29 +169,29 @@ abstract class CBZ {
         }
       }
     }
-    var comic = LocalComic(
-      id: LocalManager().findValidId(ComicType.local),
+    var book = LocalBook(
+      id: LocalManager().findValidId(BookType.local),
       title: metaData.title,
       subtitle: metaData.author,
       tags: metaData.tags,
-      comicType: ComicType.local,
+      bookType: BookType.local,
       directory: dest.name,
-      chapters: ComicChapters.fromJsonOrNull(cpMap),
+      chapters: BookChapters.fromJsonOrNull(cpMap),
       downloadedChapters: cpMap?.keys.toList() ?? [],
       cover: 'cover.${coverFile.extension}',
       createdAt: DateTime.now(),
     );
     await cache.delete(recursive: true);
-    return comic;
+    return book;
   }
 
-  static Future<File> export(LocalComic comic, String outFilePath) async {
+  static Future<File> export(LocalBook book, String outFilePath) async {
     var cache = Directory(FilePath.join(App.cachePath, 'cbz_export'));
     if (cache.existsSync()) cache.deleteSync(recursive: true);
     cache.createSync();
     List<ComicChapter>? chapters;
-    if (comic.chapters == null) {
-      var images = await LocalManager().getImages(comic.id, comic.comicType, 1);
+    if (book.chapters == null) {
+      var images = await LocalManager().getImages(book.id, book.bookType, 1);
       int i = 1;
       for (var image in images) {
         var src = File(image.replaceFirst('file://', ''));
@@ -205,11 +205,11 @@ abstract class CBZ {
     } else {
       chapters = [];
       var allImages = <String>[];
-      for (var c in comic.downloadedChapters) {
-        var chapterName = comic.chapters![c];
+      for (var c in book.downloadedChapters) {
+        var chapterName = book.chapters![c];
         var images = await LocalManager().getImages(
-          comic.id,
-          comic.comicType,
+          book.id,
+          book.bookType,
           c,
         );
         allImages.addAll(images);
@@ -231,13 +231,13 @@ abstract class CBZ {
         i++;
       }
     }
-    var cover = comic.coverFile;
+    var cover = book.coverFile;
     await cover.copyMem(
         FilePath.join(cache.path, 'cover.${cover.path.split('.').last}'));
     final metaData = ComicMetaData(
-      title: comic.title,
-      author: comic.subtitle,
-      tags: comic.tags,
+      title: book.title,
+      author: book.subtitle,
+      tags: book.tags,
       chapters: chapters,
     );
     await File(FilePath.join(cache.path, 'metadata.json')).writeAsString(

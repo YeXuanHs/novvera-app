@@ -655,7 +655,7 @@ class Wenku8Client {
     final tags = _xmlDataAttr(metaXml, 'Tags', 'value');
     final intro = introText.trim();
 
-    // Only fields consumed by _loadComicInfo / cards. No PressId/分类.
+    // Only fields consumed by _loadBookInfo / cards. No PressId/分类.
     final data = <String, dynamic>{
       'aid': aid,
       'name': name.isEmpty ? '未知书名' : name,

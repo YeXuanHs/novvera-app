@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:novvera/components/components.dart';
 import 'package:novvera/foundation/app.dart';
-import 'package:novvera/foundation/comic_source/comic_source.dart';
-import 'package:novvera/foundation/comic_type.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
+import 'package:novvera/foundation/book_type.dart';
 import 'package:novvera/foundation/history.dart';
 import 'package:novvera/foundation/novel_source/builtin_sources.dart';
 import 'package:novvera/utils/translations.dart';
@@ -29,64 +29,64 @@ class _HistoryPageState extends State<HistoryPage> {
 
   void onUpdate() {
     setState(() {
-      comics = HistoryManager().getAll();
+      books = HistoryManager().getAll();
       if (multiSelectMode) {
-        selectedComics.removeWhere((comic, _) => !comics.contains(comic));
-        if (selectedComics.isEmpty) {
+        selectedBooks.removeWhere((book, _) => !books.contains(book));
+        if (selectedBooks.isEmpty) {
           multiSelectMode = false;
         }
       }
     });
   }
 
-  var comics = HistoryManager().getAll();
+  var books = HistoryManager().getAll();
   var controller = FlyoutController();
 
   bool multiSelectMode = false;
-  Map<History, bool> selectedComics = {};
+  Map<History, bool> selectedBooks = {};
 
   void selectAll() {
     setState(() {
-      selectedComics = comics.asMap().map((k, v) => MapEntry(v, true));
+      selectedBooks = books.asMap().map((k, v) => MapEntry(v, true));
     });
   }
 
   void deSelect() {
     setState(() {
-      selectedComics.clear();
+      selectedBooks.clear();
     });
   }
 
   void invertSelection() {
     setState(() {
-      comics.asMap().forEach((k, v) {
-        selectedComics[v] = !selectedComics.putIfAbsent(v, () => false);
+      books.asMap().forEach((k, v) {
+        selectedBooks[v] = !selectedBooks.putIfAbsent(v, () => false);
       });
-      selectedComics.removeWhere((k, v) => !v);
+      selectedBooks.removeWhere((k, v) => !v);
     });
   }
 
-  void _removeHistory(History comic) {
-    if (comic.sourceKey.startsWith("Unknown")) {
+  void _removeHistory(History book) {
+    if (book.sourceKey.startsWith("Unknown")) {
       HistoryManager().remove(
-        comic.id,
-        ComicType(int.parse(comic.sourceKey.split(':')[1])),
+        book.id,
+        BookType(int.parse(book.sourceKey.split(':')[1])),
       );
-    } else if (comic.sourceKey == 'local') {
+    } else if (book.sourceKey == 'local') {
       HistoryManager().remove(
-        comic.id,
-        ComicType.local,
+        book.id,
+        BookType.local,
       );
     } else {
       HistoryManager().remove(
-        comic.id,
-        ComicType(comic.sourceKey.hashCode),
+        book.id,
+        BookType(book.sourceKey.hashCode),
       );
     }
   }
 
-  void _refreshHistory(History comic) async {
-    var result = await HistoryManager().refreshHistoryInfo(comic);
+  void _refreshHistory(History book) async {
+    var result = await HistoryManager().refreshHistoryInfo(book);
     if (result) {
       if (mounted) {
         App.rootContext.showMessage(message: "Refresh Success".tl);
@@ -165,17 +165,17 @@ class _HistoryPageState extends State<HistoryPage> {
       IconButton(
         icon: const Icon(Icons.delete),
         tooltip: "Delete".tl,
-        onPressed: selectedComics.isEmpty
+        onPressed: selectedBooks.isEmpty
             ? null
             : () {
-                final comicsToDelete = List<History>.from(selectedComics.keys);
+                final booksToDelete = List<History>.from(selectedBooks.keys);
                 setState(() {
                   multiSelectMode = false;
-                  selectedComics.clear();
+                  selectedBooks.clear();
                 });
 
-                for (final comic in comicsToDelete) {
-                  _removeHistory(comic);
+                for (final book in booksToDelete) {
+                  _removeHistory(book);
                 }
               },
       ),
@@ -240,7 +240,7 @@ class _HistoryPageState extends State<HistoryPage> {
         if (multiSelectMode) {
           setState(() {
             multiSelectMode = false;
-            selectedComics.clear();
+            selectedBooks.clear();
           });
         }
       },
@@ -255,7 +255,7 @@ class _HistoryPageState extends State<HistoryPage> {
                     if (multiSelectMode) {
                       setState(() {
                         multiSelectMode = false;
-                        selectedComics.clear();
+                        selectedBooks.clear();
                       });
                     } else {
                       context.pop();
@@ -267,30 +267,30 @@ class _HistoryPageState extends State<HistoryPage> {
                 ),
               ),
               title: multiSelectMode
-                  ? Text(selectedComics.length.toString())
+                  ? Text(selectedBooks.length.toString())
                   : Text('History'.tl),
               actions: multiSelectMode ? selectActions : normalActions,
             ),
-            SliverGridComics(
-              comics: comics,
-              selections: selectedComics,
+            SliverGridBooks(
+              books: books,
+              selections: selectedBooks,
               onLongPressed: null,
               onTap: multiSelectMode
                   ? (c, heroID) {
                       setState(() {
-                        if (selectedComics.containsKey(c as History)) {
-                          selectedComics.remove(c);
+                        if (selectedBooks.containsKey(c as History)) {
+                          selectedBooks.remove(c);
                         } else {
-                          selectedComics[c] = true;
+                          selectedBooks[c] = true;
                         }
-                        if (selectedComics.isEmpty) {
+                        if (selectedBooks.isEmpty) {
                           multiSelectMode = false;
                         }
                       });
                     }
                   : null,
               badgeBuilder: (c) {
-                return ComicSource.find(c.sourceKey)?.name;
+                return BookSource.find(c.sourceKey)?.name;
               },
               menuBuilder: (c) {
                 return [

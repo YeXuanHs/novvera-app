@@ -30,7 +30,7 @@ import 'package:novvera/network/cookie_jar.dart';
 import 'package:novvera/network/proxy.dart';
 import 'package:novvera/utils/init.dart';
 
-import 'comic_source/comic_source.dart';
+import 'book_source/book_source.dart';
 import 'consts.dart';
 import 'log.dart';
 
@@ -129,7 +129,7 @@ class JsEngine with _JSEngineApi, JsUiApi, Init {
           case 'load_data':
             String key = message["key"];
             String dataKey = message["data_key"];
-            return ComicSource.find(key)?.data[dataKey];
+            return BookSource.find(key)?.data[dataKey];
           case 'save_data':
             String key = message["key"];
             String dataKey = message["data_key"];
@@ -137,13 +137,13 @@ class JsEngine with _JSEngineApi, JsUiApi, Init {
               throw "setting is not allowed to be saved";
             }
             var data = message["data"];
-            var source = ComicSource.find(key)!;
+            var source = BookSource.find(key)!;
             source.data[dataKey] = data;
             source.saveData();
           case 'delete_data':
             String key = message["key"];
             String dataKey = message["data_key"];
-            var source = ComicSource.find(key);
+            var source = BookSource.find(key);
             source?.data.remove(dataKey);
             source?.saveData();
           case 'http':
@@ -165,12 +165,12 @@ class JsEngine with _JSEngineApi, JsUiApi, Init {
           case "load_setting":
             String key = message["key"];
             String settingKey = message["setting_key"];
-            var source = ComicSource.find(key)!;
+            var source = BookSource.find(key)!;
             return source.data["settings"]?[settingKey] ??
                 source.settings?[settingKey]!['default'] ??
                 (throw "Setting not found: $settingKey");
           case "isLogged":
-            return ComicSource.find(message["key"])!.isLogged;
+            return BookSource.find(message["key"])!.isLogged;
           // temporary solution for [setTimeout] function
           // TODO: implement [setTimeout] in quickjs project
           case "delay":

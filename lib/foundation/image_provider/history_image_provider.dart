@@ -20,15 +20,15 @@ class HistoryImageProvider
   Future<Uint8List> load(chunkEvents, checkStop) async {
     var url = history.cover;
     if (!url.contains('/')) {
-      var localComic = LocalManager().find(history.id, history.type);
-      if (localComic != null) {
-        return localComic.coverFile.readAsBytes();
+      var localBook = LocalManager().find(history.id, history.type);
+      if (localBook != null) {
+        return localBook.coverFile.readAsBytes();
       }
-      var comicSource =
-          history.type.comicSource ?? (throw "Comic source not found.");
-      var comic = await comicSource.loadComicInfo!(history.id);
+      var bookSource =
+          history.type.bookSource ?? (throw "Book source not found.");
+      var book = await bookSource.loadBookInfo!(history.id);
       checkStop();
-      url = comic.data.cover;
+      url = book.data.cover;
       history.cover = url;
       HistoryManager().addHistory(history);
     }

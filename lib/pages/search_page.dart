@@ -6,7 +6,7 @@ import 'package:sliver_tools/sliver_tools.dart';
 import 'package:novvera/components/components.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/appdata.dart';
-import 'package:novvera/foundation/comic_source/comic_source.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
 import 'package:novvera/foundation/global_state.dart';
 import 'package:novvera/pages/aggregated_search_page.dart';
 import 'package:novvera/pages/search_result_page.dart';
@@ -16,7 +16,7 @@ import 'package:novvera/utils/ext.dart';
 import 'package:novvera/utils/tags_translation.dart';
 import 'package:novvera/utils/translations.dart';
 
-import 'comic_details_page/comic_page.dart';
+import 'book_details_page/book_page.dart';
 
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
@@ -33,7 +33,7 @@ class _SearchPageState extends State<SearchPage> {
   String searchTarget = "";
 
   SearchPageData get currentSearchPageData =>
-      ComicSource.find(searchTarget)!.searchPageData!;
+      BookSource.find(searchTarget)!.searchPageData!;
 
   bool aggregatedSearch = false;
 
@@ -69,7 +69,7 @@ class _SearchPageState extends State<SearchPage> {
 
   bool canHandleUrl(String text) {
     if (!text.isURL) return false;
-    for (var source in ComicSource.all()) {
+    for (var source in BookSource.all()) {
       if (source.linkHandler != null) {
         var uri = Uri.parse(text);
         if (source.linkHandler!.domains.contains(uri.host)) {
@@ -91,17 +91,17 @@ class _SearchPageState extends State<SearchPage> {
     } else {
       var text = controller.text;
 
-      for (var comicSource in ComicSource.all()) {
-        if (comicSource.idMatcher?.hasMatch(text) ?? false) {
+      for (var bookSource in BookSource.all()) {
+        if (bookSource.idMatcher?.hasMatch(text) ?? false) {
           suggestions.add(Pair(
-            "**${comicSource.key}**",
+            "**${bookSource.key}**",
             TranslationType.other,
           ));
         }
       }
     }
 
-    if (!ComicSource.find(searchTarget)!.enableTagsSuggestions) {
+    if (!BookSource.find(searchTarget)!.enableTagsSuggestions) {
       update();
       return;
     }
@@ -170,7 +170,7 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   void findSearchSources() {
-    var all = ComicSource.all()
+    var all = BookSource.all()
         .where((e) => e.searchPageData != null)
         .map((e) => e.key)
         .toList();
@@ -204,7 +204,7 @@ class _SearchPageState extends State<SearchPage> {
     var msg = "No Search Sources".tl;
     msg += '\n';
     VoidCallback onTap;
-    if (ComicSource.isEmpty) {
+    if (BookSource.isEmpty) {
       msg += "Please wait for sources to load".tl;
       onTap = () => setState(() {});
     } else {
@@ -215,7 +215,7 @@ class _SearchPageState extends State<SearchPage> {
       message: msg,
       retry: onTap,
       withAppbar: true,
-      buttonText: ComicSource.isEmpty ? "Retry".tl : "Manage".tl,
+      buttonText: BookSource.isEmpty ? "Retry".tl : "Manage".tl,
     );
   }
 
@@ -252,7 +252,7 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   Widget buildSearchTarget() {
-    var sources = searchSources.map((e) => ComicSource.find(e)!).toList();
+    var sources = searchSources.map((e) => BookSource.find(e)!).toList();
     return SliverToBoxAdapter(
       child: Container(
         width: double.infinity,
@@ -375,7 +375,7 @@ class _SearchPageState extends State<SearchPage> {
         controller.text =
             controller.text.replaceLast(words[words.length - 1], "");
       }
-      final source = ComicSource.find(searchTarget);
+      final source = BookSource.find(searchTarget);
       String insert;
       if (source?.onTagSuggestionSelected != null) {
         insert = source!.onTagSuggestionSelected!(type?.name ?? '', text);
@@ -414,13 +414,13 @@ class _SearchPageState extends State<SearchPage> {
 
       if (RegExp(r"^\*\*.*\*\*$").hasMatch(value.left)) {
         var key = value.left.substring(2, value.left.length - 2);
-        var comicSource = ComicSource.find(key);
-        if (comicSource == null) {
+        var bookSource = BookSource.find(key);
+        if (bookSource == null) {
           return const SizedBox();
         }
         return ListTile(
           leading: const Icon(Icons.link),
-          title: Text("${"Open book".tl}: ${comicSource.name}"),
+          title: Text("${"Open book".tl}: ${bookSource.name}"),
           subtitle: Text(
             controller.text,
             maxLines: 1,
@@ -429,7 +429,7 @@ class _SearchPageState extends State<SearchPage> {
           trailing: const Icon(Icons.arrow_right),
           onTap: () {
             context.to(
-              () => ComicPage(
+              () => BookPage(
                 sourceKey: key,
                 id: controller.text,
               ),

@@ -1,8 +1,8 @@
 part of 'reader.dart';
 
-class ComicImage extends StatefulWidget {
+class BookImage extends StatefulWidget {
   /// Modified from flutter Image
-  ComicImage({
+  BookImage({
     required ImageProvider image,
     super.key,
     double scale = 1.0,
@@ -67,17 +67,17 @@ class ComicImage extends StatefulWidget {
 
   final bool isAntiAlias;
 
-  final void Function(State<ComicImage> state)? onInit;
+  final void Function(State<BookImage> state)? onInit;
 
-  final void Function(State<ComicImage> state)? onDispose;
+  final void Function(State<BookImage> state)? onDispose;
 
   static void clear() => _ComicImageState.clear();
 
   @override
-  State<ComicImage> createState() => _ComicImageState();
+  State<BookImage> createState() => _ComicImageState();
 }
 
-class _ComicImageState extends State<ComicImage> with WidgetsBindingObserver {
+class _ComicImageState extends State<BookImage> with WidgetsBindingObserver {
   ImageStream? _imageStream;
   ImageInfo? _imageInfo;
   ImageChunkEvent? _loadingProgress;
@@ -85,7 +85,7 @@ class _ComicImageState extends State<ComicImage> with WidgetsBindingObserver {
   late bool _invertColors;
   int? _frameNumber;
   bool _wasSynchronouslyLoaded = false;
-  late DisposableBuildContext<State<ComicImage>> _scrollAwareContext;
+  late DisposableBuildContext<State<BookImage>> _scrollAwareContext;
   Object? _lastException;
   ImageStreamCompleterHandle? _completerHandle;
 
@@ -97,7 +97,7 @@ class _ComicImageState extends State<ComicImage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _scrollAwareContext = DisposableBuildContext<State<ComicImage>>(this);
+    _scrollAwareContext = DisposableBuildContext<State<BookImage>>(this);
     widget.onInit?.call(this);
   }
 
@@ -128,7 +128,7 @@ class _ComicImageState extends State<ComicImage> with WidgetsBindingObserver {
   }
 
   @override
-  void didUpdateWidget(ComicImage oldWidget) {
+  void didUpdateWidget(BookImage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.image != oldWidget.image) {
       _resolveImage();
@@ -288,7 +288,7 @@ class _ComicImageState extends State<ComicImage> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     if (_lastException != null) {
       final fb = widget.fallbackHeight;
-      // Compact strip for novel inline images; full card for comics.
+      // Compact strip for novel inline images; full card for books.
       if (fb <= 120) {
         return SizedBox(
           width: widget.width == double.infinity ? null : (widget.width ?? fb),

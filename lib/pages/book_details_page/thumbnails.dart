@@ -1,14 +1,14 @@
-part of 'comic_page.dart';
+part of 'book_page.dart';
 
-class _ComicThumbnails extends StatefulWidget {
-  const _ComicThumbnails();
+class _BookThumbnails extends StatefulWidget {
+  const _BookThumbnails();
 
   @override
-  State<_ComicThumbnails> createState() => _ComicThumbnailsState();
+  State<_BookThumbnails> createState() => _BookThumbnailsState();
 }
 
-class _ComicThumbnailsState extends State<_ComicThumbnails> {
-  late _ComicPageState state;
+class _BookThumbnailsState extends State<_BookThumbnails> {
+  late _BookPageState state;
 
   late List<String> thumbnails;
 
@@ -22,14 +22,14 @@ class _ComicThumbnailsState extends State<_ComicThumbnails> {
 
   @override
   void didChangeDependencies() {
-    state = context.findAncestorStateOfType<_ComicPageState>()!;
+    state = context.findAncestorStateOfType<_BookPageState>()!;
     loadNext();
-    thumbnails = List.from(state.comic.thumbnails ?? []);
+    thumbnails = List.from(state.book.thumbnails ?? []);
     super.didChangeDependencies();
   }
 
   void loadNext() async {
-    if (state.comicSource.loadComicThumbnail == null) return;
+    if (state.bookSource.loadBookThumbnail == null) return;
     if (!isInitialLoading && next == null) {
       return;
     }
@@ -39,7 +39,7 @@ class _ComicThumbnailsState extends State<_ComicThumbnails> {
         isLoading = true;
       });
     });
-    var res = await state.comicSource.loadComicThumbnail!(state.comic.id, next);
+    var res = await state.bookSource.loadBookThumbnail!(state.book.id, next);
     if (res.success) {
       thumbnails.addAll(res.data);
       next = res.subData;

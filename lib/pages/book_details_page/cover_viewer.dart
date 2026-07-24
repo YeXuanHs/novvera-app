@@ -1,4 +1,4 @@
-part of 'comic_page.dart';
+part of 'book_page.dart';
 
 class _CoverViewer extends StatefulWidget {
   const _CoverViewer({

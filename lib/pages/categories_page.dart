@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:novvera/components/components.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/appdata.dart';
-import 'package:novvera/foundation/comic_source/comic_source.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
 import 'package:novvera/pages/ranking_page.dart';
 import 'package:novvera/pages/settings/settings_page.dart';
 import 'package:novvera/utils/ext.dart';
@@ -27,7 +27,7 @@ class _CategoriesPageState extends State<CategoriesPage>
     var categories = List.from(
       appdata.settings["categories"],
     ).whereType<String>().toList();
-    var allCategories = ComicSource.all()
+    var allCategories = BookSource.all()
         .map((e) => e.categoryData?.key)
         .where((element) => element != null)
         .map((e) => e!)
@@ -49,7 +49,7 @@ class _CategoriesPageState extends State<CategoriesPage>
     var categories = List.from(
       appdata.settings["categories"],
     ).whereType<String>().toList();
-    var allCategories = ComicSource.all()
+    var allCategories = BookSource.all()
         .map((e) => e.categoryData?.key)
         .where((element) => element != null)
         .map((e) => e!)
@@ -76,7 +76,7 @@ class _CategoriesPageState extends State<CategoriesPage>
     var msg = "No Category Pages".tl;
     msg += '\n';
     VoidCallback onTap;
-    if (ComicSource.isEmpty) {
+    if (BookSource.isEmpty) {
       msg += "Please wait for sources to load".tl;
       onTap = () => setState(() {});
     } else {
@@ -87,7 +87,7 @@ class _CategoriesPageState extends State<CategoriesPage>
       message: msg,
       retry: onTap,
       withAppbar: false,
-      buttonText: ComicSource.isEmpty ? "Retry".tl : "Manage".tl,
+      buttonText: BookSource.isEmpty ? "Retry".tl : "Manage".tl,
     );
   }
 
@@ -138,8 +138,8 @@ class _CategoryPage extends StatelessWidget {
 
   CategoryData get data => getCategoryDataWithKey(category);
 
-  String findComicSourceKey() {
-    for (var source in ComicSource.all()) {
+  String findBookSourceKey() {
+    for (var source in BookSource.all()) {
       if (source.categoryData?.key == category) {
         return source.key;
       }

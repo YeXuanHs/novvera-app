@@ -9,11 +9,11 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_qjs/flutter_qjs.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/appdata.dart';
-import 'package:novvera/foundation/comic_type.dart';
+import 'package:novvera/foundation/book_type.dart';
 import 'package:novvera/foundation/history.dart';
 import 'package:novvera/foundation/novel_source/builtin_sources.dart';
 import 'package:novvera/foundation/res.dart';
-import 'package:novvera/pages/category_comics_page.dart';
+import 'package:novvera/pages/category_books_page.dart';
 import 'package:novvera/pages/search_result_page.dart';
 import 'package:novvera/utils/data_sync.dart';
 import 'package:novvera/utils/ext.dart';
@@ -34,28 +34,28 @@ part 'models.dart';
 
 part 'types.dart';
 
-class ComicSourceManager with ChangeNotifier, Init {
-  final List<ComicSource> _sources = [];
+class BookSourceManager with ChangeNotifier, Init {
+  final List<BookSource> _sources = [];
 
-  static ComicSourceManager? _instance;
+  static BookSourceManager? _instance;
 
-  ComicSourceManager._create();
+  BookSourceManager._create();
 
-  factory ComicSourceManager() => _instance ??= ComicSourceManager._create();
+  factory BookSourceManager() => _instance ??= BookSourceManager._create();
 
-  List<ComicSource> all() => List.from(_sources);
+  List<BookSource> all() => List.from(_sources);
 
-  ComicSource? find(String key) =>
+  BookSource? find(String key) =>
       _sources.firstWhereOrNull((element) => element.key == key);
 
-  ComicSource? fromIntKey(int key) =>
+  BookSource? fromIntKey(int key) =>
       _sources.firstWhereOrNull((element) => element.key.hashCode == key);
 
   @override
   @protected
   Future<void> doInit() async {
     await JsEngine().ensureInit();
-    // Builtin novel sources only — do not load JS comic sources.
+    // Builtin novel sources only — do not load JS book sources.
     _sources.clear();
     for (final source in createBuiltinNovelSources()) {
       await source.loadData();
@@ -123,7 +123,7 @@ class ComicSourceManager with ChangeNotifier, Init {
     notifyListeners();
   }
 
-  void add(ComicSource source) {
+  void add(BookSource source) {
     _sources.add(source);
     notifyListeners();
   }
@@ -150,15 +150,15 @@ class ComicSourceManager with ChangeNotifier, Init {
   }
 }
 
-class ComicSource {
-  static List<ComicSource> all() => ComicSourceManager().all();
+class BookSource {
+  static List<BookSource> all() => BookSourceManager().all();
 
-  static ComicSource? find(String key) => ComicSourceManager().find(key);
+  static BookSource? find(String key) => BookSourceManager().find(key);
 
-  static ComicSource? fromIntKey(int key) =>
-      ComicSourceManager().fromIntKey(key);
+  static BookSource? fromIntKey(int key) =>
+      BookSourceManager().fromIntKey(key);
 
-  static bool get isEmpty => ComicSourceManager().isEmpty;
+  static bool get isEmpty => BookSourceManager().isEmpty;
 
   /// Name of this source.
   final String name;
@@ -176,8 +176,8 @@ class ComicSource {
   /// Category data used to build a static category tags page.
   final CategoryData? categoryData;
 
-  /// Category comics data used to build a comics page with a category tag.
-  final CategoryComicsData? categoryComicsData;
+  /// Category books data used to build a books page with a category tag.
+  final CategoryBooksData? categoryBooksData;
 
   /// Favorite data used to build favorite page.
   final FavoriteData? favoriteData;
@@ -188,13 +188,13 @@ class ComicSource {
   /// Search page.
   final SearchPageData? searchPageData;
 
-  /// Load comic info.
-  final LoadComicFunc? loadComicInfo;
+  /// Load book info.
+  final LoadBookFunc? loadBookInfo;
 
-  final ComicThumbnailLoader? loadComicThumbnail;
+  final BookThumbnailLoader? loadBookThumbnail;
 
-  /// Load comic pages.
-  final LoadComicPagesFunc? loadComicPages;
+  /// Load book pages.
+  final LoadBookPagesFunc? loadBookPages;
 
   final GetImageLoadingConfigFunc? getImageLoadingConfig;
 
@@ -221,7 +221,7 @@ class ComicSource {
 
   final RegExp? idMatcher;
 
-  final LikeOrUnlikeComicFunc? likeOrUnlikeComic;
+  final LikeOrUnlikeBookFunc? likeOrUnlikeBook;
 
   final VoteCommentFunc? voteCommentFunc;
 
@@ -313,24 +313,24 @@ class ComicSource {
       }
       return null;
     } catch (e) {
-      Log.error("ComicSource", "Failed to get dynamic settings: $e");
+      Log.error("BookSource", "Failed to get dynamic settings: $e");
       return settings;
     }
   }
 
-  ComicSource(
+  BookSource(
     this.name,
     this.key,
     this.account,
     this.categoryData,
-    this.categoryComicsData,
+    this.categoryBooksData,
     this.favoriteData,
     this.explorePages,
     this.searchPageData,
     this.settings,
-    this.loadComicInfo,
-    this.loadComicThumbnail,
-    this.loadComicPages,
+    this.loadBookInfo,
+    this.loadBookThumbnail,
+    this.loadBookPages,
     this.getImageLoadingConfig,
     this.getThumbnailLoadingConfig,
     this.filePath,
@@ -340,7 +340,7 @@ class ComicSource {
     this.sendCommentFunc,
     this.chapterCommentsLoader,
     this.sendChapterCommentFunc,
-    this.likeOrUnlikeComic,
+    this.likeOrUnlikeBook,
     this.voteCommentFunc,
     this.likeCommentFunc,
     this.idMatcher,
@@ -408,13 +408,13 @@ class ExplorePageData {
 
   final ExplorePageType type;
 
-  final ComicListBuilder? loadPage;
+  final BookListBuilder? loadPage;
 
-  final ComicListBuilderWithNext? loadNext;
+  final BookListBuilderWithNext? loadNext;
 
   final Future<Res<List<ExplorePagePart>>> Function()? loadMultiPart;
 
-  /// return a `List` contains `List<Comic>` or `ExplorePagePart`
+  /// return a `List` contains `List<Book>` or `ExplorePagePart`
   final Future<Res<List<Object>>> Function(int index)? loadMixed;
 
   ExplorePageData(
@@ -430,7 +430,7 @@ class ExplorePageData {
 class ExplorePagePart {
   final String title;
 
-  final List<Comic> comics;
+  final List<Book> books;
 
   /// If this is not null, the [ExplorePagePart] will show a button to jump to new page.
   ///
@@ -441,25 +441,25 @@ class ExplorePagePart {
   /// End with `@`+`param` if the category has a parameter.
   final PageJumpTarget? viewMore;
 
-  const ExplorePagePart(this.title, this.comics, this.viewMore);
+  const ExplorePagePart(this.title, this.books, this.viewMore);
 }
 
 enum ExplorePageType {
-  multiPageComicList,
+  multiPageBookList,
   singlePageWithMultiPart,
   mixed,
   override,
 }
 
 typedef SearchFunction =
-    Future<Res<List<Comic>>> Function(
+    Future<Res<List<Book>>> Function(
       String keyword,
       int page,
       List<String> searchOption,
     );
 
 typedef SearchNextFunction =
-    Future<Res<List<Comic>>> Function(
+    Future<Res<List<Book>>> Function(
       String keyword,
       String? next,
       List<String> searchOption,
@@ -490,8 +490,8 @@ class SearchOptions {
   String get defaultValue => defaultVal ?? options.keys.firstOrNull ?? "";
 }
 
-typedef CategoryComicsLoader =
-    Future<Res<List<Comic>>> Function(
+typedef CategoryBooksLoader =
+    Future<Res<List<Book>>> Function(
       String category,
       String? param,
       List<String> options,
@@ -499,14 +499,14 @@ typedef CategoryComicsLoader =
     );
 
 typedef CategoryOptionsLoader =
-    Future<Res<List<CategoryComicsOptions>>> Function(
+    Future<Res<List<CategoryBooksOptions>>> Function(
       String category,
       String? param,
     );
 
-class CategoryComicsData {
+class CategoryBooksData {
   /// options
-  final List<CategoryComicsOptions>? options;
+  final List<CategoryBooksOptions>? options;
 
   final CategoryOptionsLoader? optionsLoader;
 
@@ -515,11 +515,11 @@ class CategoryComicsData {
   /// if [BaseCategoryPart.categoryParams] is not null, [param] will be not null.
   ///
   /// [Res.subData] should be maxPage or null if there is no limit.
-  final CategoryComicsLoader load;
+  final CategoryBooksLoader load;
 
   final RankingData? rankingData;
 
-  const CategoryComicsData({
+  const CategoryBooksData({
     this.options,
     this.optionsLoader,
     required this.load,
@@ -530,20 +530,20 @@ class CategoryComicsData {
 class RankingData {
   final Map<String, String> options;
 
-  final Future<Res<List<Comic>>> Function(String option, int page)? load;
+  final Future<Res<List<Book>>> Function(String option, int page)? load;
 
-  final Future<Res<List<Comic>>> Function(String option, String? next)?
+  final Future<Res<List<Book>>> Function(String option, String? next)?
   loadWithNext;
 
   const RankingData(this.options, this.load, this.loadWithNext);
 }
 
-class CategoryComicsOptions {
+class CategoryBooksOptions {
   // The label will not be displayed if it is empty.
   final String label;
 
   /// Use a [LinkedHashMap] to describe an option list.
-  /// key is for loading comics, value is the name displayed on screen.
+  /// key is for loading books, value is the name displayed on screen.
   /// Default value will be the first of the Map.
   final LinkedHashMap<String, String> options;
 
@@ -552,7 +552,7 @@ class CategoryComicsOptions {
 
   final List<String>? showWhen;
 
-  const CategoryComicsOptions(
+  const CategoryBooksOptions(
     this.label,
     this.options,
     this.notShowWhen,

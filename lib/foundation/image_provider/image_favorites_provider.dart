@@ -3,8 +3,8 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:novvera/foundation/app.dart';
-import 'package:novvera/foundation/comic_source/comic_source.dart';
-import 'package:novvera/foundation/comic_type.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
+import 'package:novvera/foundation/book_type.dart';
 import 'package:novvera/foundation/local.dart';
 import 'package:novvera/network/images.dart';
 import 'package:novvera/utils/io.dart';
@@ -92,18 +92,18 @@ class ImageFavoritesProvider
   }
 
   Future<Uint8List?> getImageFromLocal() async {
-    var localComic =
-        LocalManager().find(sourceKey, ComicType.fromKey(sourceKey));
-    if (localComic == null) {
+    var localBook =
+        LocalManager().find(sourceKey, BookType.fromKey(sourceKey));
+    if (localBook == null) {
       return null;
     }
-    var epIndex = localComic.chapters?.ids.toList().indexOf(eid) ?? -1;
-    if (epIndex == -1 && localComic.hasChapters) {
+    var epIndex = localBook.chapters?.ids.toList().indexOf(eid) ?? -1;
+    if (epIndex == -1 && localBook.hasChapters) {
       return null;
     }
     var images = await LocalManager().getImages(
       sourceKey,
-      ComicType.fromKey(sourceKey),
+      BookType.fromKey(sourceKey),
       epIndex,
     );
     var data = await File(images[page]).readAsBytes();
@@ -116,7 +116,7 @@ class ImageFavoritesProvider
     void Function()? checkStop,
   ) async {
     await for (var progress
-        in ImageDownloader.loadComicImage(imageKey, sourceKey, cid, eid)) {
+        in ImageDownloader.loadBookImage(imageKey, sourceKey, cid, eid)) {
       checkStop?.call();
       if (chunkEvents != null) {
         chunkEvents.add(ImageChunkEvent(
@@ -136,11 +136,11 @@ class ImageFavoritesProvider
     String cid = imageFavorite.id;
     String eid = imageFavorite.eid;
     var page = imageFavorite.page;
-    var comicSource = ComicSource.find(sourceKey);
-    if (comicSource == null) {
-      throw "Error: Comic source not found.";
+    var bookSource = BookSource.find(sourceKey);
+    if (bookSource == null) {
+      throw "Error: Book source not found.";
     }
-    var res = await comicSource.loadComicPages!(cid, eid);
+    var res = await bookSource.loadBookPages!(cid, eid);
     return res.data[page - 1];
   }
 

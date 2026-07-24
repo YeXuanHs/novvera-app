@@ -1,7 +1,7 @@
 import 'dart:async' show Future;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:novvera/foundation/comic_type.dart';
+import 'package:novvera/foundation/book_type.dart';
 import 'package:novvera/foundation/local.dart';
 import 'package:novvera/network/images.dart';
 import 'package:novvera/utils/io.dart';
@@ -61,12 +61,12 @@ class CachedImageProvider
     }
     catch(e) {
       if (fallbackToLocalCover && sourceKey != null && cid != null) {
-        final localComic = LocalManager().find(
+        final localBook = LocalManager().find(
           cid!,
-          ComicType.fromKey(sourceKey!),
+          BookType.fromKey(sourceKey!),
         );
-        if (localComic != null) {
-          var file = localComic.coverFile;
+        if (localBook != null) {
+          var file = localBook.coverFile;
           if (await file.exists()) {
             var data = await file.readAsBytes();
             if (data.isNotEmpty) {

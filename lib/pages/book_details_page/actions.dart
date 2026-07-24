@@ -1,11 +1,11 @@
-part of 'comic_page.dart';
+part of 'book_page.dart';
 
-abstract mixin class _ComicPageActions {
+abstract mixin class _BookPageActions {
   void update();
 
-  ComicDetails get comic;
+  BookDetails get book;
 
-  ComicSource get comicSource => ComicSource.find(comic.sourceKey)!;
+  BookSource get bookSource => BookSource.find(book.sourceKey)!;
 
   History? get history;
 
@@ -17,7 +17,7 @@ abstract mixin class _ComicPageActions {
     if (isLiking) return;
     isLiking = true;
     update();
-    var res = await comicSource.likeOrUnlikeComic!(comic.id, isLiked);
+    var res = await bookSource.likeOrUnlikeBook!(book.id, isLiked);
     if (res.error) {
       App.rootContext.showMessage(message: res.errorMessage!);
     } else {
@@ -27,23 +27,23 @@ abstract mixin class _ComicPageActions {
     update();
   }
 
-  /// whether the comic is added to local favorite
+  /// whether the book is added to local favorite
   bool isAddToLocalFav = false;
 
-  /// whether the comic is favorite on the server
+  /// whether the book is favorite on the server
   bool isFavorite = false;
 
   FavoriteItem _toFavoriteItem() {
     var tags = <String>[];
-    for (var e in comic.tags.entries) {
+    for (var e in book.tags.entries) {
       tags.addAll(e.value.map((tag) => '${e.key}:$tag'));
     }
     return FavoriteItem(
-      id: comic.id,
-      name: comic.title,
-      coverPath: comic.cover,
-      author: comic.subTitle ?? comic.uploader ?? '',
-      type: comic.comicType,
+      id: book.id,
+      name: book.title,
+      coverPath: book.cover,
+      author: book.subTitle ?? book.uploader ?? '',
+      type: book.bookType,
       tags: tags,
     );
   }
@@ -52,8 +52,8 @@ abstract mixin class _ComicPageActions {
     showSideBar(
       App.rootContext,
       _FavoritePanel(
-        cid: comic.id,
-        type: comic.comicType,
+        cid: book.id,
+        type: book.bookType,
         isFavorite: isFavorite,
         onFavorite: (local, network) {
           if (network != null) {
@@ -65,7 +65,7 @@ abstract mixin class _ComicPageActions {
           update();
         },
         favoriteItem: _toFavoriteItem(),
-        updateTime: comic.findUpdateTime(),
+        updateTime: book.findUpdateTime(),
       ),
     );
   }
@@ -75,11 +75,11 @@ abstract mixin class _ComicPageActions {
     if (folder is! String) {
       return;
     }
-    LocalFavoritesManager().addComic(
+    LocalFavoritesManager().addBook(
       folder,
       _toFavoriteItem(),
       null,
-      comic.findUpdateTime(),
+      book.findUpdateTime(),
     );
     isAddToLocalFav = true;
     update();
@@ -87,11 +87,11 @@ abstract mixin class _ComicPageActions {
   }
 
   void share() {
-    var text = comic.title;
-    final url = (comic.url != null && comic.url!.isNotEmpty)
-        ? comic.url!
-        : (isNovelSource(comic.sourceKey)
-            ? novelBookUrl(comic.sourceKey, comic.id)
+    var text = book.title;
+    final url = (book.url != null && book.url!.isNotEmpty)
+        ? book.url!
+        : (isNovelSource(book.sourceKey)
+            ? novelBookUrl(book.sourceKey, book.id)
             : '');
     if (url.isNotEmpty) {
       text += '\n$url';
@@ -99,7 +99,7 @@ abstract mixin class _ComicPageActions {
     Share.shareText(text);
   }
 
-  /// read the comic
+  /// read the book
   ///
   /// [ep] the episode number, start from 1
   ///
@@ -107,18 +107,18 @@ abstract mixin class _ComicPageActions {
   ///
   /// [group] the chapter group number, start from 1
   void read([int? ep, int? page, int? group]) {
-    final hist = history ?? History.fromModel(model: comic, ep: 0, page: 0);
+    final hist = history ?? History.fromModel(model: book, ep: 0, page: 0);
     final pageWidget = Reader(
-      type: comic.comicType,
-      cid: comic.id,
-      name: comic.title,
-      chapters: comic.chapters,
+      type: book.bookType,
+      cid: book.id,
+      name: book.title,
+      chapters: book.chapters,
       initialChapter: ep,
       initialPage: page,
       initialChapterGroup: group,
       history: hist,
-      author: comic.findAuthor() ?? '',
-      tags: comic.plainTags,
+      author: book.findAuthor() ?? '',
+      tags: book.plainTags,
     );
     App.rootContext.to(() => pageWidget).then((_) {
       onReadEnd();
@@ -135,21 +135,21 @@ abstract mixin class _ComicPageActions {
   void onReadEnd();
 
   void download() async {
-    if (isNovelSource(comic.sourceKey)) {
-      await _downloadNovelAsEpub();
+    if (isNovelSource(book.sourceKey)) {
+      await _downloadNovelOffline();
       return;
     }
-    if (LocalManager().isDownloading(comic.id, comic.comicType)) {
-      App.rootContext.showMessage(message: "The comic is downloading".tl);
+    if (LocalManager().isDownloading(book.id, book.bookType)) {
+      App.rootContext.showMessage(message: "The book is downloading".tl);
       return;
     }
-    if (comic.chapters == null &&
-        LocalManager().isDownloaded(comic.id, comic.comicType, 0)) {
-      App.rootContext.showMessage(message: "The comic is downloaded".tl);
+    if (book.chapters == null &&
+        LocalManager().isDownloaded(book.id, book.bookType, 0)) {
+      App.rootContext.showMessage(message: "The book is downloaded".tl);
       return;
     }
 
-    if (comicSource.archiveDownloader != null) {
+    if (bookSource.archiveDownloader != null) {
       bool useNormalDownload = false;
       List<ArchiveInfo>? archives;
       int selected = -1;
@@ -187,8 +187,8 @@ abstract mixin class _ComicPageActions {
                         onExpansionChanged: (b) {
                           if (!isLoading && b && archives == null) {
                             isLoading = true;
-                            comicSource.archiveDownloader!
-                                .getArchives(comic.id)
+                            bookSource.archiveDownloader!
+                                .getArchives(book.id)
                                 .then((value) {
                               if (value.success) {
                                 archives = value.data;
@@ -230,8 +230,8 @@ abstract mixin class _ComicPageActions {
                         isGettingLink = true;
                       });
                       var res =
-                          await comicSource.archiveDownloader!.getDownloadUrl(
-                        comic.id,
+                          await bookSource.archiveDownloader!.getDownloadUrl(
+                        book.id,
                         archives![selected].id,
                       );
                       if (res.error) {
@@ -242,7 +242,7 @@ abstract mixin class _ComicPageActions {
                       } else if (context.mounted) {
                         if (res.data.isNotEmpty) {
                           LocalManager()
-                            .addTask(ArchiveDownloadTask(res.data, comic));
+                            .addTask(ArchiveDownloadTask(res.data, book));
                           App.rootContext
                             .showMessage(message: "Download started".tl);
                         }
@@ -262,20 +262,20 @@ abstract mixin class _ComicPageActions {
       }
     }
 
-    if (comic.chapters == null) {
+    if (book.chapters == null) {
       LocalManager().addTask(ImagesDownloadTask(
-        source: comicSource,
-        comicId: comic.id,
-        comic: comic,
+        source: bookSource,
+        bookId: book.id,
+        book: book,
       ));
     } else {
       List<int>? selected;
       var downloaded = <int>[];
-      var localComic = LocalManager().find(comic.id, comic.comicType);
-      if (localComic != null) {
-        for (int i = 0; i < comic.chapters!.length; i++) {
-          if (localComic.downloadedChapters
-              .contains(comic.chapters!.ids.elementAt(i))) {
+      var localBook = LocalManager().find(book.id, book.bookType);
+      if (localBook != null) {
+        for (int i = 0; i < book.chapters!.length; i++) {
+          if (localBook.downloadedChapters
+              .contains(book.chapters!.ids.elementAt(i))) {
             downloaded.add(i);
           }
         }
@@ -283,18 +283,18 @@ abstract mixin class _ComicPageActions {
       await showSideBar(
         App.rootContext,
         _SelectDownloadChapter(
-          comic.chapters!.titles.toList(),
+          book.chapters!.titles.toList(),
           (v) => selected = v,
           downloaded,
         ),
       );
       if (selected == null) return;
       LocalManager().addTask(ImagesDownloadTask(
-        source: comicSource,
-        comicId: comic.id,
-        comic: comic,
+        source: bookSource,
+        bookId: book.id,
+        book: book,
         chapters: selected!.map((i) {
-          return comic.chapters!.ids.elementAt(i);
+          return book.chapters!.ids.elementAt(i);
         }).toList(),
       ));
     }
@@ -302,14 +302,18 @@ abstract mixin class _ComicPageActions {
     update();
   }
 
-  /// Save EPUB as `{folder}/{书名}/{卷名}/{章节名}.epub`.
-  Future<void> _downloadNovelAsEpub() async {
-    if (comic.chapters == null || comic.chapters!.length == 0) {
+  /// Offline novel → LocalManager with user-chosen folder.
+  Future<void> _downloadNovelOffline() async {
+    if (LocalManager().isDownloading(book.id, book.bookType)) {
+      App.rootContext.showMessage(message: "The book is downloading".tl);
+      return;
+    }
+    if (book.chapters == null || book.chapters!.length == 0) {
       App.rootContext.showMessage(message: "No chapters".tl);
       return;
     }
 
-    final volumes = _novelDownloadVolumes(comic.chapters!);
+    final volumes = _novelDownloadVolumes(book.chapters!);
     List<_NovelChapterPick>? selected;
     await showSideBar(
       App.rootContext,
@@ -324,155 +328,19 @@ abstract mixin class _ComicPageActions {
     final rootDir = await picker.pickDirectory();
     if (rootDir == null) return;
 
-    final bookDir = Directory(FilePath.join(
-      rootDir.path,
-      sanitizeFileName(comic.title, maxLength: 80),
+    LocalManager().addTask(NovelDownloadTask(
+      source: bookSource,
+      bookId: book.id,
+      book: book,
+      chapters: selected!.map((e) => e.id).toList(),
+      saveRoot: saveRoot,
+      bookTitle: book.title,
     ));
-    bookDir.createSync(recursive: true);
-
-    var canceled = false;
-    final loading = showLoadingDialog(
-      App.rootContext,
-      allowCancel: true,
-      message: "${"Exporting".tl} 0/${selected!.length}",
-      withProgress: true,
-      onCancel: () => canceled = true,
-    );
-
-    try {
-      List<int>? coverBytes;
-      var coverExt = 'jpg';
-      try {
-        await for (final p in ImageDownloader.loadThumbnail(
-          comic.cover,
-          comic.sourceKey,
-          comic.id,
-        )) {
-          if (p.imageBytes != null) {
-            coverBytes = p.imageBytes;
-            coverExt = detectFileType(p.imageBytes!).ext.replaceFirst('.', '');
-            if (coverExt.isEmpty) coverExt = 'jpg';
-            break;
-          }
-        }
-      } catch (_) {}
-
-      final author = comic.findAuthor() ?? comic.subTitle ?? '';
-      var done = 0;
-      for (final pick in selected!) {
-        if (canceled) {
-          loading.close();
-          return;
-        }
-        loading.setMessage(
-          "${"Exporting".tl} ${done + 1}/${selected!.length}",
-        );
-        loading.setProgress((done + 1) / (selected!.length + 1));
-
-        final res =
-            await loadNovelChapter(comic.sourceKey, comic.id, pick.id);
-        final imageCache = <String, String>{};
-        var imgIndex = 0;
-        final pendingImages = <({String url, String rel})>[];
-        final body = StringBuffer();
-
-        if (res.error) {
-          body.writeln(
-            '    <p>${_xmlEsc(res.errorMessage ?? "load failed")}</p>',
-          );
-        } else {
-          final data = res.data;
-          final text = (data['content'] ?? '').toString();
-          final trailing = (data['images'] as List? ?? [])
-              .map((e) => e.toString())
-              .where((e) => e.startsWith('http'))
-              .toList();
-          final blocks = parseNovelBlocks(text, trailingImages: trailing);
-          for (final b in blocks) {
-            if (b is NovelTextBlock) {
-              for (final para in b.text.split(RegExp(r'\n+'))) {
-                final t = para.trim();
-                if (t.isEmpty) continue;
-                body.writeln('    <p>${_xmlEsc(t)}</p>');
-              }
-            } else if (b is NovelImageBlock) {
-              final url = normalizeNovelImageUrl(b.url);
-              if (!url.startsWith('http')) continue;
-              var rel = imageCache[url];
-              if (rel == null) {
-                final ext = _guessImageExt(url);
-                rel = 'images/img$imgIndex.$ext';
-                imageCache[url] = rel;
-                pendingImages.add((url: url, rel: rel));
-                imgIndex++;
-              }
-              body.writeln(
-                '    <p><img src="$rel" alt="illustration"/></p>',
-              );
-            }
-          }
-        }
-        if (body.isEmpty) {
-          body.writeln('    <p>（本章无内容）</p>');
-        }
-
-        final embedded = <String, List<int>>{};
-        for (final item in pendingImages) {
-          if (canceled) {
-            loading.close();
-            return;
-          }
-          try {
-            await for (final p in ImageDownloader.loadComicImage(
-              item.url,
-              comic.sourceKey,
-              comic.id,
-              '',
-            )) {
-              if (p.imageBytes != null) {
-                embedded[item.rel] = p.imageBytes!;
-                break;
-              }
-            }
-          } catch (_) {}
-        }
-
-        final volDir = Directory(FilePath.join(
-          bookDir.path,
-          sanitizeFileName(pick.volume, maxLength: 60),
-        ));
-        volDir.createSync(recursive: true);
-        final outName =
-            '${sanitizeFileName(pick.title, maxLength: 80)}.epub';
-        final outPath = FilePath.join(volDir.path, outName);
-
-        await createNovelEpubWithImages(
-          NovelEpubData(
-            title: '${comic.title} - ${pick.title}',
-            author: author,
-            chapters: {pick.title: body.toString()},
-            coverBytes: coverBytes,
-            coverExt: coverExt,
-          ),
-          embedded,
-          App.cachePath,
-          outPath,
-        );
-        done++;
-      }
-
-      loading.close();
-      App.rootContext.showMessage(
-        message: "${"Saved".tl}: ${bookDir.path}",
-      );
-    } catch (e, s) {
-      Log.error('NovelEpub', '$e\n$s');
-      loading.close();
-      App.rootContext.showMessage(message: e.toString());
-    }
+    App.rootContext.showMessage(message: "Download started".tl);
+    update();
   }
 
-  List<_NovelDownloadVolume> _novelDownloadVolumes(ComicChapters chapters) {
+  List<_NovelDownloadVolume> _novelDownloadVolumes(BookChapters chapters) {
     if (chapters.isGrouped) {
       return [
         for (final g in chapters.groups)
@@ -501,22 +369,8 @@ abstract mixin class _ComicPageActions {
     ];
   }
 
-  String _xmlEsc(String s) => s
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;');
-
-  String _guessImageExt(String url) {
-    final path = Uri.tryParse(url)?.path.toLowerCase() ?? url.toLowerCase();
-    for (final e in ['.jpg', '.jpeg', '.png', '.webp', '.gif']) {
-      if (path.contains(e)) return e.substring(1);
-    }
-    return 'jpg';
-  }
-
   void onTapTag(String tag, String namespace) {
-    var target = comicSource.handleClickTagEvent?.call(namespace, tag);
+    var target = bookSource.handleClickTagEvent?.call(namespace, tag);
     var context = App.mainNavigatorKey!.currentContext!;
     target?.jump(context);
   }
@@ -534,7 +388,7 @@ abstract mixin class _ComicPageActions {
             icon: Icons.copy,
             text: "Copy Title".tl,
             onClick: () {
-              Clipboard.setData(ClipboardData(text: comic.title));
+              Clipboard.setData(ClipboardData(text: book.title));
               context.showMessage(message: "Copied".tl);
             },
           ),
@@ -542,15 +396,15 @@ abstract mixin class _ComicPageActions {
             icon: Icons.copy_rounded,
             text: "Copy ID".tl,
             onClick: () {
-              Clipboard.setData(ClipboardData(text: comic.id));
+              Clipboard.setData(ClipboardData(text: book.id));
               context.showMessage(message: "Copied".tl);
             },
           ),
           ...() {
-            final url = (comic.url != null && comic.url!.isNotEmpty)
-                ? comic.url!
-                : (isNovelSource(comic.sourceKey)
-                    ? novelBookUrl(comic.sourceKey, comic.id)
+            final url = (book.url != null && book.url!.isNotEmpty)
+                ? book.url!
+                : (isNovelSource(book.sourceKey)
+                    ? novelBookUrl(book.sourceKey, book.id)
                     : '');
             if (url.isEmpty) return <MenuEntry>[];
             return [
@@ -578,14 +432,14 @@ abstract mixin class _ComicPageActions {
     showSideBar(
       App.rootContext,
       CommentsPage(
-        data: comic,
-        source: comicSource,
+        data: book,
+        source: bookSource,
       ),
     );
   }
 
   void starRating() {
-    if (!comicSource.isLogged) {
+    if (!bookSource.isLogged) {
       return;
     }
     var rating = 0.0;
@@ -621,7 +475,7 @@ abstract mixin class _ComicPageActions {
                           setState(() {
                             isLoading = true;
                           });
-                          comicSource.starRatingFunc!(comic.id, rating.round())
+                          bookSource.starRatingFunc!(book.id, rating.round())
                               .then((value) {
                             if (value.success) {
                               App.rootContext

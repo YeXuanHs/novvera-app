@@ -8,7 +8,7 @@ import 'package:novvera/components/components.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/appdata.dart';
 import 'package:novvera/foundation/cache_manager.dart';
-import 'package:novvera/foundation/comic_source/comic_source.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
 import 'package:novvera/foundation/favorites.dart';
 import 'package:novvera/foundation/js_engine.dart';
 import 'package:novvera/foundation/local.dart';

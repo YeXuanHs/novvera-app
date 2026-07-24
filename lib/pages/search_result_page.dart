@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:novvera/components/components.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/appdata.dart';
-import 'package:novvera/foundation/comic_source/comic_source.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
 import 'package:novvera/foundation/global_state.dart';
 import 'package:novvera/pages/search_page.dart';
 import 'package:novvera/utils/ext.dart';
@@ -55,7 +55,7 @@ class _SearchResultPageState extends State<SearchResultPage> {
   }
 
   void onChanged(String s) {
-    if (!ComicSource.find(sourceKey)!.enableTagsSuggestions) {
+    if (!BookSource.find(sourceKey)!.enableTagsSuggestions) {
       return;
     }
     suggestionsController.findSuggestions();
@@ -129,7 +129,7 @@ class _SearchResultPageState extends State<SearchResultPage> {
   }
 
   void validateOptions() {
-    var source = ComicSource.find(sourceKey);
+    var source = BookSource.find(sourceKey);
     if (source == null) {
       return;
     }
@@ -144,8 +144,8 @@ class _SearchResultPageState extends State<SearchResultPage> {
 
   @override
   Widget build(BuildContext context) {
-    var source = ComicSource.find(sourceKey);
-    return ComicList(
+    var source = BookSource.find(sourceKey);
+    return BookList(
       key: Key(text + options.toString() + sourceKey),
       errorLeading: AppSearchBar(
         controller: controller,
@@ -402,7 +402,7 @@ class _SuggestionsState extends State<_Suggestions> {
       controller.text =
           controller.text.replaceLast(words[words.length - 1], "");
     }
-    final source = ComicSource.find(widget.controller.sourceKey);
+    final source = BookSource.find(widget.controller.sourceKey);
     String insert;
     if (source?.onTagSuggestionSelected != null) {
       insert = source!.onTagSuggestionSelected!(type?.name ?? '', text);
@@ -445,7 +445,7 @@ class _SearchSettingsDialogState extends State<_SearchSettingsDialog> {
 
   @override
   Widget build(BuildContext context) {
-    var sources = ComicSource.all();
+    var sources = BookSource.all();
     var enabled = appdata.settings['searchSources'] as List;
     sources.removeWhere((e) {
       return !enabled.contains(e.key);
@@ -469,7 +469,7 @@ class _SearchSettingsDialogState extends State<_SearchSettingsDialog> {
                   setState(() {
                     searchTarget = e.key;
                     options.clear();
-                    final searchOptions = ComicSource.find(searchTarget)!
+                    final searchOptions = BookSource.find(searchTarget)!
                             .searchPageData!
                             .searchOptions ??
                         <SearchOptions>[];
@@ -497,7 +497,7 @@ class _SearchSettingsDialogState extends State<_SearchSettingsDialog> {
     var children = <Widget>[];
 
     final searchOptions =
-        ComicSource.find(searchTarget)!.searchPageData!.searchOptions ??
+        BookSource.find(searchTarget)!.searchPageData!.searchOptions ??
             <SearchOptions>[];
     if (searchOptions.length != options.length) {
       options = searchOptions.map((e) => e.defaultValue).toList();

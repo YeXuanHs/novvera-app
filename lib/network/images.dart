@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_qjs/flutter_qjs.dart';
 import 'package:novvera/foundation/cache_manager.dart';
-import 'package:novvera/foundation/comic_source/comic_source.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
 import 'package:novvera/foundation/consts.dart';
 import 'package:novvera/foundation/novel_backend/huanmeng_client.dart';
 import 'package:novvera/foundation/novel_backend/linovelib_client.dart';
@@ -62,8 +62,8 @@ abstract class ImageDownloader {
   ) async* {
     var configs = <String, dynamic>{};
     if (sourceKey != null) {
-      var comicSource = ComicSource.find(sourceKey);
-      configs = comicSource?.getThumbnailLoadingConfig?.call(url) ?? {};
+      var bookSource = BookSource.find(sourceKey);
+      configs = bookSource?.getThumbnailLoadingConfig?.call(url) ?? {};
     }
     configs['headers'] ??= {};
     if (configs['headers']['user-agent'] == null &&
@@ -73,10 +73,10 @@ abstract class ImageDownloader {
 
     if (((configs['url'] as String?) ?? url).startsWith('cover.') &&
         sourceKey != null) {
-      var comicSource = ComicSource.find(sourceKey);
-      if (comicSource != null) {
-        var comicInfo = await comicSource.loadComicInfo!(cid!);
-        yield* loadThumbnail(comicInfo.data.cover, sourceKey);
+      var bookSource = BookSource.find(sourceKey);
+      if (bookSource != null) {
+        var bookInfo = await bookSource.loadBookInfo!(cid!);
+        yield* loadThumbnail(bookInfo.data.cover, sourceKey);
         return;
       }
     }
@@ -222,16 +222,16 @@ abstract class ImageDownloader {
     _loadingImages.clear();
   }
 
-  /// Load a comic image from the network or cache.
+  /// Load a book image from the network or cache.
   /// The function will prevent multiple requests for the same image.
-  static Stream<ImageDownloadProgress> loadComicImage(
+  static Stream<ImageDownloadProgress> loadBookImage(
       String imageKey, String? sourceKey, String cid, String eid) {
     final cacheKey = "$imageKey@$sourceKey@$cid@$eid";
     if (_loadingImages.containsKey(cacheKey)) {
       return _loadingImages[cacheKey]!.stream;
     }
     final stream = _StreamWrapper<ImageDownloadProgress>(
-      _loadComicImage(imageKey, sourceKey, cid, eid),
+      _loadBookImage(imageKey, sourceKey, cid, eid),
       (wrapper) {
         _loadingImages.remove(cacheKey);
       },
@@ -240,12 +240,12 @@ abstract class ImageDownloader {
     return stream.stream;
   }
 
-  static Stream<ImageDownloadProgress> loadComicImageUnwrapped(
+  static Stream<ImageDownloadProgress> loadBookImageUnwrapped(
       String imageKey, String? sourceKey, String cid, String eid) {
-    return _loadComicImage(imageKey, sourceKey, cid, eid);
+    return _loadBookImage(imageKey, sourceKey, cid, eid);
   }
 
-  static Stream<ImageDownloadProgress> _loadComicImage(
+  static Stream<ImageDownloadProgress> _loadBookImage(
       String imageKey, String? sourceKey, String cid, String eid) async* {
     final cacheKey = "$imageKey@$sourceKey@$cid@$eid";
     final cache = await CacheManager().findCache(cacheKey);
@@ -263,8 +263,8 @@ abstract class ImageDownloader {
 
     var configs = <String, dynamic>{};
     if (sourceKey != null) {
-      var comicSource = ComicSource.find(sourceKey);
-      configs = (await comicSource!.getImageLoadingConfig
+      var bookSource = BookSource.find(sourceKey);
+      configs = (await bookSource!.getImageLoadingConfig
               ?.call(imageKey, cid, eid)) ??
           {};
     }

@@ -16,18 +16,18 @@ bool _shouldBlockComment(Comment comment) {
 class ChapterCommentsPage extends StatefulWidget {
   const ChapterCommentsPage({
     super.key,
-    required this.comicId,
+    required this.bookId,
     required this.epId,
     required this.source,
-    required this.comicTitle,
+    required this.bookTitle,
     required this.chapterTitle,
     this.replyComment,
   });
 
-  final String comicId;
+  final String bookId;
   final String epId;
-  final ComicSource source;
-  final String comicTitle;
+  final BookSource source;
+  final String bookTitle;
   final String chapterTitle;
   final Comment? replyComment;
 
@@ -46,7 +46,7 @@ class _ChapterCommentsPageState extends State<ChapterCommentsPage> {
 
   void firstLoad() async {
     var res = await widget.source.chapterCommentsLoader!(
-      widget.comicId,
+      widget.bookId,
       widget.epId,
       1,
       widget.replyComment?.id,
@@ -68,7 +68,7 @@ class _ChapterCommentsPageState extends State<ChapterCommentsPage> {
 
   void loadMore() async {
     var res = await widget.source.chapterCommentsLoader!(
-      widget.comicId,
+      widget.bookId,
       widget.epId,
       _page + 1,
       widget.replyComment?.id,
@@ -145,7 +145,7 @@ class _ChapterCommentsPageState extends State<ChapterCommentsPage> {
                             _ChapterCommentTile(
                               comment: widget.replyComment!,
                               source: widget.source,
-                              comicId: widget.comicId,
+                              bookId: widget.bookId,
                               epId: widget.epId,
                               showAvatar: showAvatar,
                               showActions: false,
@@ -184,7 +184,7 @@ class _ChapterCommentsPageState extends State<ChapterCommentsPage> {
                     return _ChapterCommentTile(
                       comment: _comments![index],
                       source: widget.source,
-                      comicId: widget.comicId,
+                      bookId: widget.bookId,
                       epId: widget.epId,
                       showAvatar: showAvatar,
                     );
@@ -250,7 +250,7 @@ class _ChapterCommentsPageState extends State<ChapterCommentsPage> {
                     sending = true;
                   });
                   var b = await widget.source.sendChapterCommentFunc!(
-                    widget.comicId,
+                    widget.bookId,
                     widget.epId,
                     controller.text,
                     widget.replyComment?.id,
@@ -287,15 +287,15 @@ class _ChapterCommentTile extends StatefulWidget {
   const _ChapterCommentTile({
     required this.comment,
     required this.source,
-    required this.comicId,
+    required this.bookId,
     required this.epId,
     required this.showAvatar,
     this.showActions = true,
   });
 
   final Comment comment;
-  final ComicSource source;
-  final String comicId;
+  final BookSource source;
+  final String bookId;
   final String epId;
   final bool showAvatar;
   final bool showActions;
@@ -395,15 +395,15 @@ class _ChapterCommentTileState extends State<_ChapterCommentTile> {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () {
-          // Get the parent page's widget to access comicTitle and chapterTitle
+          // Get the parent page's widget to access bookTitle and chapterTitle
           var parentState = context.findAncestorStateOfType<_ChapterCommentsPageState>();
           showSideBar(
             context,
             ChapterCommentsPage(
-              comicId: widget.comicId,
+              bookId: widget.bookId,
               epId: widget.epId,
               source: widget.source,
-              comicTitle: parentState?.widget.comicTitle ?? '',
+              bookTitle: parentState?.widget.bookTitle ?? '',
               chapterTitle: parentState?.widget.chapterTitle ?? '',
               replyComment: widget.comment,
             ),
@@ -444,7 +444,7 @@ class _ChapterCommentTileState extends State<_ChapterCommentTile> {
             isLiking = true;
           });
           var res = await widget.source.likeCommentFunc!(
-            widget.comicId,
+            widget.bookId,
             widget.epId,
             widget.comment.id!,
             !isLiked,
@@ -499,7 +499,7 @@ class _ChapterCommentTileState extends State<_ChapterCommentTile> {
     });
     var isCancel = (isUp && voteStatus == 1) || (!isUp && voteStatus == -1);
     var res = await widget.source.voteCommentFunc!(
-      widget.comicId,
+      widget.bookId,
       widget.epId,
       widget.comment.id!,
       isUp,
@@ -589,17 +589,17 @@ class _CommentContent extends StatelessWidget {
 /// Embedded chapter comments page for displaying at end of chapter in gallery mode.
 class _EmbeddedChapterCommentsPage extends StatefulWidget {
   const _EmbeddedChapterCommentsPage({
-    required this.comicId,
+    required this.bookId,
     required this.epId,
     required this.source,
-    required this.comicTitle,
+    required this.bookTitle,
     required this.chapterTitle,
   });
 
-  final String comicId;
+  final String bookId;
   final String epId;
-  final ComicSource source;
-  final String comicTitle;
+  final BookSource source;
+  final String bookTitle;
   final String chapterTitle;
 
   @override
@@ -625,7 +625,7 @@ class _EmbeddedChapterCommentsPageState
 
   void firstLoad() async {
     var res = await widget.source.chapterCommentsLoader!(
-      widget.comicId,
+      widget.bookId,
       widget.epId,
       1,
       null,
@@ -650,7 +650,7 @@ class _EmbeddedChapterCommentsPageState
 
   void loadMore() async {
     var res = await widget.source.chapterCommentsLoader!(
-      widget.comicId,
+      widget.bookId,
       widget.epId,
       _page + 1,
       null,
@@ -781,7 +781,7 @@ class _EmbeddedChapterCommentsPageState
           return _ChapterCommentTile(
             comment: _comments![index],
             source: widget.source,
-            comicId: widget.comicId,
+            bookId: widget.bookId,
             epId: widget.epId,
             showAvatar: showAvatar,
           );
@@ -841,7 +841,7 @@ class _EmbeddedChapterCommentsPageState
                     sending = true;
                   });
                   var b = await widget.source.sendChapterCommentFunc!(
-                    widget.comicId,
+                    widget.bookId,
                     widget.epId,
                     textController.text,
                     null,

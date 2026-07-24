@@ -6,7 +6,7 @@ import 'package:url_launcher/url_launcher_string.dart';
 import 'package:novvera/components/components.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/appdata.dart';
-import 'package:novvera/foundation/comic_source/comic_source.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
 import 'package:novvera/foundation/log.dart';
 import 'package:novvera/network/app_dio.dart';
 import 'package:novvera/network/cookie_jar.dart';
@@ -15,11 +15,11 @@ import 'package:novvera/utils/ext.dart';
 import 'package:novvera/utils/io.dart';
 import 'package:novvera/utils/translations.dart';
 
-class ComicSourcePage extends StatelessWidget {
-  const ComicSourcePage({super.key});
+class BookSourcePage extends StatelessWidget {
+  const BookSourcePage({super.key});
 
   static Future<void> update(
-    ComicSource source, [
+    BookSource source, [
     bool showLoading = true,
   ]) async {
     if (!source.url.isURL) {
@@ -30,7 +30,7 @@ class ComicSourcePage extends StatelessWidget {
         throw Exception("Invalid url config");
       }
     }
-    ComicSourceManager().remove(source.key);
+    BookSourceManager().remove(source.key);
     bool cancel = false;
     LoadingDialogController? controller;
     if (showLoading) {
@@ -50,10 +50,10 @@ class ComicSourcePage extends StatelessWidget {
       );
       if (cancel) return;
       controller?.close();
-      await ComicSourceParser().parse(res.data!, source.filePath);
+      await BookSourceParser().parse(res.data!, source.filePath);
       await io.File(source.filePath).writeAsString(res.data!);
-      if (ComicSourceManager().availableUpdates.containsKey(source.key)) {
-        ComicSourceManager().availableUpdates.remove(source.key);
+      if (BookSourceManager().availableUpdates.containsKey(source.key)) {
+        BookSourceManager().availableUpdates.remove(source.key);
       }
     } catch (e) {
       if (cancel) return;
@@ -63,18 +63,18 @@ class ComicSourcePage extends StatelessWidget {
         rethrow;
       }
     }
-    await ComicSourceManager().reload();
+    await BookSourceManager().reload();
     if (showLoading) {
       App.forceRebuild();
     }
   }
 
-  static Future<int> checkComicSourceUpdate() async {
-    if (ComicSource.all().isEmpty) {
+  static Future<int> checkBookSourceUpdate() async {
+    if (BookSource.all().isEmpty) {
       return 0;
     }
     var dio = AppDio();
-    var res = await dio.get<String>(appdata.settings['comicSourceListUrl']);
+    var res = await dio.get<String>(appdata.settings['bookSourceListUrl']);
     if (res.statusCode != 200) {
       return -1;
     }
@@ -84,7 +84,7 @@ class ComicSourcePage extends StatelessWidget {
       versions[source['key']] = source['version'];
     }
     var shouldUpdate = <String>[];
-    for (var source in ComicSource.all()) {
+    for (var source in BookSource.all()) {
       if (versions.containsKey(source.key) &&
           compareSemVer(versions[source.key]!, source.version)) {
         shouldUpdate.add(source.key);
@@ -95,7 +95,7 @@ class ComicSourcePage extends StatelessWidget {
       for (var key in shouldUpdate) {
         updates[key] = versions[key]!;
       }
-      ComicSourceManager().updateAvailableUpdates(updates);
+      BookSourceManager().updateAvailableUpdates(updates);
     }
     return shouldUpdate.length;
   }
@@ -123,13 +123,13 @@ class _BodyState extends State<_Body> {
   @override
   void initState() {
     super.initState();
-    ComicSourceManager().addListener(updateUI);
+    BookSourceManager().addListener(updateUI);
   }
 
   @override
   void dispose() {
     super.dispose();
-    ComicSourceManager().removeListener(updateUI);
+    BookSourceManager().removeListener(updateUI);
   }
 
   @override
@@ -138,8 +138,8 @@ class _BodyState extends State<_Body> {
       slivers: [
         SliverAppbar(title: Text('Book Source'.tl), style: AppbarStyle.shadow),
         buildCard(context),
-        for (var source in ComicSource.all())
-          _SliverComicSource(
+        for (var source in BookSource.all())
+          _SliverBookSource(
             key: ValueKey(source.key),
             source: source,
             edit: edit,
@@ -151,7 +151,7 @@ class _BodyState extends State<_Body> {
     );
   }
 
-  void delete(ComicSource source) {
+  void delete(BookSource source) {
     showConfirmDialog(
       context: App.rootContext,
       title: "Delete".tl,
@@ -160,14 +160,14 @@ class _BodyState extends State<_Body> {
       onConfirm: () {
         var file = File(source.filePath);
         file.delete();
-        ComicSourceManager().remove(source.key);
+        BookSourceManager().remove(source.key);
         _validatePages();
         App.forceRebuild();
       },
     );
   }
 
-  void edit(ComicSource source) async {
+  void edit(BookSource source) async {
     if (App.isDesktop) {
       try {
         await Process.run("code", [source.filePath], runInShell: true);
@@ -182,7 +182,7 @@ class _BodyState extends State<_Body> {
               ),
               TextButton(
                 onPressed: () async {
-                  await ComicSourceManager().reload();
+                  await BookSourceManager().reload();
                   App.forceRebuild();
                 },
                 child: const Text("continue"),
@@ -197,14 +197,14 @@ class _BodyState extends State<_Body> {
     }
     context.to(
       () => _EditFilePage(source.filePath, () async {
-        await ComicSourceManager().reload();
+        await BookSourceManager().reload();
         setState(() {});
       }),
     );
   }
 
-  void update(ComicSource source, [bool showLoading = true]) {
-    ComicSourcePage.update(source, showLoading);
+  void update(BookSource source, [bool showLoading = true]) {
+    BookSourcePage.update(source, showLoading);
   }
 
   Widget buildCard(BuildContext context) {
@@ -244,7 +244,7 @@ class _BodyState extends State<_Body> {
                   onPressed: () {
                     showPopUpWidget(
                       App.rootContext,
-                      _ComicSourceList(handleAddSource),
+                      _BookSourceList(handleAddSource),
                     );
                   },
                 ),
@@ -278,7 +278,7 @@ class _BodyState extends State<_Body> {
       await addSource(content, fileName);
     } catch (e, s) {
       App.rootContext.showMessage(message: e.toString());
-      Log.error("Add comic source", "$e\n$s");
+      Log.error("Add book source", "$e\n$s");
     }
   }
 
@@ -315,29 +315,29 @@ class _BodyState extends State<_Body> {
     } catch (e, s) {
       if (cancel) return;
       context.showMessage(message: e.toString());
-      Log.error("Add comic source", "$e\n$s");
+      Log.error("Add book source", "$e\n$s");
     }
   }
 
   Future<void> addSource(String js, String fileName) async {
-    var comicSource = await ComicSourceParser().createAndParse(js, fileName);
-    ComicSourceManager().add(comicSource);
-    _addAllPagesWithComicSource(comicSource);
+    var bookSource = await BookSourceParser().createAndParse(js, fileName);
+    BookSourceManager().add(bookSource);
+    _addAllPagesWithBookSource(bookSource);
     appdata.saveData();
     App.forceRebuild();
   }
 }
 
-class _ComicSourceList extends StatefulWidget {
-  const _ComicSourceList(this.onAdd);
+class _BookSourceList extends StatefulWidget {
+  const _BookSourceList(this.onAdd);
 
   final Future<void> Function(String) onAdd;
 
   @override
-  State<_ComicSourceList> createState() => _ComicSourceListState();
+  State<_BookSourceList> createState() => _BookSourceListState();
 }
 
-class _ComicSourceListState extends State<_ComicSourceList> {
+class _BookSourceListState extends State<_BookSourceList> {
   List? json;
   bool changed = false;
   var controller = TextEditingController();
@@ -378,7 +378,7 @@ class _ComicSourceListState extends State<_ComicSourceList> {
   @override
   void initState() {
     super.initState();
-    controller.text = appdata.settings['comicSourceListUrl'];
+    controller.text = appdata.settings['bookSourceListUrl'];
     load();
   }
 
@@ -386,7 +386,7 @@ class _ComicSourceListState extends State<_ComicSourceList> {
   void dispose() {
     super.dispose();
     if (changed) {
-      appdata.settings['comicSourceListUrl'] = controller.text;
+      appdata.settings['bookSourceListUrl'] = controller.text;
       appdata.saveData();
     }
   }
@@ -397,7 +397,7 @@ class _ComicSourceListState extends State<_ComicSourceList> {
   }
 
   Widget buildBody() {
-    var currentKey = ComicSource.all().map((e) => e.key).toList();
+    var currentKey = BookSource.all().map((e) => e.key).toList();
 
     return ListView.builder(
       itemCount: (json?.length ?? 1) + 1,
@@ -481,7 +481,7 @@ class _ComicSourceListState extends State<_ComicSourceList> {
                   var url = json![index]["url"];
                   if (url == null || !(url.toString()).isURL) {
                     var listUrl =
-                        appdata.settings['comicSourceListUrl'] as String;
+                        appdata.settings['bookSourceListUrl'] as String;
                     if (listUrl
                         .replaceFirst("https://", "")
                         .replaceFirst("http://", "")
@@ -518,16 +518,16 @@ void _validatePages() {
   List categoryPages = appdata.settings['categories'];
   List networkFavorites = appdata.settings['favorites'];
 
-  var totalExplorePages = ComicSource.all()
+  var totalExplorePages = BookSource.all()
       .map((e) => e.explorePages.map((e) => e.title))
       .expand((element) => element)
       .toList();
-  var totalCategoryPages = ComicSource.all()
+  var totalCategoryPages = BookSource.all()
       .map((e) => e.categoryData?.key)
       .where((element) => element != null)
       .map((e) => e!)
       .toList();
-  var totalNetworkFavorites = ComicSource.all()
+  var totalNetworkFavorites = BookSource.all()
       .map((e) => e.favoriteData?.key)
       .where((element) => element != null)
       .map((e) => e!)
@@ -556,7 +556,7 @@ void _validatePages() {
   appdata.saveData();
 }
 
-void _addAllPagesWithComicSource(ComicSource source) {
+void _addAllPagesWithBookSource(BookSource source) {
   var explorePages = appdata.settings['explore_pages'];
   var categoryPages = appdata.settings['categories'];
   var networkFavorites = appdata.settings['favorites'];
@@ -649,7 +649,7 @@ class _CheckUpdatesButtonState extends State<_CheckUpdatesButton> {
     setState(() {
       isLoading = true;
     });
-    var count = await ComicSourcePage.checkComicSourceUpdate();
+    var count = await BookSourcePage.checkBookSourceUpdate();
     if (count == -1) {
       context.showMessage(message: "Network error".tl);
     } else if (count == 0) {
@@ -663,9 +663,9 @@ class _CheckUpdatesButtonState extends State<_CheckUpdatesButton> {
   }
 
   void showUpdateDialog() async {
-    var text = ComicSourceManager().availableUpdates.entries
+    var text = BookSourceManager().availableUpdates.entries
         .map((e) {
-          return "${ComicSource.find(e.key)!.name}: ${e.value}";
+          return "${BookSource.find(e.key)!.name}: ${e.value}";
         })
         .join("\n");
     bool doUpdate = false;
@@ -694,12 +694,12 @@ class _CheckUpdatesButtonState extends State<_CheckUpdatesButton> {
         withProgress: true,
       );
       int current = 0;
-      int total = ComicSourceManager().availableUpdates.length;
+      int total = BookSourceManager().availableUpdates.length;
       try {
-        var shouldUpdate = ComicSourceManager().availableUpdates.keys.toList();
+        var shouldUpdate = BookSourceManager().availableUpdates.keys.toList();
         for (var key in shouldUpdate) {
-          var source = ComicSource.find(key)!;
-          await ComicSourcePage.update(source, false);
+          var source = BookSource.find(key)!;
+          await BookSourcePage.update(source, false);
           current++;
           loadingController.setProgress(current / total);
         }
@@ -776,8 +776,8 @@ class _CallbackSettingState extends State<_CallbackSetting> {
   }
 }
 
-class _SliverComicSource extends StatefulWidget {
-  const _SliverComicSource({
+class _SliverBookSource extends StatefulWidget {
+  const _SliverBookSource({
     super.key,
     required this.source,
     required this.edit,
@@ -785,22 +785,22 @@ class _SliverComicSource extends StatefulWidget {
     required this.delete,
   });
 
-  final ComicSource source;
+  final BookSource source;
 
-  final void Function(ComicSource source) edit;
-  final void Function(ComicSource source) update;
-  final void Function(ComicSource source) delete;
+  final void Function(BookSource source) edit;
+  final void Function(BookSource source) update;
+  final void Function(BookSource source) delete;
 
   @override
-  State<_SliverComicSource> createState() => _SliverComicSourceState();
+  State<_SliverBookSource> createState() => _SliverBookSourceState();
 }
 
-class _SliverComicSourceState extends State<_SliverComicSource> {
-  ComicSource get source => widget.source;
+class _SliverBookSourceState extends State<_SliverBookSource> {
+  BookSource get source => widget.source;
 
   @override
   Widget build(BuildContext context) {
-    var newVersion = ComicSourceManager().availableUpdates[source.key];
+    var newVersion = BookSourceManager().availableUpdates[source.key];
     bool hasUpdate =
         newVersion != null && compareSemVer(newVersion, source.version);
 
@@ -990,7 +990,7 @@ class _SliverComicSourceState extends State<_SliverComicSource> {
           yield _CallbackSetting(setting: item, sourceKey: source.key);
         }
       } catch (e, s) {
-        Log.error("ComicSourcePage", "Failed to build a setting\n$e\n$s");
+        Log.error("BookSourcePage", "Failed to build a setting\n$e\n$s");
       }
     }
   }
@@ -1063,7 +1063,7 @@ class _SliverComicSourceState extends State<_SliverComicSource> {
           source.data["account"] = null;
           source.account?.logout();
           source.saveData();
-          ComicSourceManager().notifyStateChange();
+          BookSourceManager().notifyStateChange();
           setState(() {});
         },
         trailing: const Icon(Icons.logout),
@@ -1077,7 +1077,7 @@ class _LoginPage extends StatefulWidget {
 
   final AccountConfig config;
 
-  final ComicSource source;
+  final BookSource source;
 
   @override
   State<_LoginPage> createState() => _LoginPageState();
@@ -1328,7 +1328,7 @@ class _LoginPageState extends State<_LoginPage> {
             localStorage = decoded;
           }
         } catch (e) {
-          Log.error("ComicSourcePage", "Failed to parse localStorage JSON\n$e");
+          Log.error("BookSourcePage", "Failed to parse localStorage JSON\n$e");
         }
         widget.source.data['_localStorage'] = localStorage;
         await widget.source.saveData();

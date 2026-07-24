@@ -1,7 +1,7 @@
-part of 'comic_page.dart';
+part of 'book_page.dart';
 
-class _ComicChapters extends StatelessWidget {
-  const _ComicChapters({this.history, required this.groupedMode});
+class _BookChapters extends StatelessWidget {
+  const _BookChapters({this.history, required this.groupedMode});
 
   final History? history;
 
@@ -10,22 +10,22 @@ class _ComicChapters extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return groupedMode
-        ? _GroupedComicChapters(history)
-        : _NormalComicChapters(history);
+        ? _GroupedBookChapters(history)
+        : _NormalBookChapters(history);
   }
 }
 
-class _NormalComicChapters extends StatefulWidget {
-  const _NormalComicChapters(this.history);
+class _NormalBookChapters extends StatefulWidget {
+  const _NormalBookChapters(this.history);
 
   final History? history;
 
   @override
-  State<_NormalComicChapters> createState() => _NormalComicChaptersState();
+  State<_NormalBookChapters> createState() => _NormalBookChaptersState();
 }
 
-class _NormalComicChaptersState extends State<_NormalComicChapters> {
-  late _ComicPageState state;
+class _NormalBookChaptersState extends State<_NormalBookChapters> {
+  late _BookPageState state;
 
   late bool reverse;
 
@@ -33,7 +33,7 @@ class _NormalComicChaptersState extends State<_NormalComicChapters> {
 
   late History? history;
 
-  late ComicChapters chapters;
+  late BookChapters chapters;
 
   @override
   void initState() {
@@ -44,13 +44,13 @@ class _NormalComicChaptersState extends State<_NormalComicChapters> {
 
   @override
   void didChangeDependencies() {
-    state = context.findAncestorStateOfType<_ComicPageState>()!;
-    chapters = state.comic.chapters!;
+    state = context.findAncestorStateOfType<_BookPageState>()!;
+    chapters = state.book.chapters!;
     super.didChangeDependencies();
   }
 
   @override
-  void didUpdateWidget(covariant _NormalComicChapters oldWidget) {
+  void didUpdateWidget(covariant _NormalBookChapters oldWidget) {
     super.didUpdateWidget(oldWidget);
     setState(() {
       history = widget.history;
@@ -164,18 +164,18 @@ class _NormalComicChaptersState extends State<_NormalComicChapters> {
   }
 }
 
-class _GroupedComicChapters extends StatefulWidget {
-  const _GroupedComicChapters(this.history);
+class _GroupedBookChapters extends StatefulWidget {
+  const _GroupedBookChapters(this.history);
 
   final History? history;
 
   @override
-  State<_GroupedComicChapters> createState() => _GroupedComicChaptersState();
+  State<_GroupedBookChapters> createState() => _GroupedBookChaptersState();
 }
 
-class _GroupedComicChaptersState extends State<_GroupedComicChapters>
+class _GroupedBookChaptersState extends State<_GroupedBookChapters>
     with SingleTickerProviderStateMixin {
-  late _ComicPageState state;
+  late _BookPageState state;
 
   late bool reverse;
 
@@ -183,7 +183,7 @@ class _GroupedComicChaptersState extends State<_GroupedComicChapters>
 
   late History? history;
 
-  late ComicChapters chapters;
+  late BookChapters chapters;
 
   late TabController tabController;
 
@@ -203,8 +203,8 @@ class _GroupedComicChaptersState extends State<_GroupedComicChapters>
 
   @override
   void didChangeDependencies() {
-    state = context.findAncestorStateOfType<_ComicPageState>()!;
-    chapters = state.comic.chapters!;
+    state = context.findAncestorStateOfType<_BookPageState>()!;
+    chapters = state.book.chapters!;
     final groupCount = math.max(1, chapters.groupCount);
     final initial = index.clamp(0, groupCount - 1);
     tabController = TabController(
@@ -226,7 +226,7 @@ class _GroupedComicChaptersState extends State<_GroupedComicChapters>
   }
 
   @override
-  void didUpdateWidget(covariant _GroupedComicChapters oldWidget) {
+  void didUpdateWidget(covariant _GroupedBookChapters oldWidget) {
     super.didUpdateWidget(oldWidget);
     setState(() {
       history = widget.history;

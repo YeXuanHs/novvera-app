@@ -4,7 +4,7 @@ import 'package:novvera/foundation/novel_source/novel_paginator.dart';
 ///
 /// - Continuous mode reads [blocks] as a vertical text+image stream.
 /// - Gallery mode paginates [blocks] into fill-viewport pages (images exclusive).
-/// - [pageKeys] holds the current gallery (or fallback) page keys for the comic
+/// - [pageKeys] holds the current gallery (or fallback) page keys for the book
 ///   reader shell (`noveltxt://…` or http image URLs).
 class NovelPageCache {
   NovelPageCache._();

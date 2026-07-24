@@ -1,11 +1,11 @@
 import "package:flutter/material.dart";
 import "package:novvera/components/components.dart";
 import "package:novvera/foundation/app.dart";
-import "package:novvera/foundation/comic_source/comic_source.dart";
+import "package:novvera/foundation/book_source/book_source.dart";
 import "package:novvera/utils/translations.dart";
 
-class CategoryComicsPage extends StatefulWidget {
-  const CategoryComicsPage({
+class CategoryBooksPage extends StatefulWidget {
+  const CategoryBooksPage({
     required this.category,
     this.param,
     required this.categoryKey,
@@ -22,22 +22,22 @@ class CategoryComicsPage extends StatefulWidget {
   final List<String>? options;
 
   @override
-  State<CategoryComicsPage> createState() => _CategoryComicsPageState();
+  State<CategoryBooksPage> createState() => _CategoryBooksPageState();
 }
 
-class _CategoryComicsPageState extends State<CategoryComicsPage> {
-  late final CategoryComicsData data;
-  late List<CategoryComicsOptions>? options;
+class _CategoryBooksPageState extends State<CategoryBooksPage> {
+  late final CategoryBooksData data;
+  late List<CategoryBooksOptions>? options;
   late final CategoryOptionsLoader? optionsLoader;
   late List<String> optionsValue;
   late String sourceKey;
   String? error;
 
   void findData() {
-    for (final source in ComicSource.all()) {
+    for (final source in BookSource.all()) {
       if (source.categoryData?.key == widget.categoryKey) {
         if (source.categoryComicsData == null) {
-          throw "The comic source ${source.name} does not support category comics";
+          throw "The book source ${source.name} does not support category books";
         }
         data = source.categoryComicsData!;
         optionsLoader = data.optionsLoader;
@@ -125,7 +125,7 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
         },
       );
     } else {
-      body = ComicList(
+      body = BookList(
         key: Key(widget.category + optionsValue.toString()),
         errorLeading: buildOptions().paddingTop(topPadding),
         leadingSliver: buildOptions().paddingTop(topPadding).toSliver(),

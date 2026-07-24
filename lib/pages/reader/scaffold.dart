@@ -242,10 +242,10 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
   void addImageFavorite() async {
     try {
       if (context.reader.images![0].contains('file://')) {
-        showToast(
-          message: "Local comic collection is not supported at present".tl,
-          context: context,
-        );
+          showToast(
+            message: "Local book collection is not supported at present".tl,
+            context: context,
+          );
         return;
       }
       String id = context.reader.cid;
@@ -286,7 +286,7 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
           seconds: 1,
         );
       } else {
-        var imageFavoritesComic =
+        var imageFavoritesBook =
             ImageFavoriteManager().find(id, sourceKey) ??
             ImageFavoritesComic(
               id,
@@ -311,7 +311,7 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
           sourceKey,
           epName,
         );
-        ImageFavoritesEp? imageFavoritesEp = imageFavoritesComic
+        ImageFavoritesEp? imageFavoritesEp = imageFavoritesBook
             .imageFavoritesEp
             .firstWhereOrNull((e) {
               return e.ep == ep;
@@ -340,17 +340,17 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
               maxPage,
             );
           }
-          imageFavoritesComic.imageFavoritesEp.add(imageFavoritesEp);
+          imageFavoritesBook.imageFavoritesEp.add(imageFavoritesEp);
         } else {
           if (imageFavoritesEp.eid != eid) {
             // 空字符串说明是从pica导入的, 那我们就手动刷一遍保证一致
             if (imageFavoritesEp.eid == "") {
               imageFavoritesEp.eid == eid;
             } else {
-              // 避免多章节漫画源的章节顺序发生变化, 如果情况比较多, 做一个以eid为准更新ep的功能
+              // 避免多章节书籍源的章节顺序发生变化, 如果情况比较多, 做一个以eid为准更新ep的功能
               showToast(
                 message:
-                    "The chapter order of the comic may have changed, temporarily not supported for collection"
+                    "The chapter order of the book may have changed, temporarily not supported for collection"
                         .tl,
                 context: context,
               );
@@ -360,7 +360,7 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
           imageFavoritesEp.imageFavorites.add(imageFavorite);
         }
 
-        ImageFavoriteManager().addOrUpdateOrDelete(imageFavoritesComic);
+        ImageFavoriteManager().addOrUpdateOrDelete(imageFavoritesBook);
         showToast(
           message: "Successfully collected".tl,
           context: context,
@@ -376,7 +376,7 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
 
   Widget buildBottom() {
     // Novels: chapter title only (no page/total — total is unknown with
-    // incremental layout). Comics: keep E{n} : P{page}.
+    // incremental layout). Books: keep E{n} : P{page}.
     final String text;
     if (context.reader.isNovel) {
       final title = context.reader.widget.chapters?.titles.elementAtOrNull(
@@ -551,7 +551,7 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
       epName = "${epName.substring(0, 8)}...";
     }
     // Novels: chapter name only — no page/total (incremental pages have no
-    // stable total). Comics keep page/maxPage.
+    // stable total). Books keep page/maxPage.
     final String text;
     if (context.reader.isNovel) {
       text = epName;
@@ -617,7 +617,7 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
     }
     var (imageIndex, data) = result;
     var fileType = detectFileType(data);
-    // Save file name: ComicName_EP{chapter}_{P|L}{page}.{ext} to avoid conflict.
+    // Save file name: BookName_EP{chapter}_{P|L}{page}.{ext} to avoid conflict.
     // The chapter index of different group is continuous, so we use chapter number is enough.
     var filename =
         "${context.reader.widget.name}_EP${context.reader.chapter}_${context.reader.pageUnit}${imageIndex + 1}${fileType.ext}";
@@ -639,8 +639,8 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
   void openSetting() {
     _openSideBar(
       ReaderSettings(
-        comicId: context.reader.cid,
-        comicSource: context.reader.type.sourceKey,
+        bookId: context.reader.cid,
+        bookSource: context.reader.type.sourceKey,
         onChanged: (key) {
           if (key == "readerMode") {
             context.reader.mode = ReaderMode.fromKey(
@@ -702,15 +702,15 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
     );
     if (showChapterComments != true) return false;
 
-    // Check if comic source supports chapter comments
-    var source = ComicSource.find(context.reader.type.sourceKey);
+    // Check if book source supports chapter comments
+    var source = BookSource.find(context.reader.type.sourceKey);
     if (source == null || source.chapterCommentsLoader == null) return false;
 
     return true;
   }
 
   void openChapterComments() {
-    var source = ComicSource.find(context.reader.type.sourceKey);
+    var source = BookSource.find(context.reader.type.sourceKey);
     if (source == null) return;
 
     var chapters = context.reader.widget.chapters;
@@ -723,10 +723,10 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
     showSideBar(
       context,
       ChapterCommentsPage(
-        comicId: context.reader.cid,
+        bookId: context.reader.cid,
         epId: epId,
         source: source,
-        comicTitle: context.reader.widget.name,
+        bookTitle: context.reader.widget.name,
         chapterTitle: chapterTitle,
       ),
     );

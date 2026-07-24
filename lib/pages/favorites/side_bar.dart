@@ -194,9 +194,9 @@ class _LeftBarState extends State<_LeftBar> implements FolderList {
     bool isSelected = name == favPage.folder && !favPage.isNetwork;
     int count = 0;
     if (name == _localAllFolderLabel) {
-      count = LocalFavoritesManager().totalComics;
+      count = LocalFavoritesManager().totalBooks;
     } else {
-      count = LocalFavoritesManager().folderComics(name);
+      count = LocalFavoritesManager().folderBooks(name);
     }
     var folderName = name == _localAllFolderLabel
         ? "All".tl

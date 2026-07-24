@@ -3,7 +3,7 @@ import 'package:novvera/components/components.dart';
 import 'package:novvera/components/window_frame.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/appdata.dart';
-import 'package:novvera/foundation/comic_source/comic_source.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
 import 'package:novvera/foundation/favorites.dart';
 import 'package:novvera/foundation/log.dart';
 import 'package:novvera/foundation/res.dart';
@@ -21,7 +21,7 @@ class DataSync with ChangeNotifier {
       downloadData();
     }
     LocalFavoritesManager().addListener(onDataChanged);
-    ComicSourceManager().addListener(onDataChanged);
+    BookSourceManager().addListener(onDataChanged);
     if (App.isDesktop) {
       Future.delayed(const Duration(seconds: 1), () {
         var controller = WindowFrame.of(App.rootContext);

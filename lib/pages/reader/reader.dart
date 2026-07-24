@@ -19,8 +19,8 @@ import 'package:novvera/components/window_frame.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/appdata.dart';
 import 'package:novvera/foundation/cache_manager.dart';
-import 'package:novvera/foundation/comic_source/comic_source.dart';
-import 'package:novvera/foundation/comic_type.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
+import 'package:novvera/foundation/book_type.dart';
 import 'package:novvera/foundation/consts.dart';
 import 'package:novvera/foundation/favorites.dart';
 import 'package:novvera/foundation/global_state.dart';
@@ -53,7 +53,7 @@ part 'images.dart';
 
 part 'gesture.dart';
 
-part 'comic_image.dart';
+part 'book_image.dart';
 
 part 'loading.dart';
 
@@ -83,7 +83,7 @@ class Reader extends StatefulWidget {
     required this.tags,
   });
 
-  final ComicType type;
+  final BookType type;
 
   final String author;
 
@@ -93,7 +93,7 @@ class Reader extends StatefulWidget {
 
   final String name;
 
-  final ComicChapters? chapters;
+  final BookChapters? chapters;
 
   /// Starts from 1, invalid values equal to 1
   final int? initialPage;
@@ -149,7 +149,7 @@ class _ReaderState extends State<Reader>
       return false;
     }
     if (widget.chapters == null) return false;
-    var source = ComicSource.find(type.sourceKey);
+    var source = BookSource.find(type.sourceKey);
     if (source?.chapterCommentsLoader == null) return false;
     return appdata.settings.getReaderSetting(
               cid,
@@ -166,7 +166,7 @@ class _ReaderState extends State<Reader>
   }
 
   @override
-  ComicType get type => widget.type;
+  BookType get type => widget.type;
 
   @override
   String get cid => widget.cid;
@@ -412,9 +412,16 @@ class _ReaderState extends State<Reader>
     return chapter == maxChapter;
   }
 
-  bool get isNovel => isNovelSource(type.sourceKey);
+  bool get isNovel {
+    if (isNovelSource(type.sourceKey)) return true;
+    // Imported / restored local books use BookType.local + chapter.json.
+    if (type == BookType.local) {
+      return LocalManager().isLocalNovel(cid, type);
+    }
+    return false;
+  }
 
-  /// Comics use P (page); novels use L (line / text block).
+  /// Books use P (page); novels use L (line / text block).
   String get pageUnit => isNovel ? 'L' : 'P';
 
   /// App-bar chapter line: include volume name when chapters are grouped.
@@ -463,7 +470,7 @@ abstract mixin class _ImagePerPageHandler {
 
   String get cid;
 
-  ComicType get type;
+  BookType get type;
   
   /// Whether the current page is the chapter comments page
   bool get isOnChapterCommentsPage;
@@ -496,7 +503,11 @@ abstract mixin class _ImagePerPageHandler {
   /// The number of images displayed on one screen
   int get imagesPerPage {
     // Novels paginate by filled text pages; never stack multiple keys per screen.
-    if (isNovelSource(type.sourceKey)) return 1;
+    if (isNovelSource(type.sourceKey) ||
+        (type == BookType.local &&
+            LocalManager().isLocalNovel(cid, type))) {
+      return 1;
+    }
     if (mode.isContinuous) return 1;
     if (isPortrait) {
       return appdata.settings.getReaderSetting(
@@ -652,11 +663,11 @@ abstract mixin class _ReaderLocation {
 
   String get cid;
 
-  ComicType get type;
+  BookType get type;
 
   void update();
 
-  bool enablePageAnimation(String cid, ComicType type) => appdata.settings
+  bool enablePageAnimation(String cid, BookType type) => appdata.settings
       .getReaderSetting(cid, type.sourceKey, 'enablePageAnimation');
 
   _ImageViewController? _imageViewController;
@@ -744,7 +755,7 @@ abstract mixin class _ReaderLocation {
 
   Timer? autoPageTurningTimer;
 
-  void autoPageTurning(String cid, ComicType type) {
+  void autoPageTurning(String cid, BookType type) {
     if (autoPageTurningTimer != null) {
       autoPageTurningTimer!.cancel();
       autoPageTurningTimer = null;

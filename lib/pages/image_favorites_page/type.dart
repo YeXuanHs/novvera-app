@@ -5,7 +5,7 @@ enum ImageFavoriteSortType {
   timeAsc("Time Asc"),
   timeDesc("Time Desc"),
   maxFavorites("Favorite Num"), // 单本收藏数最多排序
-  favoritesCompareComicPages("Favorite Num Compare Comic Pages"); // 单本收藏数比上总页数
+  favoritesCompareBookPages("Favorite Num Compare Book Pages"); // 单本收藏数比上总页数
 
   final String value;
 

@@ -6,8 +6,8 @@ class _SwitchSetting extends StatefulWidget {
     required this.settingKey,
     this.onChanged,
     this.subtitle,
-    this.comicId,
-    this.comicSource,
+    this.bookId,
+    this.bookSource,
     this.useDeviceSettings = false,
   });
 
@@ -19,9 +19,9 @@ class _SwitchSetting extends StatefulWidget {
 
   final String? subtitle;
 
-  final String? comicId;
+  final String? bookId;
 
-  final String? comicSource;
+  final String? bookSource;
 
   final bool useDeviceSettings;
 
@@ -32,10 +32,10 @@ class _SwitchSetting extends StatefulWidget {
 class _SwitchSettingState extends State<_SwitchSetting> {
   @override
   Widget build(BuildContext context) {
-    var value = widget.comicId != null
+    var value = widget.bookId != null
         ? appdata.settings.getReaderSetting(
-            widget.comicId!,
-            widget.comicSource!,
+            widget.bookId!,
+            widget.bookSource!,
             widget.settingKey,
           )
         : widget.useDeviceSettings
@@ -51,10 +51,10 @@ class _SwitchSettingState extends State<_SwitchSetting> {
         value: value,
         onChanged: (value) {
           setState(() {
-            if (widget.comicId != null) {
+            if (widget.bookId != null) {
               appdata.settings.setReaderSetting(
-                widget.comicId!,
-                widget.comicSource!,
+                widget.bookId!,
+                widget.bookSource!,
                 widget.settingKey,
                 value,
               );
@@ -81,8 +81,8 @@ class SelectSetting extends StatelessWidget {
     required this.optionTranslation,
     this.onChanged,
     this.help,
-    this.comicId,
-    this.comicSource,
+    this.bookId,
+    this.bookSource,
     this.useDeviceSettings = false,
   });
 
@@ -96,9 +96,9 @@ class SelectSetting extends StatelessWidget {
 
   final String? help;
 
-  final String? comicId;
+  final String? bookId;
 
-  final String? comicSource;
+  final String? bookSource;
 
   final bool useDeviceSettings;
 
@@ -115,8 +115,8 @@ class SelectSetting extends StatelessWidget {
               optionTranslation: optionTranslation,
               onChanged: onChanged,
               help: help,
-              comicId: comicId,
-              comicSource: comicSource,
+              bookId: bookId,
+              bookSource: bookSource,
               useDeviceSettings: useDeviceSettings,
             );
           } else {
@@ -126,8 +126,8 @@ class SelectSetting extends StatelessWidget {
               optionTranslation: optionTranslation,
               onChanged: onChanged,
               help: help,
-              comicId: comicId,
-              comicSource: comicSource,
+              bookId: bookId,
+              bookSource: bookSource,
               useDeviceSettings: useDeviceSettings,
             );
           }
@@ -144,8 +144,8 @@ class _DoubleLineSelectSettings extends StatefulWidget {
     required this.optionTranslation,
     this.onChanged,
     this.help,
-    this.comicId,
-    this.comicSource,
+    this.bookId,
+    this.bookSource,
     this.useDeviceSettings = false,
   });
 
@@ -159,9 +159,9 @@ class _DoubleLineSelectSettings extends StatefulWidget {
 
   final String? help;
 
-  final String? comicId;
+  final String? bookId;
 
-  final String? comicSource;
+  final String? bookSource;
 
   final bool useDeviceSettings;
 
@@ -173,10 +173,10 @@ class _DoubleLineSelectSettings extends StatefulWidget {
 class _DoubleLineSelectSettingsState extends State<_DoubleLineSelectSettings> {
   @override
   Widget build(BuildContext context) {
-    var value = widget.comicId != null
+    var value = widget.bookId != null
         ? appdata.settings.getReaderSetting(
-            widget.comicId!,
-            widget.comicSource!,
+            widget.bookId!,
+            widget.bookSource!,
             widget.settingKey,
           )
         : widget.useDeviceSettings
@@ -243,10 +243,10 @@ class _DoubleLineSelectSettingsState extends State<_DoubleLineSelectSettings> {
         ).then((value) {
           if (value != null) {
             setState(() {
-              if (widget.comicId != null) {
+              if (widget.bookId != null) {
                 appdata.settings.setReaderSetting(
-                  widget.comicId!,
-                  widget.comicSource!,
+                  widget.bookId!,
+                  widget.bookSource!,
                   widget.settingKey,
                   value,
                 );
@@ -275,8 +275,8 @@ class _EndSelectorSelectSetting extends StatefulWidget {
     required this.optionTranslation,
     this.onChanged,
     this.help,
-    this.comicId,
-    this.comicSource,
+    this.bookId,
+    this.bookSource,
     this.useDeviceSettings = false,
   });
 
@@ -290,9 +290,9 @@ class _EndSelectorSelectSetting extends StatefulWidget {
 
   final String? help;
 
-  final String? comicId;
+  final String? bookId;
 
-  final String? comicSource;
+  final String? bookSource;
 
   final bool useDeviceSettings;
 
@@ -305,10 +305,10 @@ class _EndSelectorSelectSettingState extends State<_EndSelectorSelectSetting> {
   @override
   Widget build(BuildContext context) {
     var options = widget.optionTranslation;
-    var value = widget.comicId != null
+    var value = widget.bookId != null
         ? appdata.settings.getReaderSetting(
-            widget.comicId!,
-            widget.comicSource!,
+            widget.bookId!,
+            widget.bookSource!,
             widget.settingKey,
           )
         : widget.useDeviceSettings
@@ -352,10 +352,10 @@ class _EndSelectorSelectSettingState extends State<_EndSelectorSelectSetting> {
         onTap: (index) {
           setState(() {
             var value = options.keys.elementAt(index);
-            if (widget.comicId != null) {
+            if (widget.bookId != null) {
               appdata.settings.setReaderSetting(
-                widget.comicId!,
-                widget.comicSource!,
+                widget.bookId!,
+                widget.bookSource!,
                 widget.settingKey,
                 value,
               );
@@ -381,8 +381,8 @@ class _SliderSetting extends StatefulWidget {
     required this.min,
     required this.max,
     this.onChanged,
-    this.comicId,
-    this.comicSource,
+    this.bookId,
+    this.bookSource,
     this.useDeviceSettings = false,
   });
 
@@ -398,9 +398,9 @@ class _SliderSetting extends StatefulWidget {
 
   final VoidCallback? onChanged;
 
-  final String? comicId;
+  final String? bookId;
 
-  final String? comicSource;
+  final String? bookSource;
 
   final bool useDeviceSettings;
 
@@ -412,10 +412,10 @@ class _SliderSettingState extends State<_SliderSetting> {
   @override
   Widget build(BuildContext context) {
     var value =
-        (widget.comicId != null
+        (widget.bookId != null
                 ? appdata.settings.getReaderSetting(
-                    widget.comicId!,
-                    widget.comicSource!,
+                    widget.bookId!,
+                    widget.bookSource!,
                     widget.settingsIndex,
                   )
                 : widget.useDeviceSettings
@@ -430,10 +430,10 @@ class _SliderSettingState extends State<_SliderSetting> {
         onChanged: (value) {
           if (value.toInt() == value) {
             setState(() {
-              if (widget.comicId != null) {
+              if (widget.bookId != null) {
                 appdata.settings.setReaderSetting(
-                  widget.comicId!,
-                  widget.comicSource!,
+                  widget.bookId!,
+                  widget.bookSource!,
                   widget.settingsIndex,
                   value.toInt(),
                 );
@@ -449,10 +449,10 @@ class _SliderSettingState extends State<_SliderSetting> {
             });
           } else {
             setState(() {
-              if (widget.comicId != null) {
+              if (widget.bookId != null) {
                 appdata.settings.setReaderSetting(
-                  widget.comicId!,
-                  widget.comicSource!,
+                  widget.bookId!,
+                  widget.bookSource!,
                   widget.settingsIndex,
                   value,
                 );

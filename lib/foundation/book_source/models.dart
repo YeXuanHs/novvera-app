@@ -1,4 +1,4 @@
-part of 'comic_source.dart';
+part of 'book_source.dart';
 
 class Comment {
   final String userName;
@@ -39,7 +39,7 @@ class Comment {
         voteStatus = json["voteStatus"];
 }
 
-class Comic {
+class Book {
   final String title;
 
   final String cover;
@@ -63,7 +63,7 @@ class Comic {
   /// 0-5
   final double? stars;
 
-  const Comic(
+  const Book(
     this.title,
     this.cover,
     this.id,
@@ -91,7 +91,7 @@ class Comic {
     };
   }
 
-  Comic.fromJson(Map<String, dynamic> json, this.sourceKey)
+  Book.fromJson(Map<String, dynamic> json, this.sourceKey)
       : title = json["title"],
         subtitle = json["subtitle"] ?? json["subTitle"] ?? "",
         cover = json["cover"],
@@ -105,7 +105,7 @@ class Comic {
 
   @override
   bool operator ==(Object other) {
-    if (other is! Comic) return false;
+    if (other is! Book) return false;
     return other.id == id && other.sourceKey == sourceKey;
   }
 
@@ -116,16 +116,16 @@ class Comic {
   toString() => "$sourceKey@$id";
 }
 
-class ComicID {
-  final ComicType type;
+class BookID {
+  final BookType type;
 
   final String id;
 
-  const ComicID(this.type, this.id);
+  const BookID(this.type, this.id);
 
   @override
   bool operator ==(Object other) {
-    if (other is! ComicID) return false;
+    if (other is! BookID) return false;
     return other.type == type && other.id == id;
   }
 
@@ -136,7 +136,7 @@ class ComicID {
   String toString() => "$type@$id";
 }
 
-class ComicDetails with HistoryMixin {
+class BookDetails with HistoryMixin {
   @override
   final String title;
 
@@ -151,15 +151,15 @@ class ComicDetails with HistoryMixin {
   final Map<String, List<String>> tags;
 
   /// id-name
-  final ComicChapters? chapters;
+  final BookChapters? chapters;
 
   final List<String>? thumbnails;
 
-  final List<Comic>? recommend;
+  final List<Book>? recommend;
 
   final String sourceKey;
 
-  final String comicId;
+  final String bookId;
 
   final bool? isFavorite;
 
@@ -196,18 +196,18 @@ class ComicDetails with HistoryMixin {
     return res;
   }
 
-  ComicDetails.fromJson(Map<String, dynamic> json)
+  BookDetails.fromJson(Map<String, dynamic> json)
       : title = json["title"],
         subTitle = json["subtitle"],
         cover = json["cover"],
         description = json["description"],
         tags = _generateMap(json["tags"]),
-        chapters = ComicChapters.fromJsonOrNull(json["chapters"]),
+        chapters = BookChapters.fromJsonOrNull(json["chapters"]),
         sourceKey = json["sourceKey"],
-        comicId = json["comicId"],
+        bookId = json["bookId"],
         thumbnails = ListOrNull.from(json["thumbnails"]),
         recommend = (json["recommend"] as List?)
-            ?.map((e) => Comic.fromJson(e, json["sourceKey"]))
+            ?.map((e) => Book.fromJson(e, json["sourceKey"]))
             .toList(),
         isFavorite = json["isFavorite"],
         subId = json["subId"],
@@ -235,7 +235,7 @@ class ComicDetails with HistoryMixin {
       "thumbnails": thumbnails,
       "recommend": null,
       "sourceKey": sourceKey,
-      "comicId": comicId,
+      "bookId": bookId,
       "isFavorite": isFavorite,
       "subId": subId,
       "isLiked": isLiked,
@@ -252,9 +252,9 @@ class ComicDetails with HistoryMixin {
   HistoryType get historyType => HistoryType(sourceKey.hashCode);
 
   @override
-  String get id => comicId;
+  String get id => bookId;
 
-  ComicType get comicType => ComicType(sourceKey.hashCode);
+  BookType get bookType => BookType(sourceKey.hashCode);
 
   /// Convert tags map to plain list
   List<String> get plainTags {
@@ -331,21 +331,21 @@ class ArchiveInfo {
         id = json["id"];
 }
 
-class ComicChapters {
+class BookChapters {
   final Map<String, String>? _chapters;
 
   final Map<String, Map<String, String>>? _groupedChapters;
 
-  /// Create a ComicChapters object with a flat map
-  const ComicChapters(Map<String, String> this._chapters)
+  /// Create a BookChapters object with a flat map
+  const BookChapters(Map<String, String> this._chapters)
       : _groupedChapters = null;
 
-  /// Create a ComicChapters object with a grouped map
-  const ComicChapters.grouped(
+  /// Create a BookChapters object with a grouped map
+  const BookChapters.grouped(
       Map<String, Map<String, String>> this._groupedChapters)
       : _chapters = null;
 
-  factory ComicChapters.fromJson(dynamic json) {
+  factory BookChapters.fromJson(dynamic json) {
     if (json is! Map) throw ArgumentError("Invalid json type");
     var chapters = <String, String>{};
     var groupedChapters = <String, Map<String, String>>{};
@@ -360,18 +360,18 @@ class ComicChapters {
       }
     }
     if (chapters.isNotEmpty) {
-      return ComicChapters(chapters);
+      return BookChapters(chapters);
     } else if (groupedChapters.isNotEmpty) {
-      return ComicChapters.grouped(groupedChapters);
+      return BookChapters.grouped(groupedChapters);
     } else {
       // return a empty list.
-      return ComicChapters(chapters);
+      return BookChapters(chapters);
     }
   }
 
   static fromJsonOrNull(dynamic json) {
     if (json == null) return null;
-    return ComicChapters.fromJson(json);
+    return BookChapters.fromJson(json);
   }
 
   Map<String, dynamic> toJson() {
@@ -544,9 +544,9 @@ class PageJumpTarget {
         )
       );
     } else if (page == "category") {
-      var key = ComicSource.find(sourceKey)!.categoryData!.key;
+      var key = BookSource.find(sourceKey)!.categoryData!.key;
       context.to(
-        () => CategoryComicsPage(
+        () => CategoryBooksPage(
           categoryKey: key,
           category: attributes?["category"] ??
               (throw ArgumentError("Category name is required")),

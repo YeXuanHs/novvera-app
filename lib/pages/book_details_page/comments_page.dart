@@ -1,4 +1,4 @@
-part of 'comic_page.dart';
+part of 'book_page.dart';
 
 bool _shouldBlockComment(Comment comment) {
   var blockedWords = appdata.settings["blockedCommentWords"] as List;
@@ -21,9 +21,9 @@ class CommentsPage extends StatefulWidget {
     this.replyComment,
   });
 
-  final ComicDetails data;
+  final BookDetails data;
 
-  final ComicSource source;
+  final BookSource source;
 
   final Comment? replyComment;
 
@@ -42,7 +42,7 @@ class _CommentsPageState extends State<CommentsPage> {
 
   void firstLoad() async {
     var res = await widget.source.commentsLoader!(
-        widget.data.comicId, widget.data.subId, 1, widget.replyComment?.id);
+        widget.data.bookId, widget.data.subId, 1, widget.replyComment?.id);
     if (res.error) {
       setState(() {
         _error = res.errorMessage;
@@ -60,7 +60,7 @@ class _CommentsPageState extends State<CommentsPage> {
 
   void loadMore() async {
     var res = await widget.source.commentsLoader!(
-      widget.data.comicId,
+      widget.data.bookId,
       widget.data.subId,
       _page + 1,
       widget.replyComment?.id,
@@ -132,7 +132,7 @@ class _CommentsPageState extends State<CommentsPage> {
                             _CommentTile(
                               comment: widget.replyComment!,
                               source: widget.source,
-                              comic: widget.data,
+                              book: widget.data,
                               showAvatar: showAvatar,
                               showActions: false,
                             ),
@@ -173,7 +173,7 @@ class _CommentsPageState extends State<CommentsPage> {
                     return _CommentTile(
                       comment: _comments![index],
                       source: widget.source,
-                      comic: widget.data,
+                      book: widget.data,
                       showAvatar: showAvatar,
                     );
                   },
@@ -241,7 +241,7 @@ class _CommentsPageState extends State<CommentsPage> {
                     sending = true;
                   });
                   var b = await widget.source.sendCommentFunc!(
-                      widget.data.comicId,
+                      widget.data.bookId,
                       widget.data.subId,
                       controller.text,
                       widget.replyComment?.id);
@@ -277,16 +277,16 @@ class _CommentTile extends StatefulWidget {
   const _CommentTile({
     required this.comment,
     required this.source,
-    required this.comic,
+    required this.book,
     required this.showAvatar,
     this.showActions = true,
   });
 
   final Comment comment;
 
-  final ComicSource source;
+  final BookSource source;
 
-  final ComicDetails comic;
+  final BookDetails book;
 
   final bool showAvatar;
 
@@ -390,7 +390,7 @@ class _CommentTileState extends State<_CommentTile> {
           showSideBar(
             context,
             CommentsPage(
-              data: widget.comic,
+              data: widget.book,
               source: widget.source,
               replyComment: widget.comment,
             ),
@@ -433,8 +433,8 @@ class _CommentTileState extends State<_CommentTile> {
             isLiking = true;
           });
           var res = await widget.source.likeCommentFunc!(
-            widget.comic.comicId,
-            widget.comic.subId,
+            widget.book.bookId,
+            widget.book.subId,
             widget.comment.id!,
             !isLiked,
           );
@@ -490,8 +490,8 @@ class _CommentTileState extends State<_CommentTile> {
     });
     var isCancel = (isUp && voteStatus == 1) || (!isUp && voteStatus == -1);
     var res = await widget.source.voteCommentFunc!(
-      widget.comic.comicId,
-      widget.comic.subId,
+      widget.book.bookId,
+      widget.book.subId,
       widget.comment.id!,
       isUp,
       isCancel,

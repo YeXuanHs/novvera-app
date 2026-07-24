@@ -172,8 +172,8 @@ class Settings with ChangeNotifier {
   Settings._create();
 
   final _data = <String, dynamic>{
-    'comicDisplayMode': 'detailed', // detailed, brief
-    'comicTileScale': 1.00, // 0.75-1.25
+    'bookDisplayMode': 'detailed', // detailed, brief
+    'bookTileScale': 1.00, // 0.75-1.25
     'color': 'system', // red, pink, purple, green, orange, blue
     'theme_mode': 'system', // light, dark, system
     'newFavoriteAddTo': 'end', // start, end
@@ -218,17 +218,17 @@ class Settings with ChangeNotifier {
     'customImageProcessing': defaultCustomImageProcessing,
     'sni': true,
     'autoAddLanguageFilter': 'none', // none, chinese, english, japanese
-    'comicSourceListUrl': _defaultSourceListUrl,
+    'bookSourceListUrl': _defaultSourceListUrl,
     'preloadImageCount': 4,
     'followUpdatesFolder': null,
     'initialPage': '0',
-    'comicListDisplayMode': 'paging', // paging, continuous
+    'bookListDisplayMode': 'paging', // paging, continuous
     'showPageNumberInReader': true,
     'showSingleImageOnFirstPage': false,
     'enableDoubleTapToZoom': true,
     'reverseChapterOrder': false,
     'showSystemStatusBar': false,
-    'comicSpecificSettings': <String, Map<String, dynamic>>{},
+    'bookSpecificSettings': <String, Map<String, dynamic>>{},
     'deviceSpecificSettings': <String, Map<String, dynamic>>{},
     'deviceId': '',
     'ignoreBadCertificate': false,
@@ -251,48 +251,48 @@ class Settings with ChangeNotifier {
     }
   }
 
-  void setEnabledComicSpecificSettings(
-    String comicId,
+  void setEnabledBookSpecificSettings(
+    String bookId,
     String sourceKey,
     bool enabled,
   ) {
-    setReaderSetting(comicId, sourceKey, "enabled", enabled);
+    setReaderSetting(bookId, sourceKey, "enabled", enabled);
   }
 
-  bool isComicSpecificSettingsEnabled(String? comicId, String? sourceKey) {
-    if (comicId == null || sourceKey == null) {
+  bool isBookSpecificSettingsEnabled(String? bookId, String? sourceKey) {
+    if (bookId == null || sourceKey == null) {
       return false;
     }
-    return _data['comicSpecificSettings']["$comicId@$sourceKey"]?["enabled"] ==
+    return _data['bookSpecificSettings']["$bookId@$sourceKey"]?["enabled"] ==
         true;
   }
 
-  dynamic getReaderSetting(String comicId, String sourceKey, String key) {
-    if (isComicSpecificSettingsEnabled(comicId, sourceKey)) {
-      var comicValue =
-          _data['comicSpecificSettings']["$comicId@$sourceKey"]?[key];
-      if (comicValue != null) {
-        return comicValue;
+  dynamic getReaderSetting(String bookId, String sourceKey, String key) {
+    if (isBookSpecificSettingsEnabled(bookId, sourceKey)) {
+      var bookValue =
+          _data['bookSpecificSettings']["$bookId@$sourceKey"]?[key];
+      if (bookValue != null) {
+        return bookValue;
       }
     }
     return getDeviceReaderSetting(key);
   }
 
   void setReaderSetting(
-    String comicId,
+    String bookId,
     String sourceKey,
     String key,
     dynamic value,
   ) {
-    (_data['comicSpecificSettings'] as Map<String, dynamic>).putIfAbsent(
-      "$comicId@$sourceKey",
+    (_data['bookSpecificSettings'] as Map<String, dynamic>).putIfAbsent(
+      "$bookId@$sourceKey",
       () => <String, dynamic>{},
     )[key] = value;
     notifyListeners();
   }
 
-  void resetComicReaderSettings(String key) {
-    (_data['comicSpecificSettings'] as Map).remove(key);
+  void resetBookReaderSettings(String key) {
+    (_data['bookSpecificSettings'] as Map).remove(key);
     notifyListeners();
   }
 
@@ -354,7 +354,7 @@ const defaultCustomImageProcessing = '''
 /**
  * Process an image
  * @param image {ArrayBuffer} - The image to process
- * @param cid {string} - The comic ID
+ * @param cid {string} - The book ID
  * @param eid {string} - The episode ID
  * @param page {number} - The page number
  * @param sourceKey {string} - The source key

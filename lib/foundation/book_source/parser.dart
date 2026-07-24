@@ -1,4 +1,4 @@
-part of 'comic_source.dart';
+part of 'book_source.dart';
 
 /// return true if ver1 > ver2
 bool compareSemVer(String ver1, String ver2) {
@@ -39,10 +39,10 @@ bool compareSemVer(String ver1, String ver2) {
   return false;
 }
 
-class ComicSourceParseException implements Exception {
+class BookSourceParseException implements Exception {
   final String message;
 
-  ComicSourceParseException(this.message);
+  BookSourceParseException(this.message);
 
   @override
   String toString() {
@@ -50,13 +50,13 @@ class ComicSourceParseException implements Exception {
   }
 }
 
-class ComicSourceParser {
-  /// comic source key
+class BookSourceParser {
+  /// book source key
   String? _key;
 
   String? _name;
 
-  Future<ComicSource> createAndParse(String js, String fileName) async {
+  Future<BookSource> createAndParse(String js, String fileName) async {
     if (!fileName.endsWith("js")) {
       fileName = "$fileName.js";
     }
@@ -83,17 +83,17 @@ class ComicSourceParser {
     }
   }
 
-  Future<ComicSource> parse(String js, String filePath) async {
+  Future<BookSource> parse(String js, String filePath) async {
     js = js.replaceAll("\r\n", "\n");
     var line1 = js
         .split('\n')
         .firstWhereOrNull((e) => e.trim().startsWith("class "));
     if (line1 == null ||
         !line1.startsWith("class ") ||
-        !line1.contains("extends ComicSource")) {
-      throw ComicSourceParseException("Invalid Content");
+        !line1.contains("extends BookSource")) {
+      throw BookSourceParseException("Invalid Content");
     }
-    var className = line1.split("class")[1].split("extends ComicSource").first;
+    var className = line1.split("class")[1].split("extends BookSource").first;
     className = className.trim();
     JsEngine().runCode("""(() => { $js
         this['temp'] = new $className()
@@ -101,27 +101,27 @@ class ComicSourceParser {
     """, className);
     _name =
         JsEngine().runCode("this['temp'].name") ??
-        (throw ComicSourceParseException('name is required'));
+        (throw BookSourceParseException('name is required'));
     var key =
         JsEngine().runCode("this['temp'].key") ??
-        (throw ComicSourceParseException('key is required'));
+        (throw BookSourceParseException('key is required'));
     var version =
         JsEngine().runCode("this['temp'].version") ??
-        (throw ComicSourceParseException('version is required'));
+        (throw BookSourceParseException('version is required'));
     var minAppVersion = JsEngine().runCode("this['temp'].minAppVersion");
     var url = JsEngine().runCode("this['temp'].url");
     if (minAppVersion != null) {
       if (compareSemVer(minAppVersion, App.version.split('-').first)) {
-        throw ComicSourceParseException(
+        throw BookSourceParseException(
           "minAppVersion @version is required".tlParams({
             "version": minAppVersion,
           }),
         );
       }
     }
-    for (var source in ComicSource.all()) {
+    for (var source in BookSource.all()) {
       if (source.key == key) {
-        throw ComicSourceParseException("key($key) already exists");
+        throw BookSourceParseException("key($key) already exists");
       }
     }
     _key = key;
@@ -131,19 +131,19 @@ class ComicSourceParser {
       ComicSource.sources.$_key = this['temp'];
     """);
 
-    var source = ComicSource(
+    var source = BookSource(
       _name!,
       key,
       _loadAccountConfig(),
       _loadCategoryData(),
-      _loadCategoryComicsData(),
+      _loadCategoryBooksData(),
       _loadFavoriteData(),
       _loadExploreData(),
       _loadSearchData(),
       _parseSettings(),
-      _parseLoadComicFunc(),
+      _parseLoadBookFunc(),
       _parseThumbnailLoader(),
-      _parseLoadComicPagesFunc(),
+      _parseLoadBookPagesFunc(),
       _parseImageLoadingConfigFunc(),
       _parseThumbnailLoadingConfigFunc(),
       filePath,
@@ -181,7 +181,7 @@ class ComicSourceParser {
   _checkKeyValidation() {
     // 仅允许数字和字母以及下划线
     if (!_key!.contains(RegExp(r"^[a-zA-Z0-9_]+$"))) {
-      throw ComicSourceParseException("key $_key is invalid");
+      throw BookSourceParseException("key $_key is invalid");
     }
   }
 
@@ -210,7 +210,7 @@ class ComicSourceParser {
           ComicSource.sources.$_key.account.login(${jsonEncode(account)},
           ${jsonEncode(pwd)})
         """);
-          var source = ComicSource.find(_key!)!;
+          var source = BookSource.find(_key!)!;
           source.data["account"] = <String>[account, pwd];
           source.saveData();
           return const Res(true);
@@ -284,8 +284,8 @@ class ComicSourceParser {
       final String title = _getValue("explore[$i].title");
       final String type = _getValue("explore[$i].type");
       Future<Res<List<ExplorePagePart>>> Function()? loadMultiPart;
-      Future<Res<List<Comic>>> Function(int page)? loadPage;
-      Future<Res<List<Comic>>> Function(String? next)? loadNext;
+      Future<Res<List<Book>>> Function(int page)? loadPage;
+      Future<Res<List<Book>>> Function(String? next)? loadNext;
       Future<Res<List<Object>>> Function(int index)? loadMixed;
       if (type == "singlePageWithMultiPart") {
         loadMultiPart = () async {
@@ -300,7 +300,7 @@ class ComicSourceParser {
                       (e) => ExplorePagePart(
                         e,
                         (res[e] as List)
-                            .map<Comic>((e) => Comic.fromJson(e, _key!))
+                            .map<Book>((e) => Book.fromJson(e, _key!))
                             .toList(),
                         null,
                       ),
@@ -323,7 +323,7 @@ class ComicSourceParser {
               return Res(
                 List.generate(
                   res["comics"].length,
-                  (index) => Comic.fromJson(res["comics"][index], _key!),
+                  (index) => Book.fromJson(res["comics"][index], _key!),
                 ),
                 subData: res["maxPage"],
               );
@@ -341,7 +341,7 @@ class ComicSourceParser {
               return Res(
                 List.generate(
                   res["comics"].length,
-                  (index) => Comic.fromJson(res["comics"][index], _key!),
+                  (index) => Book.fromJson(res["comics"][index], _key!),
                 ),
                 subData: res["next"],
               );
@@ -363,7 +363,7 @@ class ComicSourceParser {
                   return ExplorePagePart(
                     e['title'],
                     (e['comics'] as List).map((e) {
-                      return Comic.fromJson(e, _key!);
+                      return Book.fromJson(e, _key!);
                     }).toList(),
                     PageJumpTarget.parse(_key!, e['viewMore']),
                   );
@@ -384,13 +384,13 @@ class ComicSourceParser {
             var list = <Object>[];
             for (var data in (res['data'] as List)) {
               if (data is List) {
-                list.add(data.map((e) => Comic.fromJson(e, _key!)).toList());
+                list.add(data.map((e) => Book.fromJson(e, _key!)).toList());
               } else if (data is Map) {
                 list.add(
                   ExplorePagePart(
                     data['title'],
                     (data['comics'] as List).map((e) {
-                      return Comic.fromJson(e, _key!);
+                      return Book.fromJson(e, _key!);
                     }).toList(),
                     data['viewMore'],
                   ),
@@ -411,9 +411,9 @@ class ComicSourceParser {
             "singlePageWithMultiPart" =>
               ExplorePageType.singlePageWithMultiPart,
             "multiPartPage" => ExplorePageType.singlePageWithMultiPart,
-            "multiPageComicList" => ExplorePageType.multiPageComicList,
+            "multiPageComicList" => ExplorePageType.multiPageBookList,
             "mixed" => ExplorePageType.mixed,
-            _ => throw ComicSourceParseException(
+            _ => throw BookSourceParseException(
               "Unknown explore page type $type",
             ),
           },
@@ -522,12 +522,12 @@ class ComicSourceParser {
     );
   }
 
-  CategoryComicsData? _loadCategoryComicsData() {
+  CategoryBooksData? _loadCategoryBooksData() {
     if (!_checkExists("categoryComics")) return null;
 
-    List<CategoryComicsOptions>? options;
+    List<CategoryBooksOptions>? options;
     if (_checkExists("categoryComics.optionList")) {
-      options = <CategoryComicsOptions>[];
+      options = <CategoryBooksOptions>[];
       for (var element in _getValue("categoryComics.optionList") ?? []) {
         LinkedHashMap<String, String> map = LinkedHashMap<String, String>();
         for (var option in element["options"]) {
@@ -540,7 +540,7 @@ class ComicSourceParser {
           map[key] = value;
         }
         options.add(
-          CategoryComicsOptions(
+          CategoryBooksOptions(
             element["label"] ?? "",
             map,
             List.from(element["notShowWhen"] ?? []),
@@ -566,7 +566,7 @@ class ComicSourceParser {
               "Invalid data:\nExpected: List\nGot: ${res.runtimeType}",
             );
           }
-          var options = <CategoryComicsOptions>[];
+          var options = <CategoryBooksOptions>[];
           for (var element in res) {
             if (element is! Map) {
               return Res.error(
@@ -584,7 +584,7 @@ class ComicSourceParser {
               map[key] = value;
             }
             options.add(
-              CategoryComicsOptions(
+              CategoryBooksOptions(
                 element["label"] ?? "",
                 map,
                 List.from(element["notShowWhen"] ?? []),
@@ -614,8 +614,8 @@ class ComicSourceParser {
         var value = split.join("-");
         options[key] = value;
       }
-      Future<Res<List<Comic>>> Function(String option, int page)? load;
-      Future<Res<List<Comic>>> Function(String option, String? next)?
+      Future<Res<List<Book>>> Function(String option, int page)? load;
+      Future<Res<List<Book>>> Function(String option, String? next)?
       loadWithNext;
       if (_checkExists("categoryComics.ranking.load")) {
         load = (option, page) async {
@@ -627,7 +627,7 @@ class ComicSourceParser {
             return Res(
               List.generate(
                 res["comics"].length,
-                (index) => Comic.fromJson(res["comics"][index], _key!),
+                (index) => Book.fromJson(res["comics"][index], _key!),
               ),
               subData: res["maxPage"],
             );
@@ -646,7 +646,7 @@ class ComicSourceParser {
             return Res(
               List.generate(
                 res["comics"].length,
-                (index) => Comic.fromJson(res["comics"][index], _key!),
+                (index) => Book.fromJson(res["comics"][index], _key!),
               ),
               subData: res["next"],
             );
@@ -663,7 +663,7 @@ class ComicSourceParser {
       options = [];
     }
 
-    return CategoryComicsData(
+    return CategoryBooksData(
       options: options,
       optionsLoader: optionLoader,
       load: (category, param, options, page) async {
@@ -679,7 +679,7 @@ class ComicSourceParser {
           return Res(
             List.generate(
               res["comics"].length,
-              (index) => Comic.fromJson(res["comics"][index], _key!),
+              (index) => Book.fromJson(res["comics"][index], _key!),
             ),
             subData: res["maxPage"],
           );
@@ -730,7 +730,7 @@ class ComicSourceParser {
           return Res(
             List.generate(
               res["comics"].length,
-              (index) => Comic.fromJson(res["comics"][index], _key!),
+              (index) => Book.fromJson(res["comics"][index], _key!),
             ),
             subData: res["maxPage"],
           );
@@ -749,7 +749,7 @@ class ComicSourceParser {
           return Res(
             List.generate(
               res["comics"].length,
-              (index) => Comic.fromJson(res["comics"][index], _key!),
+              (index) => Book.fromJson(res["comics"][index], _key!),
             ),
             subData: res["next"],
           );
@@ -763,16 +763,16 @@ class ComicSourceParser {
     return SearchPageData(options, loadPage, loadNext);
   }
 
-  LoadComicFunc? _parseLoadComicFunc() {
+  LoadBookFunc? _parseLoadBookFunc() {
     return (id) async {
       try {
         var res = await JsEngine().runCode("""
           ComicSource.sources.$_key.comic.loadInfo(${jsonEncode(id)})
         """);
         if (res is! Map<String, dynamic>) throw "Invalid data";
-        res['comicId'] = id;
+        res['bookId'] = id;
         res['sourceKey'] = _key;
-        return Res(ComicDetails.fromJson(res));
+        return Res(BookDetails.fromJson(res));
       } catch (e, s) {
         Log.error("Network", "$e\n$s");
         return Res.error(e.toString());
@@ -780,7 +780,7 @@ class ComicSourceParser {
     };
   }
 
-  LoadComicPagesFunc? _parseLoadComicPagesFunc() {
+  LoadBookPagesFunc? _parseLoadBookPagesFunc() {
     return (id, ep) async {
       try {
         var res = await JsEngine().runCode("""
@@ -799,17 +799,17 @@ class ComicSourceParser {
 
     final bool multiFolder = _getValue("favorites.multiFolder");
     final bool? isOldToNewSort = _getValue("favorites.isOldToNewSort");
-    final bool? singleFolderForSingleComic = _getValue(
+    final bool? singleFolderForSingleBook = _getValue(
       "favorites.singleFolderForSingleComic",
     );
 
     Future<Res<T>> retryZone<T>(Future<Res<T>> Function() func) async {
-      if (!ComicSource.find(_key!)!.isLogged) {
+      if (!BookSource.find(_key!)!.isLogged) {
         return const Res.error("Not login");
       }
       var res = await func();
       if (res.error && res.errorMessage!.contains("Login expired")) {
-        var reLoginRes = await ComicSource.find(_key!)!.reLogin();
+        var reLoginRes = await BookSource.find(_key!)!.reLogin();
         if (!reLoginRes) {
           return const Res.error("Login expired and re-login failed");
         } else {
@@ -820,7 +820,7 @@ class ComicSourceParser {
     }
 
     Future<Res<bool>> addOrDelFavFunc(
-      String comicId,
+      String bookId,
       String folderId,
       bool isAdding,
       String? favId,
@@ -829,7 +829,7 @@ class ComicSourceParser {
         try {
           await JsEngine().runCode("""
             ComicSource.sources.$_key.favorites.addOrDelFavorite(
-              ${jsonEncode(comicId)}, ${jsonEncode(folderId)}, ${jsonEncode(isAdding)})
+              ${jsonEncode(bookId)}, ${jsonEncode(folderId)}, ${jsonEncode(isAdding)})
           """);
           return const Res(true);
         } catch (e, s) {
@@ -841,22 +841,22 @@ class ComicSourceParser {
       return retryZone(func);
     }
 
-    Future<Res<List<Comic>>> Function(int page, [String? folder])? loadComic;
+    Future<Res<List<Book>>> Function(int page, [String? folder])? loadBook;
 
-    Future<Res<List<Comic>>> Function(String? next, [String? folder])? loadNext;
+    Future<Res<List<Book>>> Function(String? next, [String? folder])? loadNext;
 
-    if (_checkExists("favorites.loadComics")) {
-      loadComic = (int page, [String? folder]) async {
-        Future<Res<List<Comic>>> func() async {
+    if (_checkExists("favorites.loadBooks")) {
+      loadBook = (int page, [String? folder]) async {
+        Future<Res<List<Book>>> func() async {
           try {
             var res = await JsEngine().runCode("""
-            ComicSource.sources.$_key.favorites.loadComics(
+            ComicSource.sources.$_key.favorites.loadBooks(
               ${jsonEncode(page)}, ${jsonEncode(folder)})
           """);
             return Res(
               List.generate(
                 res["comics"].length,
-                (index) => Comic.fromJson(res["comics"][index], _key!),
+                (index) => Book.fromJson(res["comics"][index], _key!),
               ),
               subData: res["maxPage"],
             );
@@ -872,7 +872,7 @@ class ComicSourceParser {
 
     if (_checkExists("favorites.loadNext")) {
       loadNext = (String? next, [String? folder]) async {
-        Future<Res<List<Comic>>> func() async {
+        Future<Res<List<Book>>> func() async {
           try {
             var res = await JsEngine().runCode("""
             ComicSource.sources.$_key.favorites.loadNext(
@@ -881,7 +881,7 @@ class ComicSourceParser {
             return Res(
               List.generate(
                 res["comics"].length,
-                (index) => Comic.fromJson(res["comics"][index], _key!),
+                (index) => Book.fromJson(res["comics"][index], _key!),
               ),
               subData: res["next"],
             );
@@ -895,18 +895,18 @@ class ComicSourceParser {
       };
     }
 
-    Future<Res<Map<String, String>>> Function([String? comicId])? loadFolders;
+    Future<Res<Map<String, String>>> Function([String? bookId])? loadFolders;
 
     Future<Res<bool>> Function(String name)? addFolder;
 
     Future<Res<bool>> Function(String key)? deleteFolder;
 
     if (multiFolder) {
-      loadFolders = ([String? comicId]) async {
+      loadFolders = ([String? bookId]) async {
         Future<Res<Map<String, String>>> func() async {
           try {
             var res = await JsEngine().runCode("""
-            ComicSource.sources.$_key.favorites.loadFolders(${jsonEncode(comicId)})
+            ComicSource.sources.$_key.favorites.loadFolders(${jsonEncode(bookId)})
           """);
             List<String>? subData;
             if (res["favorited"] != null) {
@@ -953,14 +953,14 @@ class ComicSourceParser {
       key: _key!,
       title: _name!,
       multiFolder: multiFolder,
-      loadComic: loadComic,
+      loadBook: loadBook,
       loadNext: loadNext,
       loadFolders: loadFolders,
       addFolder: addFolder,
       deleteFolder: deleteFolder,
       addOrDelFavorite: addOrDelFavFunc,
       isOldToNewSort: isOldToNewSort,
-      singleFolderForSingleComic: singleFolderForSingleComic ?? false,
+      singleFolderForSingleBook: singleFolderForSingleBook ?? false,
     );
   }
 
@@ -1001,7 +1001,7 @@ class ComicSourceParser {
 
       var res = await func();
       if (res.error && res.errorMessage!.contains("Login expired")) {
-        var reLoginRes = await ComicSource.find(_key!)!.reLogin();
+        var reLoginRes = await BookSource.find(_key!)!.reLogin();
         if (!reLoginRes) {
           return const Res.error("Login expired and re-login failed");
         } else {
@@ -1014,11 +1014,11 @@ class ComicSourceParser {
 
   ChapterCommentsLoader? _parseChapterCommentsLoader() {
     if (!_checkExists("comic.loadChapterComments")) return null;
-    return (comicId, epId, page, replyTo) async {
+    return (bookId, epId, page, replyTo) async {
       try {
         var res = await JsEngine().runCode("""
           ComicSource.sources.$_key.comic.loadChapterComments(
-            ${jsonEncode(comicId)}, ${jsonEncode(epId)}, ${jsonEncode(page)}, ${jsonEncode(replyTo)})
+            ${jsonEncode(bookId)}, ${jsonEncode(epId)}, ${jsonEncode(page)}, ${jsonEncode(replyTo)})
         """);
         return Res(
           (res["comments"] as List).map((e) => Comment.fromJson(e)).toList(),
@@ -1033,12 +1033,12 @@ class ComicSourceParser {
 
   SendChapterCommentFunc? _parseSendChapterCommentFunc() {
     if (!_checkExists("comic.sendChapterComment")) return null;
-    return (comicId, epId, content, replyTo) async {
+    return (bookId, epId, content, replyTo) async {
       Future<Res<bool>> func() async {
         try {
           await JsEngine().runCode("""
             ComicSource.sources.$_key.comic.sendChapterComment(
-              ${jsonEncode(comicId)}, ${jsonEncode(epId)}, ${jsonEncode(content)}, ${jsonEncode(replyTo)})
+              ${jsonEncode(bookId)}, ${jsonEncode(epId)}, ${jsonEncode(content)}, ${jsonEncode(replyTo)})
           """);
           return const Res(true);
         } catch (e, s) {
@@ -1049,7 +1049,7 @@ class ComicSourceParser {
 
       var res = await func();
       if (res.error && res.errorMessage!.contains("Login expired")) {
-        var reLoginRes = await ComicSource.find(_key!)!.reLogin();
+        var reLoginRes = await BookSource.find(_key!)!.reLogin();
         if (!reLoginRes) {
           return const Res.error("Login expired and re-login failed");
         } else {
@@ -1064,10 +1064,10 @@ class ComicSourceParser {
     if (!_checkExists("comic.onImageLoad")) {
       return null;
     }
-    return (imageKey, comicId, ep) async {
+    return (imageKey, bookId, ep) async {
       var res = JsEngine().runCode("""
           ComicSource.sources.$_key.comic.onImageLoad(
-            ${jsonEncode(imageKey)}, ${jsonEncode(comicId)}, ${jsonEncode(ep)})
+            ${jsonEncode(imageKey)}, ${jsonEncode(bookId)}, ${jsonEncode(ep)})
         """);
       if (res is Future) {
         return await res;
@@ -1092,7 +1092,7 @@ class ComicSourceParser {
     };
   }
 
-  ComicThumbnailLoader? _parseThumbnailLoader() {
+  BookThumbnailLoader? _parseThumbnailLoader() {
     if (!_checkExists("comic.loadThumbnails")) {
       return null;
     }
@@ -1109,7 +1109,7 @@ class ComicSourceParser {
     };
   }
 
-  LikeOrUnlikeComicFunc? _parseLikeFunc() {
+  LikeOrUnlikeBookFunc? _parseLikeFunc() {
     if (!_checkExists("comic.likeComic")) {
       return null;
     }

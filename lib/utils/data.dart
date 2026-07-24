@@ -4,8 +4,8 @@ import 'dart:isolate';
 import 'package:sqlite3/sqlite3.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/appdata.dart';
-import 'package:novvera/foundation/comic_source/comic_source.dart';
-import 'package:novvera/foundation/comic_type.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
+import 'package:novvera/foundation/book_type.dart';
 import 'package:novvera/foundation/favorites.dart';
 import 'package:novvera/foundation/history.dart';
 import 'package:novvera/foundation/log.dart';
@@ -34,9 +34,9 @@ Future<File> exportAppData([bool sync = true]) async {
     zipFile.addFile("appdata.json", appdata);
     zipFile.addFile("cookie.db", cookies);
     for (var file
-        in Directory(FilePath.join(dataPath, "comic_source")).listSync()) {
+        in Directory(FilePath.join(dataPath, "book_source")).listSync()) {
       if (file is File) {
-        zipFile.addFile("comic_source/${file.name}", file.path);
+        zipFile.addFile("book_source/${file.name}", file.path);
       }
     }
     zipFile.close();
@@ -93,19 +93,19 @@ Future<void> importAppData(File file, [bool checkVersion = false]) async {
           SingleInstanceCookieJar(FilePath.join(App.dataPath, "cookie.db"))
             ..init();
     }
-    var comicSourceDir = FilePath.join(cacheDirPath, "comic_source");
-    if (Directory(comicSourceDir).existsSync()) {
-      Directory(FilePath.join(App.dataPath, "comic_source"))
+    var bookSourceDir = FilePath.join(cacheDirPath, "book_source");
+    if (Directory(bookSourceDir).existsSync()) {
+      Directory(FilePath.join(App.dataPath, "book_source"))
           .deleteIfExistsSync(recursive: true);
-      Directory(FilePath.join(App.dataPath, "comic_source")).createSync();
-      for (var file in Directory(comicSourceDir).listSync()) {
+      Directory(FilePath.join(App.dataPath, "book_source")).createSync();
+      for (var file in Directory(bookSourceDir).listSync()) {
         if (file is File) {
           var targetFile =
-              FilePath.join(App.dataPath, "comic_source", file.name);
+              FilePath.join(App.dataPath, "book_source", file.name);
           await file.copy(targetFile);
         }
       }
-      await ComicSourceManager().reload();
+      await BookSourceManager().reload();
     }
   } finally {
     cacheDir.deleteIgnoreError(recursive: true);
@@ -153,24 +153,24 @@ Future<void> importPicaData(File file) async {
           if (!LocalFavoritesManager().existsFolder(folderName)) {
             LocalFavoritesManager().createFolder(folderName);
           }
-          for (var comic in db.select("SELECT * FROM \"$folderName\";")) {
-            LocalFavoritesManager().addComic(
+          for (var book in db.select("SELECT * FROM \"$folderName\";")) {
+            LocalFavoritesManager().addBook(
               folderName,
               FavoriteItem(
-                id: comic['target'],
-                name: comic['name'],
-                coverPath: comic['cover_path'],
-                author: comic['author'],
-                type: ComicType(switch (comic['type']) {
+                id: book['target'],
+                name: book['name'],
+                coverPath: book['cover_path'],
+                author: book['author'],
+                type: BookType(switch (book['type']) {
                   0 => 'picacg'.hashCode,
                   1 => 'ehentai'.hashCode,
                   2 => 'jm'.hashCode,
                   3 => 'hitomi'.hashCode,
                   4 => 'wnacg'.hashCode,
                   6 => 'nhentai'.hashCode,
-                  _ => comic['type']
+                  _ => book['type']
                 }),
-                tags: comic['tags'].split(','),
+                tags: book['tags'].split(','),
               ),
             );
           }
@@ -185,63 +185,63 @@ Future<void> importPicaData(File file) async {
     if (historyFile.existsSync()) {
       var db = sqlite3.open(historyFile.path);
       try {
-        for (var comic in db.select("SELECT * FROM history;")) {
+        for (var book in db.select("SELECT * FROM history;")) {
           HistoryManager().addHistory(
             History.fromMap({
-              "type": switch (comic['type']) {
+              "type": switch (book['type']) {
                 0 => 'picacg'.hashCode,
                 1 => 'ehentai'.hashCode,
                 2 => 'jm'.hashCode,
                 3 => 'hitomi'.hashCode,
                 4 => 'wnacg'.hashCode,
                 5 => 'nhentai'.hashCode,
-                _ => comic['type']
+                _ => book['type']
               },
-              "id": comic['target'],
-              "max_page": comic["max_page"],
-              "ep": comic["ep"],
-              "page": comic["page"],
-              "time": comic["time"],
-              "title": comic["title"],
-              "subtitle": comic["subtitle"],
-              "cover": comic["cover"],
-              "readEpisode": [comic["ep"]],
+              "id": book['target'],
+              "max_page": book["max_page"],
+              "ep": book["ep"],
+              "page": book["page"],
+              "time": book["time"],
+              "title": book["title"],
+              "subtitle": book["subtitle"],
+              "cover": book["cover"],
+              "readEpisode": [book["ep"]],
             }),
           );
         }
-        List<ImageFavoritesComic> imageFavoritesComicList =
+        List<ImageFavoritesComic> imageFavoritesBookList =
             ImageFavoriteManager().comics;
-        for (var comic in db.select("SELECT * FROM image_favorites;")) {
-          String sourceKey = comic["id"].split("-")[0];
+        for (var book in db.select("SELECT * FROM image_favorites;")) {
+          String sourceKey = book["id"].split("-")[0];
           // 换名字了, 绅士漫画
           if (sourceKey.toLowerCase() == "htmanga") {
             sourceKey = "wnacg";
           }
-          if (ComicSource.find(sourceKey) == null) {
+          if (BookSource.find(sourceKey) == null) {
             continue;
           }
-          String id = comic["id"].split("-")[1];
-          int page = comic["page"];
+          String id = book["id"].split("-")[1];
+          int page = book["page"];
           // 章节和page是从1开始的, pica 可能有从 0 开始的, 得转一下
-          int ep = comic["ep"] == 0 ? 1 : comic["ep"];
-          String title = comic["title"];
+          int ep = book["ep"] == 0 ? 1 : book["ep"];
+          String title = book["title"];
           String epName = "";
-          ImageFavoritesComic? tempComic = imageFavoritesComicList
+          ImageFavoritesComic? tempBook = imageFavoritesBookList
               .firstWhereOrNull((e) => e.id == id && e.sourceKey == sourceKey);
           ImageFavorite curImageFavorite =
               ImageFavorite(page, "", null, "", id, ep, sourceKey, epName);
-          if (tempComic == null) {
-            tempComic = ImageFavoritesComic(id, [], title, sourceKey, [], [],
+          if (tempBook == null) {
+            tempBook = ImageFavoritesComic(id, [], title, sourceKey, [], [],
                 DateTime.now(), "", {}, "", 1);
-            tempComic.imageFavoritesEp = [
+            tempBook.imageFavoritesEp = [
               ImageFavoritesEp("", ep, [curImageFavorite], epName, 1)
             ];
-            imageFavoritesComicList.add(tempComic);
+            imageFavoritesBookList.add(tempBook);
           } else {
             ImageFavoritesEp? tempEp =
-                tempComic.imageFavoritesEp.firstWhereOrNull((e) => e.ep == ep);
+                tempBook.imageFavoritesEp.firstWhereOrNull((e) => e.ep == ep);
             if (tempEp == null) {
-              tempComic.imageFavoritesEp
+              tempBook.imageFavoritesEp
                   .add(ImageFavoritesEp("", ep, [curImageFavorite], epName, 1));
             } else {
               // 如果已经有这个page了, 就不添加了
@@ -253,10 +253,10 @@ Future<void> importPicaData(File file) async {
             }
           }
         }
-        for (var temp in imageFavoritesComicList) {
+        for (var temp in imageFavoritesBookList) {
           ImageFavoriteManager().addOrUpdateOrDelete(
             temp,
-            temp == imageFavoritesComicList.last,
+            temp == imageFavoritesBookList.last,
           );
         }
       } catch (e, stack) {

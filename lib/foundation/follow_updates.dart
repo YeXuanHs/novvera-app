@@ -11,16 +11,16 @@ class ComicUpdateResult {
   ComicUpdateResult(this.updated, this.errorMessage);
 }
 
-Future<ComicUpdateResult> updateComic(
+Future<ComicUpdateResult> updateBook(
     FavoriteItemWithUpdateInfo c, String folder) async {
   int retries = 3;
   while (true) {
     try {
-      var comicSource = c.type.comicSource;
-      if (comicSource == null) {
-        return ComicUpdateResult(false, "Comic source not found");
+      var bookSource = c.type.bookSource;
+      if (bookSource == null) {
+        return ComicUpdateResult(false, "Book source not found");
       }
-      var newInfo = (await comicSource.loadComicInfo!(c.id)).data;
+      var newInfo = (await bookSource.loadBookInfo!(c.id)).data;
 
       var newTags = <String>[];
       for (var entry in newInfo.tags.entries) {
@@ -77,11 +77,11 @@ class UpdateProgress {
   final int current;
   final int errors;
   final int updated;
-  final FavoriteItemWithUpdateInfo? comic;
+  final FavoriteItemWithUpdateInfo? book;
   final String? errorMessage;
 
   UpdateProgress(this.total, this.current, this.errors, this.updated,
-      [this.comic, this.errorMessage]);
+      [this.book, this.errorMessage]);
 }
 
 void updateFolderBase(
@@ -89,19 +89,19 @@ void updateFolderBase(
   StreamController<UpdateProgress> stream,
   bool ignoreCheckTime,
 ) async {
-  var comics = LocalFavoritesManager().getComicsWithUpdatesInfo(folder);
-  int total = comics.length;
+  var books = LocalFavoritesManager().getBooksWithUpdatesInfo(folder);
+  int total = books.length;
   int current = 0;
   int errors = 0;
   int updated = 0;
 
   stream.add(UpdateProgress(total, current, errors, updated));
 
-  var comicsToUpdate = <FavoriteItemWithUpdateInfo>[];
+  var booksToUpdate = <FavoriteItemWithUpdateInfo>[];
 
-  for (var comic in comics) {
+  for (var book in books) {
     if (!ignoreCheckTime) {
-      var lastCheckTime = comic.lastCheckTime;
+      var lastCheckTime = book.lastCheckTime;
       if (lastCheckTime != null &&
           DateTime.now().difference(lastCheckTime).inDays < 1) {
         current++;
@@ -109,10 +109,10 @@ void updateFolderBase(
         continue;
       }
     }
-    comicsToUpdate.add(comic);
+    booksToUpdate.add(book);
   }
 
-  total = comicsToUpdate.length;
+  total = booksToUpdate.length;
   current = 0;
   stream.add(UpdateProgress(total, current, errors, updated));
 
@@ -121,8 +121,8 @@ void updateFolderBase(
   // Producer
   () async {
     var c = 0;
-    for (var comic in comicsToUpdate) {
-      await channel.push(comic);
+    for (var book in booksToUpdate) {
+      await channel.push(book);
       c++;
       // Throttle
       if (c % 5 == 0) {
@@ -141,11 +141,11 @@ void updateFolderBase(
   for (var i = 0; i < 5; i++) {
     var f = () async {
       while (true) {
-        var comic = await channel.pop();
-        if (comic == null) {
+        var book = await channel.pop();
+        if (book == null) {
           break;
         }
-        var result = await updateComic(comic, folder);
+        var result = await updateBook(book, folder);
         current++;
         if (result.updated) {
           updated++;
@@ -153,7 +153,7 @@ void updateFolderBase(
         if (result.errorMessage != null) {
           errors++;
         }
-        stream.add(UpdateProgress(total, current, errors, updated, comic, result.errorMessage));
+        stream.add(UpdateProgress(total, current, errors, updated, book, result.errorMessage));
       }
     }();
     updateFutures.add(f);
@@ -175,10 +175,10 @@ Stream<UpdateProgress> updateFolder(String folder, bool ignoreCheckTime) {
   return stream.stream;
 }
 
-Future<String> getUpdatedComicsAsJson(String folder) async {
-  var comics = LocalFavoritesManager().getComicsWithUpdatesInfo(folder);
-  var updatedComics = comics.where((c) => c.hasNewUpdate).toList();
-  var jsonList = updatedComics.map((c) => {
+Future<String> getUpdatedBooksAsJson(String folder) async {
+  var books = LocalFavoritesManager().getBooksWithUpdatesInfo(folder);
+  var updatedBooks = books.where((c) => c.hasNewUpdate).toList();
+  var jsonList = updatedBooks.map((c) => {
     'id': c.id,
     'name': c.name,
     'coverUrl': c.coverPath,

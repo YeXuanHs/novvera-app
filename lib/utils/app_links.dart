@@ -1,7 +1,7 @@
 import 'package:app_links/app_links.dart';
 import 'package:novvera/foundation/app.dart';
-import 'package:novvera/foundation/comic_source/comic_source.dart';
-import 'package:novvera/pages/comic_details_page/comic_page.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
+import 'package:novvera/pages/book_details_page/book_page.dart';
 
 void handleLinks() {
   final appLinks = AppLinks();
@@ -11,7 +11,7 @@ void handleLinks() {
 }
 
 Future<bool> handleAppLink(Uri uri) async {
-  for(var source in ComicSource.all()) {
+  for(var source in BookSource.all()) {
     if(source.linkHandler != null) {
       if(source.linkHandler!.domains.contains(uri.host)) {
         var id = source.linkHandler!.linkToId(uri.toString());
@@ -20,7 +20,7 @@ Future<bool> handleAppLink(Uri uri) async {
             await Future.delayed(const Duration(milliseconds: 200));
           }
           App.mainNavigatorKey!.currentContext?.to(() {
-            return ComicPage(id: id, sourceKey: source.key);
+            return BookPage(id: id, sourceKey: source.key);
           });
           return true;
         }

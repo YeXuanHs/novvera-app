@@ -2,7 +2,7 @@ part of "history.dart";
 
 class ImageFavorite {
   final String eid;
-  final String id; // 漫画id
+  final String id; // 书id
   final int ep;
   final String epName;
   final String sourceKey;
@@ -119,7 +119,7 @@ class ImageFavoritesComic {
   String author;
   final String sourceKey;
 
-  // 不一定是真的这本漫画的所有页数, 如果是多章节的时候
+  // 不一定是真的这本书的所有页数, 如果是多章节的时候
   int maxPage;
   List<String> tags;
   List<String> translatedTags;
@@ -215,7 +215,7 @@ class ImageFavoritesComic {
 class ImageFavoriteManager with ChangeNotifier {
   Database get _db => HistoryManager()._db;
 
-  List<ImageFavoritesComic> get comics => getAll();
+  List<ImageFavoritesComic> get books => getAll();
 
   static ImageFavoriteManager? _cache;
 
@@ -312,11 +312,11 @@ class ImageFavoriteManager with ChangeNotifier {
   }
 
   bool has(String id, String sourceKey, String eid, int page, int ep) {
-    var comic = find(id, sourceKey);
-    if (comic == null) {
+    var book = find(id, sourceKey);
+    if (book == null) {
       return false;
     }
-    var epIndex = comic.imageFavoritesEp.where((e) => e.eid == eid).firstOrNull;
+    var epIndex = book.imageFavoritesEp.where((e) => e.eid == eid).firstOrNull;
     if (epIndex == null) {
       return false;
     }
@@ -355,26 +355,26 @@ class ImageFavoriteManager with ChangeNotifier {
     for (var i in imageFavoriteList) {
       ImageFavoritesProvider.deleteFromCache(i);
     }
-    var comics = <ImageFavoritesComic>{};
+    var books = <ImageFavoritesComic>{};
     for (var i in imageFavoriteList) {
-      var comic = comics
+      var book = books
               .where((c) => c.id == i.id && c.sourceKey == i.sourceKey)
               .firstOrNull ??
           find(i.id, i.sourceKey);
-      if (comic == null) {
+      if (book == null) {
         continue;
       }
-      var ep = comic.imageFavoritesEp.firstWhereOrNull((e) => e.ep == i.ep);
+      var ep = book.imageFavoritesEp.firstWhereOrNull((e) => e.ep == i.ep);
       if (ep == null) {
         continue;
       }
       ep.imageFavorites.remove(i);
       if (ep.imageFavorites.isEmpty) {
-        comic.imageFavoritesEp.remove(ep);
+        book.imageFavoritesEp.remove(ep);
       }
-      comics.add(comic);
+      books.add(book);
     }
-    for (var i in comics) {
+    for (var i in books) {
       addOrUpdateOrDelete(i, false);
     }
     notifyListeners();
@@ -412,7 +412,7 @@ class ImageFavoriteManager with ChangeNotifier {
   static ImageFavoritesComputed _computeImageFavorites() {
     const maxLength = 20;
 
-    var comics = ImageFavoriteManager().getAll();
+    var books = ImageFavoriteManager().getAll();
     // 去掉这些没有意义的标签
     const List<String> exceptTags = [
       '連載中',
@@ -434,29 +434,29 @@ class ImageFavoriteManager with ChangeNotifier {
 
     Map<String, int> tagCount = {};
     Map<String, int> authorCount = {};
-    Map<ImageFavoritesComic, int> comicImageCount = {};
-    Map<ImageFavoritesComic, int> comicMaxPages = {};
+    Map<ImageFavoritesComic, int> bookImageCount = {};
+    Map<ImageFavoritesComic, int> bookMaxPages = {};
     int count = 0;
 
-    for (var comic in comics) {
-      count += comic.images.length;
-      for (var tag in comic.tags) {
+    for (var book in books) {
+      count += book.images.length;
+      for (var tag in book.tags) {
         String finalTag = tag.split(":").last;
         tagCount[finalTag] = (tagCount[finalTag] ?? 0) + 1;
       }
 
-      if (comic.author != "") {
-        String finalAuthor = comic.author;
+      if (book.author != "") {
+        String finalAuthor = book.author;
         authorCount[finalAuthor] =
-            (authorCount[finalAuthor] ?? 0) + comic.images.length;
+            (authorCount[finalAuthor] ?? 0) + book.images.length;
       }
-      // 小于10页的漫画不统计
-      if (comic.maxPageFromEp < 10) {
+      // 小于10页的书不统计
+      if (book.maxPageFromEp < 10) {
         continue;
       }
-      comicImageCount[comic] =
-          (comicImageCount[comic] ?? 0) + comic.images.length;
-      comicMaxPages[comic] = (comicMaxPages[comic] ?? 0) + comic.maxPageFromEp;
+      bookImageCount[book] =
+          (bookImageCount[book] ?? 0) + book.images.length;
+      bookMaxPages[book] = (bookMaxPages[book] ?? 0) + book.maxPageFromEp;
     }
 
     // 按数量排序标签
@@ -467,9 +467,9 @@ class ImageFavoriteManager with ChangeNotifier {
     List<String> sortedAuthors = authorCount.keys.toList()
       ..sort((a, b) => authorCount[b]!.compareTo(authorCount[a]!));
 
-    // 按收藏数量排序漫画
-    List<MapEntry<ImageFavoritesComic, int>> sortedComicsByNum =
-        comicImageCount.entries.toList()
+    // 按收藏数量排序书
+    List<MapEntry<ImageFavoritesComic, int>> sortedBooksByNum =
+        bookImageCount.entries.toList()
           ..sort((a, b) => b.value.compareTo(a.value));
 
     validateTag(String tag) {
@@ -490,8 +490,8 @@ class ImageFavoriteManager with ChangeNotifier {
           .map((author) => TextWithCount(author, authorCount[author]!))
           .take(maxLength)
           .toList(),
-      sortedComicsByNum
-          .map((comic) => TextWithCount(comic.key.title, comic.value))
+      sortedBooksByNum
+          .map((book) => TextWithCount(book.key.title, book.value))
           .take(maxLength)
           .toList(),
       count,
@@ -525,7 +525,7 @@ class ImageFavoritesComputed {
   final List<TextWithCount> authors;
 
   /// 基于喜欢的图片数排序
-  final List<TextWithCount> comics;
+  final List<TextWithCount> books;
 
   final int count;
 
@@ -533,9 +533,9 @@ class ImageFavoritesComputed {
   const ImageFavoritesComputed(
     this.tags,
     this.authors,
-    this.comics,
+    this.books,
     this.count,
   );
 
-  bool get isEmpty => tags.isEmpty && authors.isEmpty && comics.isEmpty;
+  bool get isEmpty => tags.isEmpty && authors.isEmpty && books.isEmpty;
 }

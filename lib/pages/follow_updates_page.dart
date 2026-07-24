@@ -121,12 +121,12 @@ class FollowUpdatesPage extends StatefulWidget {
 class _FollowUpdatesPageState extends AutomaticGlobalState<FollowUpdatesPage> {
   String? get folder => appdata.settings["followUpdatesFolder"];
 
-  var updatedComics = <FavoriteItemWithUpdateInfo>[];
-  var allComics = <FavoriteItemWithUpdateInfo>[];
+  var updatedBooks = <FavoriteItemWithUpdateInfo>[];
+  var allBooks = <FavoriteItemWithUpdateInfo>[];
 
-  /// Sort comics by update time in descending order with nulls at the end.
-  void sortComics() {
-    allComics.sort((a, b) {
+  /// Sort books by update time in descending order with nulls at the end.
+  void sortBooks() {
+    allBooks.sort((a, b) {
       if (a.updateTime == null && b.updateTime == null) {
         return 0;
       } else if (a.updateTime == null) {
@@ -153,9 +153,9 @@ class _FollowUpdatesPageState extends AutomaticGlobalState<FollowUpdatesPage> {
   void initState() {
     super.initState();
     if (folder != null) {
-      allComics = LocalFavoritesManager().getComicsWithUpdatesInfo(folder!);
-      sortComics();
-      updatedComics = allComics.where((c) => c.hasNewUpdate).toList();
+      allBooks = LocalFavoritesManager().getBooksWithUpdatesInfo(folder!);
+      sortBooks();
+      updatedBooks = allBooks.where((c) => c.hasNewUpdate).toList();
     }
   }
 
@@ -170,8 +170,8 @@ class _FollowUpdatesPageState extends AutomaticGlobalState<FollowUpdatesPage> {
           else
             buildConfigured(context),
           SliverPadding(padding: const EdgeInsets.only(top: 8)),
-          buildUpdatedComics(),
-          buildAllComics(),
+          buildUpdatedBooks(),
+          buildAllBooks(),
         ],
       ),
     );
@@ -259,7 +259,7 @@ class _FollowUpdatesPageState extends AutomaticGlobalState<FollowUpdatesPage> {
     );
   }
 
-  Widget buildUpdatedComics() {
+  Widget buildUpdatedBooks() {
     return SliverMainAxisGroup(
       slivers: [
         SliverToBoxAdapter(
@@ -283,7 +283,7 @@ class _FollowUpdatesPageState extends AutomaticGlobalState<FollowUpdatesPage> {
                   style: ts.s18,
                 ),
                 const Spacer(),
-                if (updatedComics.isNotEmpty)
+                if (updatedBooks.isNotEmpty)
                   IconButton(
                     icon: Icon(Icons.clear_all),
                     onPressed: () {
@@ -292,10 +292,10 @@ class _FollowUpdatesPageState extends AutomaticGlobalState<FollowUpdatesPage> {
                         title: "Mark all as read".tl,
                         content: "Do you want to mark all as read?".tl,
                         onConfirm: () {
-                          for (var comic in updatedComics) {
+                          for (var book in updatedBooks) {
                             LocalFavoritesManager().markAsRead(
-                              comic.id,
-                              comic.type,
+                              book.id,
+                              book.type,
                             );
                           }
                           updateFollowUpdatesUI();
@@ -308,7 +308,7 @@ class _FollowUpdatesPageState extends AutomaticGlobalState<FollowUpdatesPage> {
             ),
           ),
         ),
-        if (updatedComics.isNotEmpty)
+        if (updatedBooks.isNotEmpty)
           SliverToBoxAdapter(
             child: Text(
                     "The book will be marked as no updates as soon as you read it."
@@ -316,8 +316,8 @@ class _FollowUpdatesPageState extends AutomaticGlobalState<FollowUpdatesPage> {
                 .paddingHorizontal(16)
                 .paddingVertical(4),
           ),
-        if (updatedComics.isNotEmpty)
-          SliverGridComics(comics: updatedComics)
+        if (updatedBooks.isNotEmpty)
+          SliverGridBooks(books: updatedBooks)
         else
           SliverToBoxAdapter(
             child: Row(
@@ -348,7 +348,7 @@ class _FollowUpdatesPageState extends AutomaticGlobalState<FollowUpdatesPage> {
     );
   }
 
-  Widget buildAllComics() {
+  Widget buildAllBooks() {
     return SliverMainAxisGroup(
       slivers: [
         SliverToBoxAdapter(
@@ -375,7 +375,7 @@ class _FollowUpdatesPageState extends AutomaticGlobalState<FollowUpdatesPage> {
             ),
           ),
         ),
-        SliverGridComics(comics: allComics),
+        SliverGridBooks(books: allBooks),
       ],
     );
   }
@@ -473,9 +473,9 @@ class _FollowUpdatesPageState extends AutomaticGlobalState<FollowUpdatesPage> {
 
     setState(() {
       appdata.settings["followUpdatesFolder"] = folder;
-      updatedComics = [];
-      allComics = LocalFavoritesManager().getComicsWithUpdatesInfo(folder);
-      sortComics();
+      updatedBooks = [];
+      allBooks = LocalFavoritesManager().getBooksWithUpdatesInfo(folder);
+      sortBooks();
     });
     appdata.saveData();
   }
@@ -510,22 +510,22 @@ class _FollowUpdatesPageState extends AutomaticGlobalState<FollowUpdatesPage> {
 
     if (updated > 0) {
       GlobalState.findOrNull<_FollowUpdatesWidgetState>()?.updateCount();
-      updateComics();
+      updateBooks();
     }
   }
 
-  void updateComics() {
+  void updateBooks() {
     if (folder == null) {
       setState(() {
-        allComics = [];
-        updatedComics = [];
+        allBooks = [];
+        updatedBooks = [];
       });
       return;
     }
     setState(() {
-      allComics = LocalFavoritesManager().getComicsWithUpdatesInfo(folder!);
-      sortComics();
-      updatedComics = allComics.where((c) => c.hasNewUpdate).toList();
+      allBooks = LocalFavoritesManager().getBooksWithUpdatesInfo(folder!);
+      sortBooks();
+      updatedBooks = allBooks.where((c) => c.hasNewUpdate).toList();
     });
   }
 
@@ -583,7 +583,7 @@ abstract class FollowUpdatesService {
     _isInitialized = true;
     _check();
     DataSync().addListener(updateFollowUpdatesUI);
-    // A short interval will not affect the performance since every comic has a check time.
+    // A short interval will not affect the performance since every book has a check time.
     Timer.periodic(const Duration(minutes: 10), (timer) {
       _check();
     });
@@ -593,5 +593,5 @@ abstract class FollowUpdatesService {
 /// Update the UI of follow updates.
 void updateFollowUpdatesUI() {
   GlobalState.findOrNull<_FollowUpdatesWidgetState>()?.updateCount();
-  GlobalState.findOrNull<_FollowUpdatesPageState>()?.updateComics();
+  GlobalState.findOrNull<_FollowUpdatesPageState>()?.updateBooks();
 }

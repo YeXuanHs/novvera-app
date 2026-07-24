@@ -1,4 +1,4 @@
-part of 'comic_page.dart';
+part of 'book_page.dart';
 
 class _FavoritePanel extends StatefulWidget {
   const _FavoritePanel({
@@ -12,11 +12,11 @@ class _FavoritePanel extends StatefulWidget {
 
   final String cid;
 
-  final ComicType type;
+  final BookType type;
 
-  /// whether the comic is in the network favorite list
+  /// whether the book is in the network favorite list
   ///
-  /// if null, the comic source does not support favorite or support multiple favorite lists
+  /// if null, the book source does not support favorite or support multiple favorite lists
   final bool? isFavorite;
 
   final void Function(bool?, bool?) onFavorite;
@@ -31,7 +31,7 @@ class _FavoritePanel extends StatefulWidget {
 
 class _FavoritePanelState extends State<_FavoritePanel>
     with SingleTickerProviderStateMixin {
-  late ComicSource comicSource;
+  late BookSource bookSource;
 
   late bool hasNetwork;
 
@@ -41,10 +41,10 @@ class _FavoritePanelState extends State<_FavoritePanel>
 
   @override
   void initState() {
-    comicSource = widget.type.comicSource!;
+    bookSource = widget.type.bookSource!;
     localFolders = LocalFavoritesManager().folderNames;
     added = LocalFavoritesManager().find(widget.cid, widget.type);
-    hasNetwork = comicSource.favoriteData != null && comicSource.isLogged;
+    hasNetwork = bookSource.favoriteData != null && bookSource.isLogged;
     super.initState();
   }
 
@@ -59,7 +59,7 @@ class _FavoritePanelState extends State<_FavoritePanel>
         onFavorite: widget.onFavorite,
         favoriteItem: widget.favoriteItem,
         updateTime: widget.updateTime,
-        comicSource: comicSource,
+        bookSource: bookSource,
         hasNetwork: hasNetwork,
         localFolders: localFolders,
         added: added,
@@ -76,19 +76,19 @@ class _FavoriteList extends StatefulWidget {
     required this.onFavorite,
     required this.favoriteItem,
     this.updateTime,
-    required this.comicSource,
+    required this.bookSource,
     required this.hasNetwork,
     required this.localFolders,
     required this.added,
   });
 
   final String cid;
-  final ComicType type;
+  final BookType type;
   final bool? isFavorite;
   final void Function(bool?, bool?) onFavorite;
   final FavoriteItem favoriteItem;
   final String? updateTime;
-  final ComicSource comicSource;
+  final BookSource bookSource;
   final bool hasNetwork;
   final List<String> localFolders;
   final List<String> added;
@@ -117,7 +117,7 @@ class _FavoriteListState extends State<_FavoriteList> {
     final networkSection = widget.hasNetwork
         ? _NetworkSection(
             cid: widget.cid,
-            comicSource: widget.comicSource,
+            bookSource: widget.bookSource,
             isFavorite: widget.isFavorite,
             onFavorite: (network) {
               widget.onFavorite(null, network);
@@ -150,13 +150,13 @@ class _FavoriteListState extends State<_FavoriteList> {
 class _NetworkSection extends StatefulWidget {
   const _NetworkSection({
     required this.cid,
-    required this.comicSource,
+    required this.bookSource,
     required this.isFavorite,
     required this.onFavorite,
   });
 
   final String cid;
-  final ComicSource comicSource;
+  final BookSource bookSource;
   final bool? isFavorite;
   final void Function(bool) onFavorite;
 
@@ -178,7 +178,7 @@ class _NetworkSectionState extends State<_NetworkSection> {
     super.initState();
     localIsFavorite = widget.isFavorite;
     _skeletonWidths = List.generate(3, (_) => 0.3 + math.Random().nextDouble() * 0.5);
-    if (widget.comicSource.favoriteData!.loadFolders != null) {
+    if (widget.bookSource.favoriteData!.loadFolders != null) {
       loadFolders();
     } else {
       isLoadingFolders = false;
@@ -186,7 +186,7 @@ class _NetworkSectionState extends State<_NetworkSection> {
   }
 
   void loadFolders() async {
-    var res = await widget.comicSource.favoriteData!.loadFolders!(widget.cid);
+    var res = await widget.bookSource.favoriteData!.loadFolders!(widget.cid);
     if (res.error) {
       context.showMessage(message: res.errorMessage!);
       setState(() {
@@ -268,7 +268,7 @@ class _NetworkSectionState extends State<_NetworkSection> {
       return _buildLoadingSkeleton();
     }
 
-    bool isMultiFolder = widget.comicSource.favoriteData!.loadFolders != null;
+    bool isMultiFolder = widget.bookSource.favoriteData!.loadFolders != null;
 
     if (isMultiFolder) {
       return _buildMultiFolder();
@@ -325,7 +325,7 @@ class _NetworkSectionState extends State<_NetworkSection> {
                     });
 
                     var res = await widget
-                        .comicSource
+                        .bookSource
                         .favoriteData!
                         .addOrDelFavorite!(widget.cid, '', !isFavorite, null);
                     if (res.success) {
@@ -372,8 +372,8 @@ class _NetworkSectionState extends State<_NetworkSection> {
           var isAdded = addedFolders.contains(id);
           // When `singleFolderForSingleComic` is `false`, all add and remove buttons are clickable.
           // When `singleFolderForSingleComic` is `true`, the remove button is always clickable, 
-          // while the add button is only clickable if the comic has not been added to any list.
-          var enabled = !(widget.comicSource.favoriteData!.singleFolderForSingleComic && addedFolders.isNotEmpty && !isAdded);
+          // while the add button is only clickable if the book has not been added to any list.
+          var enabled = !(widget.bookSource.favoriteData!.singleFolderForSingleComic && addedFolders.isNotEmpty && !isAdded);
 
           return ListTile(
             title: Row(
@@ -408,7 +408,7 @@ class _NetworkSectionState extends State<_NetworkSection> {
                         _itemLoading[id] = true;
                       });
                       var res = await widget
-                          .comicSource
+                          .bookSource
                           .favoriteData!
                           .addOrDelFavorite!(widget.cid, id, !isAdded, null);
                       if (res.success) {
@@ -420,7 +420,7 @@ class _NetworkSectionState extends State<_NetworkSection> {
                           } else {
                             addedFolders.add(id);
                           }
-                          // sync local flag for single-folder-per-comic logic and parent
+                          // sync local flag for single-folder-per-book logic and parent
                           localIsFavorite = addedFolders.isNotEmpty;
                         });
                         // notify parent so page state updates when closing and reopening panel
@@ -456,7 +456,7 @@ class _LocalSection extends StatefulWidget {
   });
 
   final String cid;
-  final ComicType type;
+  final BookType type;
   final FavoriteItem favoriteItem;
   final String? updateTime;
   final List<String> localFolders;
@@ -519,7 +519,7 @@ class _LocalSectionState extends State<_LocalSection> {
               isFavorite: isAdded,
               onTap: () {
                 if (isAdded) {
-                  LocalFavoritesManager().deleteComicWithId(
+                  LocalFavoritesManager().deleteBookWithId(
                     folder,
                     widget.cid,
                     widget.type,
@@ -529,7 +529,7 @@ class _LocalSectionState extends State<_LocalSection> {
                   });
                   widget.onFavorite(false);
                 } else {
-                  LocalFavoritesManager().addComic(
+                  LocalFavoritesManager().addBook(
                     folder,
                     widget.favoriteItem,
                     null,

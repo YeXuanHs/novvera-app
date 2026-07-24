@@ -7,7 +7,7 @@ import 'package:flutter_saf/flutter_saf.dart';
 import 'package:rhttp/rhttp.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/cache_manager.dart';
-import 'package:novvera/foundation/comic_source/comic_source.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
 import 'package:novvera/foundation/js_engine.dart';
 import 'package:novvera/foundation/log.dart';
 import 'package:novvera/foundation/novel_api/novel_api_client.dart';
@@ -49,14 +49,14 @@ Future<void> init() async {
       AppTranslation.init().wait(),
       TagsTranslation.readData().wait(),
       JsEngine().init().wait(),
-      ComicSourceManager().init().wait(),
+      BookSourceManager().init().wait(),
       OpenCC.init(),
     ];
     await Future.wait(futures);
   } catch (e, s) {
     Log.error("init", "$e\n$s");
   }
-  ComicSourceManager().registerBuiltinPages();
+  BookSourceManager().registerBuiltinPages();
   // wenku8 account is created lazily on first wenku8 website use (home),
   // not at app start — otherwise CF Verify steals focus from other sources.
   CacheManager().setLimitSize(appdata.settings['cacheSize']);
@@ -85,7 +85,7 @@ Future<void> init() async {
 
 void _checkOldConfigs() {
   if (appdata.settings['searchSources'] == null) {
-    appdata.settings['searchSources'] = ComicSource.all()
+    appdata.settings['searchSources'] = BookSource.all()
         .where((e) => e.searchPageData != null)
         .map((e) => e.key)
         .toList();
@@ -103,9 +103,9 @@ void _checkOldConfigs() {
     appdata.writeImplicitData();
   }
 
-  if (appdata.settings['comicSourceListUrl'].toString().contains("git.nyne.dev")) {
+  if (appdata.settings['bookSourceListUrl'].toString().contains("git.nyne.dev")) {
     // migrate to jsdelivr cdn
-    appdata.settings['comicSourceListUrl'] = "https://cdn.jsdelivr.net/gh/venera-app/venera-configs@main/index.json";
+    appdata.settings['bookSourceListUrl'] = "https://cdn.jsdelivr.net/gh/venera-app/venera-configs@main/index.json";
     appdata.saveData();
   }
 }

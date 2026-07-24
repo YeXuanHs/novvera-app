@@ -96,7 +96,7 @@ class _GroupedChaptersView extends StatefulWidget {
 
 class _GroupedChaptersViewState extends State<_GroupedChaptersView>
     with SingleTickerProviderStateMixin {
-  ComicChapters get chapters => widget.reader.widget.chapters!;
+  BookChapters get chapters => widget.reader.widget.chapters!;
 
   late final TabController tabController;
 

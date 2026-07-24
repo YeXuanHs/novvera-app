@@ -10,22 +10,22 @@ import 'package:zip_flutter/zip_flutter.dart';
 
 typedef DecodeImage = Future<Image> Function(Uint8List data);
 
-Future<void> _createPdfFromComic({
-  required LocalComic comic,
+Future<void> _createPdfFromBook({
+  required LocalBook book,
   required String savePath,
   required String localPath,
   required DecodeImage decodeImage,
 }) async {
   var images = <String>[];
 
-  var baseDir = comic.directory.contains('/') || comic.directory.contains('\\')
-      ? comic.directory
-      : FilePath.join(localPath, comic.directory);
+  var baseDir = book.directory.contains('/') || book.directory.contains('\\')
+      ? book.directory
+      : FilePath.join(localPath, book.directory);
 
   // add cover
-  images.add(FilePath.join(baseDir, comic.cover));
+  images.add(FilePath.join(baseDir, book.cover));
 
-  bool multiChapters = comic.chapters != null;
+  bool multiChapters = book.chapters != null;
 
   void reorderFiles(List<FileSystemEntity> files) {
     files.removeWhere(
@@ -50,7 +50,7 @@ Future<void> _createPdfFromComic({
       images.add(file.path);
     }
   } else {
-    for (var chapter in comic.downloadedChapters) {
+    for (var chapter in book.downloadedChapters) {
       var files = Directory(FilePath.join(baseDir, chapter)).listSync();
       reorderFiles(files);
       for (var file in files) {
@@ -60,8 +60,8 @@ Future<void> _createPdfFromComic({
   }
 
   var generator = PdfGenerator(
-    title: comic.title,
-    author: comic.subtitle,
+    title: book.title,
+    author: book.subtitle,
     imagePaths: images,
     outputPath: savePath,
     decodeImage: decodeImage,
@@ -70,7 +70,7 @@ Future<void> _createPdfFromComic({
 }
 
 Future<Isolate> _runIsolate(
-    LocalComic comic, String savePath, SendPort sendPort) {
+    LocalBook book, String savePath, SendPort sendPort) {
   var localPath = LocalManager().path;
   return Isolate.spawn<SendPort>(
     (sendPort) => overrideIO(
@@ -102,8 +102,8 @@ Future<Isolate> _runIsolate(
           }
         });
 
-        await _createPdfFromComic(
-          comic: comic,
+        await _createPdfFromBook(
+          book: book,
           savePath: savePath,
           localPath: localPath,
           decodeImage: decodeImage,
@@ -116,7 +116,7 @@ Future<Isolate> _runIsolate(
   );
 }
 
-Future<File> createPdfFromComicIsolate(LocalComic comic, String savePath) async {
+Future<File> createPdfFromBookIsolate(LocalBook book, String savePath) async {
   var receivePort = ReceivePort();
   SendPort? sendPort;
   Isolate? isolate;
@@ -134,7 +134,7 @@ Future<File> createPdfFromComicIsolate(LocalComic comic, String savePath) async 
       isolate!.kill();
     }
   });
-  isolate = await _runIsolate(comic, savePath, receivePort.sendPort);
+  isolate = await _runIsolate(book, savePath, receivePort.sendPort);
   await completer.future;
   return File(savePath);
 }

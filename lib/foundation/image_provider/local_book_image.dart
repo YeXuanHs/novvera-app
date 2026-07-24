@@ -6,23 +6,23 @@ import 'package:novvera/utils/io.dart';
 import 'base_image_provider.dart';
 import 'local_comic_image.dart' as image_provider;
 
-class LocalComicImageProvider
-    extends BaseImageProvider<image_provider.LocalComicImageProvider> {
+class LocalBookImageProvider
+    extends BaseImageProvider<image_provider.LocalBookImageProvider> {
   /// Image provider for normal image.
   ///
   /// [url] is the url of the image. Local file path is also supported.
-  const LocalComicImageProvider(this.comic);
+  const LocalBookImageProvider(this.book);
 
-  final LocalComic comic;
+  final LocalBook book;
 
   @override
   Future<Uint8List> load(chunkEvents, checkStop) async {
-    File? file = comic.coverFile;
+    File? file = book.coverFile;
     if(! await file.exists()) {
       file = null;
-      var dir = Directory(comic.directory);
+      var dir = Directory(book.directory);
       if (! await dir.exists()) {
-        throw "Error: Comic not found.";
+        throw "Error: Book not found.";
       }
       Directory? firstDir;
       await for (var entity in dir.list()) {
@@ -58,10 +58,10 @@ class LocalComicImageProvider
   }
 
   @override
-  Future<LocalComicImageProvider> obtainKey(ImageConfiguration configuration) {
+  Future<LocalBookImageProvider> obtainKey(ImageConfiguration configuration) {
     return SynchronousFuture(this);
   }
 
   @override
-  String get key => "local${comic.id}${comic.comicType.value}";
+  String get key => "local${book.id}${book.bookType.value}";
 }

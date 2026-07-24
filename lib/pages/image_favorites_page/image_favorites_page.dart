@@ -7,11 +7,11 @@ import 'package:photo_view/photo_view_gallery.dart';
 import 'package:novvera/components/components.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/appdata.dart';
-import 'package:novvera/foundation/comic_source/comic_source.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
 import 'package:novvera/foundation/consts.dart';
 import 'package:novvera/foundation/history.dart';
 import 'package:novvera/foundation/image_provider/image_favorites_provider.dart';
-import 'package:novvera/pages/comic_details_page/comic_page.dart';
+import 'package:novvera/pages/book_details_page/book_page.dart';
 import 'package:novvera/pages/image_favorites_page/type.dart';
 import 'package:novvera/pages/reader/reader.dart';
 import 'package:novvera/utils/ext.dart';
@@ -39,7 +39,7 @@ class _ImageFavoritesPageState extends State<ImageFavoritesPage> {
   late int numFilterSelect;
 
   // 所有的图片收藏
-  List<ImageFavoritesComic> comics = [];
+  List<ImageFavoritesComic> books = [];
 
   late var controller =
       TextEditingController(text: widget.initialKeyword ?? "");
@@ -61,7 +61,7 @@ class _ImageFavoritesPageState extends State<ImageFavoritesPage> {
   }
 
   void updateImageFavorites() async {
-    comics = searchMode
+    books = searchMode
         ? ImageFavoriteManager().search(keyword)
         : ImageFavoriteManager().getAll();
     sortImageFavorites();
@@ -69,11 +69,11 @@ class _ImageFavoritesPageState extends State<ImageFavoritesPage> {
   }
 
   void sortImageFavorites() {
-    comics = searchMode
+    books = searchMode
         ? ImageFavoriteManager().search(keyword)
         : ImageFavoriteManager().getAll();
     // 筛选到最终列表
-    comics = comics.where((ele) {
+    books = books.where((ele) {
       bool isFilter = true;
       if (timeFilterSelect != TimeRange.all) {
         isFilter = timeFilterSelect.contains(ele.time);
@@ -86,16 +86,16 @@ class _ImageFavoritesPageState extends State<ImageFavoritesPage> {
     // 给列表排序
     switch (sortType) {
       case ImageFavoriteSortType.title:
-        comics.sort((a, b) => a.title.compareTo(b.title));
+        books.sort((a, b) => a.title.compareTo(b.title));
       case ImageFavoriteSortType.timeAsc:
-        comics.sort((a, b) => a.time.compareTo(b.time));
+        books.sort((a, b) => a.time.compareTo(b.time));
       case ImageFavoriteSortType.timeDesc:
-        comics.sort((a, b) => b.time.compareTo(a.time));
+        books.sort((a, b) => b.time.compareTo(a.time));
       case ImageFavoriteSortType.maxFavorites:
-        comics.sort((a, b) => b.images.length
+        books.sort((a, b) => b.images.length
             .compareTo(a.images.length));
-      case ImageFavoriteSortType.favoritesCompareComicPages:
-        comics.sort((a, b) {
+      case ImageFavoriteSortType.favoritesCompareBookPages:
+        books.sort((a, b) {
           double tempA = a.images.length / a.maxPageFromEp;
           double tempB = b.images.length / b.maxPageFromEp;
           return tempB.compareTo(tempA);
@@ -147,7 +147,7 @@ class _ImageFavoritesPageState extends State<ImageFavoritesPage> {
   var scrollController = ScrollController();
 
   void selectAll() {
-    for (var c in comics) {
+    for (var c in books) {
       for (var i in c.images) {
         selectedImageFavorites[i] = true;
       }
@@ -280,14 +280,14 @@ class _ImageFavoritesPageState extends State<ImageFavoritesPage> {
           delegate: SliverChildBuilderDelegate(
             (context, index) {
               return _ImageFavoritesItem(
-                imageFavoritesComic: comics[index],
+                imageFavoritesComic: books[index],
                 selectedImageFavorites: selectedImageFavorites,
                 addSelected: addSelected,
                 multiSelectMode: multiSelectMode,
-                finalImageFavoritesComicList: comics,
+                finalImageFavoritesComicList: books,
               );
             },
-            childCount: comics.length,
+            childCount: books.length,
           ),
         ),
         SliverPadding(padding: EdgeInsets.only(top: context.padding.bottom)),

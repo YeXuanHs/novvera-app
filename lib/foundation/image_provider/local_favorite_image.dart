@@ -2,7 +2,7 @@ import 'dart:async' show Future;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:novvera/foundation/app.dart';
-import 'package:novvera/foundation/comic_source/comic_source.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
 import 'package:novvera/network/images.dart';
 import 'package:novvera/utils/io.dart';
 import 'base_image_provider.dart';
@@ -29,7 +29,7 @@ class LocalFavoriteImageProvider
 
   @override
   Future<Uint8List> load(chunkEvents, checkStop) async {
-    var sourceKey = ComicSource.fromIntKey(intKey)?.key;
+    var sourceKey = BookSource.fromIntKey(intKey)?.key;
     var fileName = key.hashCode.toString();
     var file = File(FilePath.join(App.dataPath, 'favorite_cover', fileName));
     if (await file.exists()) {

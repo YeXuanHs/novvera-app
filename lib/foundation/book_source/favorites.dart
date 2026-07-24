@@ -1,7 +1,7 @@
-part of 'comic_source.dart';
+part of 'book_source.dart';
 
 typedef AddOrDelFavFunc = Future<Res<bool>> Function(
-    String comicId, String folderId, bool isAdding, String? favId);
+    String bookId, String folderId, bool isAdding, String? favId);
 
 class FavoriteData {
   final String key;
@@ -14,16 +14,16 @@ class FavoriteData {
   // 如果为 null, 当做从新到旧
   final bool? isOldToNewSort;
 
-  final Future<Res<List<Comic>>> Function(int page, [String? folder])?
-      loadComic;
+  final Future<Res<List<Book>>> Function(int page, [String? folder])?
+      loadBook;
 
-  final Future<Res<List<Comic>>> Function(String? next, [String? folder])?
+  final Future<Res<List<Book>>> Function(String? next, [String? folder])?
       loadNext;
 
   /// key-id, value-name
   ///
-  /// if comicId is not null, Res.subData is the folders that the comic is in
-  final Future<Res<Map<String, String>>> Function([String? comicId])?
+  /// if bookId is not null, Res.subData is the folders that the book is in
+  final Future<Res<Map<String, String>>> Function([String? bookId])?
       loadFolders;
 
   /// A value of null disables this feature
@@ -37,13 +37,13 @@ class FavoriteData {
 
   final AddOrDelFavFunc? addOrDelFavorite;
 
-  final bool singleFolderForSingleComic;
+  final bool singleFolderForSingleBook;
 
   const FavoriteData({
     required this.key,
     required this.title,
     required this.multiFolder,
-    required this.loadComic,
+    required this.loadBook,
     required this.loadNext,
     this.loadFolders,
     this.deleteFolder,
@@ -51,16 +51,16 @@ class FavoriteData {
     this.allFavoritesId,
     this.addOrDelFavorite,
     this.isOldToNewSort,
-    this.singleFolderForSingleComic = false,
+    this.singleFolderForSingleBook = false,
   });
 }
 
 FavoriteData getFavoriteData(String key) {
-  var source = ComicSource.find(key) ?? (throw "Unknown source key: $key");
+  var source = BookSource.find(key) ?? (throw "Unknown source key: $key");
   return source.favoriteData!;
 }
 
 FavoriteData? getFavoriteDataOrNull(String key) {
-  var source = ComicSource.find(key);
+  var source = BookSource.find(key);
   return source?.favoriteData;
 }

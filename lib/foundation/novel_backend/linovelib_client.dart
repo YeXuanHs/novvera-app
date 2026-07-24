@@ -772,7 +772,7 @@ class LinovelibClient {
     if (!hollow && cover.isEmpty) {
       cover = linovelibCoverUrl(aid);
     }
-    // Only fields consumed by _loadComicInfo / cards. No 分类.
+    // Only fields consumed by _loadBookInfo / cards. No 分类.
     final data = <String, dynamic>{
       'aid': aid,
       'name': name.isEmpty ? '小说_$aid' : name,

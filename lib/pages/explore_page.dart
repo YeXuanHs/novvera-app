@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:novvera/components/components.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/appdata.dart';
-import 'package:novvera/foundation/comic_source/comic_source.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
 import 'package:novvera/foundation/global_state.dart';
 import 'package:novvera/foundation/res.dart';
 import 'package:novvera/pages/settings/settings_page.dart';
@@ -28,7 +28,7 @@ class _ExplorePageState extends State<ExplorePage>
 
   void onSettingsChanged() {
     var explorePages = List<String>.from(appdata.settings["explore_pages"]);
-    var all = ComicSource.all()
+    var all = BookSource.all()
         .map((e) => e.explorePages)
         .expand((e) => e.map((e) => e.title))
         .toList();
@@ -61,7 +61,7 @@ class _ExplorePageState extends State<ExplorePage>
   @override
   void initState() {
     pages = List<String>.from(appdata.settings["explore_pages"]);
-    var all = ComicSource.all()
+    var all = BookSource.all()
         .map((e) => e.explorePages)
         .expand((e) => e.map((e) => e.title))
         .toList();
@@ -105,9 +105,9 @@ class _ExplorePageState extends State<ExplorePage>
       );
 
   Tab buildTab(String i) {
-    var comicSource = ComicSource.all()
+    var bookSource = BookSource.all()
         .firstWhere((e) => e.explorePages.any((e) => e.title == i));
-    return Tab(text: i.ts(comicSource.key), key: Key(i));
+    return Tab(text: i.ts(bookSource.key), key: Key(i));
   }
 
   Widget buildBody(String i) => Material(
@@ -118,7 +118,7 @@ class _ExplorePageState extends State<ExplorePage>
     var msg = "No Explore Pages".tl;
     msg += '\n';
     VoidCallback onTap;
-    if (ComicSource.isEmpty) {
+    if (BookSource.isEmpty) {
       msg += "Please wait for sources to load".tl;
       onTap = () => setState(() {});
     } else {
@@ -129,7 +129,7 @@ class _ExplorePageState extends State<ExplorePage>
       message: msg,
       retry: onTap,
       withAppbar: false,
-      buttonText: ComicSource.isEmpty ? "Retry".tl : "Manage".tl,
+      buttonText: BookSource.isEmpty ? "Retry".tl : "Manage".tl,
     );
   }
 
@@ -235,7 +235,7 @@ class _SingleExplorePageState extends AutomaticGlobalState<_SingleExplorePage>
     with AutomaticKeepAliveClientMixin<_SingleExplorePage> {
   late final ExplorePageData data;
 
-  late final String comicSourceKey;
+  late final String bookSourceKey;
 
   bool _wantKeepAlive = true;
 
@@ -254,11 +254,11 @@ class _SingleExplorePageState extends AutomaticGlobalState<_SingleExplorePage>
   @override
   void initState() {
     super.initState();
-    for (var source in ComicSource.all()) {
+    for (var source in BookSource.all()) {
       for (var d in source.explorePages) {
         if (d.title == widget.title) {
           data = d;
-          comicSourceKey = source.key;
+          bookSourceKey = source.key;
           return;
         }
       }
@@ -278,20 +278,20 @@ class _SingleExplorePageState extends AutomaticGlobalState<_SingleExplorePage>
     super.build(context);
     if (data.loadMultiPart != null) {
       return _MultiPartExplorePage(
-        key: const PageStorageKey("comic_list"),
+        key: const PageStorageKey("book_list"),
         data: data,
         controller: scrollController,
-        comicSourceKey: comicSourceKey,
+        bookSourceKey: bookSourceKey,
         refreshHandlerCallback: (c) {
           refreshHandler = c;
         },
       );
     } else if (data.loadPage != null || data.loadNext != null) {
-      return ComicList(
+      return BookList(
         enablePageStorage: true,
         loadPage: data.loadPage,
         loadNext: data.loadNext,
-        key: const PageStorageKey("comic_list"),
+        key: const PageStorageKey("book_list"),
         controller: scrollController,
         refreshHandlerCallback: (c) {
           refreshHandler = c;
@@ -300,8 +300,8 @@ class _SingleExplorePageState extends AutomaticGlobalState<_SingleExplorePage>
     } else if (data.loadMixed != null) {
       return _MixedExplorePage(
         data,
-        comicSourceKey,
-        key: const PageStorageKey("comic_list"),
+        bookSourceKey,
+        key: const PageStorageKey("book_list"),
         controller: scrollController,
         refreshHandlerCallback: (c) {
           refreshHandler = c;
@@ -365,12 +365,12 @@ class _MixedExplorePageState
   }
 
   Iterable<Widget> buildSlivers(BuildContext context, List<Object> data) sync* {
-    List<Comic> cache = [];
+    List<Book> cache = [];
     for (var part in data) {
       if (part is ExplorePagePart) {
         if (cache.isNotEmpty) {
-          yield SliverGridComics(
-            comics: (cache),
+          yield SliverGridBooks(
+            books: (cache),
           );
           yield const SliverToBoxAdapter(child: Divider());
           cache.clear();
@@ -378,12 +378,12 @@ class _MixedExplorePageState
         yield* _buildExplorePagePart(part, widget.sourceKey);
         yield const SliverToBoxAdapter(child: Divider());
       } else {
-        cache.addAll(part as List<Comic>);
+        cache.addAll(part as List<Book>);
       }
     }
     if (cache.isNotEmpty) {
-      yield SliverGridComics(
-        comics: (cache),
+      yield SliverGridBooks(
+        books: (cache),
       );
     }
   }
@@ -406,7 +406,7 @@ class _MixedExplorePageState
       return res;
     }
     for (var element in res.data) {
-      if (element is! ExplorePagePart && element is! List<Comic>) {
+      if (element is! ExplorePagePart && element is! List<Book>) {
         return const Res.error("function loadMixed return invalid data");
       }
     }
@@ -445,12 +445,12 @@ Iterable<Widget> _buildExplorePagePart(
     );
   }
 
-  Widget buildComics(ExplorePagePart part) {
-    return SliverGridComics(comics: part.comics);
+  Widget buildBooks(ExplorePagePart part) {
+    return SliverGridBooks(books: part.comics);
   }
 
   yield buildTitle(part);
-  yield buildComics(part);
+  yield buildBooks(part);
 }
 
 class _MultiPartExplorePage extends StatefulWidget {
@@ -458,7 +458,7 @@ class _MultiPartExplorePage extends StatefulWidget {
     super.key,
     required this.data,
     required this.controller,
-    required this.comicSourceKey,
+    required this.bookSourceKey,
     required this.refreshHandlerCallback,
   });
 
@@ -466,7 +466,7 @@ class _MultiPartExplorePage extends StatefulWidget {
 
   final ScrollController controller;
 
-  final String comicSourceKey;
+  final String bookSourceKey;
 
   final void Function(VoidCallback c) refreshHandlerCallback;
 
@@ -570,7 +570,7 @@ class _MultiPartExplorePageState extends State<_MultiPartExplorePage> {
 
   Iterable<Widget> _buildPage() sync* {
     for (var part in parts!) {
-      yield* _buildExplorePagePart(part, widget.comicSourceKey);
+      yield* _buildExplorePagePart(part, widget.bookSourceKey);
     }
   }
 }

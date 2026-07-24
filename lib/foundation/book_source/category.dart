@@ -1,4 +1,4 @@
-part of 'comic_source.dart';
+part of 'book_source.dart';
 
 class CategoryData {
   /// The title is displayed in the tab bar.
@@ -134,7 +134,7 @@ class DynamicCategoryPart extends BaseCategoryPart {
 }
 
 CategoryData getCategoryDataWithKey(String key) {
-  for (var source in ComicSource.all()) {
+  for (var source in BookSource.all()) {
     if (source.categoryData?.key == key) {
       return source.categoryData!;
     }

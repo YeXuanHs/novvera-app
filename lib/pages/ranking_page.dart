@@ -1,7 +1,7 @@
 import "package:flutter/material.dart";
 import "package:novvera/components/components.dart";
 import "package:novvera/foundation/app.dart";
-import "package:novvera/foundation/comic_source/comic_source.dart";
+import "package:novvera/foundation/book_source/book_source.dart";
 import "package:novvera/utils/translations.dart";
 
 class RankingPage extends StatefulWidget {
@@ -14,12 +14,12 @@ class RankingPage extends StatefulWidget {
 }
 
 class _RankingPageState extends State<RankingPage> {
-  late final CategoryComicsData data;
+  late final CategoryBooksData data;
   late final Map<String, String> options;
   late String optionValue;
 
   void findData() {
-    for (final source in ComicSource.all()) {
+    for (final source in BookSource.all()) {
       if (source.categoryData?.key == widget.categoryKey) {
         data = source.categoryComicsData!;
         options = data.rankingData!.options;
@@ -44,7 +44,7 @@ class _RankingPageState extends State<RankingPage> {
       appBar: Appbar(
         title: Text("Ranking".tl),
       ),
-      body: ComicList(
+      body: BookList(
         key: Key(optionValue),
         errorLeading: SizedBox(height: topPadding),
         leadingSliver:
