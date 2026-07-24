@@ -227,7 +227,12 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
 
   // windows version of package `flutter_inappwebview` cannot get some cookies
   // Using DesktopWebview instead
+  // Only finish after we *saw* a challenge UI then it cleared.
+  // Closing on "no challenge + leftover cookie" causes the verify loop:
+  // Dio TLS ≠ WebView TLS, so cf_clearance from Verify often cannot authorize
+  // Dio — retry fails → open Verify again → page already clear → instant exit.
   if (App.isLinux) {
+    var sawChallenge = false;
     var webview = DesktopWebview(
       initialUrl: url,
       onTitleChange: (title, controller) async {
@@ -245,26 +250,30 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
             body.contains("window._cf_chl_opt") ||
             title.contains('Just a moment') ||
             title.contains('Attention Required');
-        if (!isChallenging) {
+        if (isChallenging) {
+          sawChallenge = true;
+          return;
+        }
+        if (!sawChallenge) {
           Log.info(
             "Cloudflare",
-            "No challenge UI on page — waiting for cf_clearance cookie "
-            "(homepage often has no CF widget to click)",
+            "No challenge UI yet — keep Verify open (do not auto-close)",
           );
-          var ua = controller.userAgent;
-          if (ua != null) {
-            appdata.implicitData['ua'] = ua;
-            appdata.writeImplicitData();
-          }
-          var cookiesMap = await controller.getCookies(url);
-          if (cookiesMap['cf_clearance'] == null) {
-            return;
-          }
-          _purgeJarCfClearance(uri);
-          saveCookies(cookiesMap);
-          controller.close();
-          onFinished();
+          return;
         }
+        var ua = controller.userAgent;
+        if (ua != null) {
+          appdata.implicitData['ua'] = ua;
+          appdata.writeImplicitData();
+        }
+        var cookiesMap = await controller.getCookies(url);
+        if (cookiesMap['cf_clearance'] == null) {
+          return;
+        }
+        _purgeJarCfClearance(uri);
+        saveCookies(cookiesMap);
+        controller.close();
+        onFinished();
       },
       onClose: onFinished,
     );
@@ -272,6 +281,7 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
   } else {
     bool success = false;
     var clearedWebView = false;
+    var sawChallenge = false;
     void check(InAppWebViewController controller) async {
       try {
         var head = await controller.evaluateJavascript(
@@ -287,30 +297,34 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
             body.contains("window._cf_chl_opt") ||
             title.contains('Just a moment') ||
             title.contains('Attention Required');
-        if (!isChallenging) {
+        if (isChallenging) {
+          sawChallenge = true;
+          return;
+        }
+        if (!sawChallenge) {
           Log.info(
             "Cloudflare",
-            "No challenge UI on page — waiting for cf_clearance cookie "
-            "(homepage often has no CF widget to click)",
+            "No challenge UI yet — keep Verify open (do not auto-close)",
           );
-          var ua = await controller.getUA();
-          if (ua != null) {
-            appdata.implicitData['ua'] = ua;
-            appdata.writeImplicitData();
-          }
-          var cookies = await controller.getCookies(url) ?? [];
-          if (cookies.firstWhereOrNull(
-                  (element) => element.name == 'cf_clearance') ==
-              null) {
-            return;
-          }
-          // Replace any stale jar clearance only after a fresh one is in hand.
-          _purgeJarCfClearance(uri);
-          SingleInstanceCookieJar.instance?.saveFromResponse(uri, cookies);
-          if (!success) {
-            App.rootPop();
-            success = true;
-          }
+          return;
+        }
+        var ua = await controller.getUA();
+        if (ua != null) {
+          appdata.implicitData['ua'] = ua;
+          appdata.writeImplicitData();
+        }
+        var cookies = await controller.getCookies(url) ?? [];
+        if (cookies.firstWhereOrNull(
+                (element) => element.name == 'cf_clearance') ==
+            null) {
+          return;
+        }
+        // Replace any stale jar clearance only after a fresh one is in hand.
+        _purgeJarCfClearance(uri);
+        SingleInstanceCookieJar.instance?.saveFromResponse(uri, cookies);
+        if (!success) {
+          App.rootPop();
+          success = true;
         }
       } catch (err, st) {
         Log.error('Cloudflare', 'Verify check failed\n$err\n$st');

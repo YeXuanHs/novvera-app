@@ -88,13 +88,104 @@ class LinovelibClient {
         DateTime.now().difference(_sessionAt!) < const Duration(minutes: 25)) {
       return true;
     }
-    await _http.getHtml('$_base/');
+    await _getHtml('$_base/');
     _sessionReady = true;
     _sessionAt = DateTime.now();
     try {
       await passSearchGuard();
     } catch (_) {}
     return true;
+  }
+
+  bool _isCfHtml(String html) {
+    final lower = html.toLowerCase();
+    return lower.contains('just a moment') ||
+        lower.contains('attention required') ||
+        lower.contains('challenge-platform') ||
+        html.contains('window._cf_chl_opt') ||
+        html.contains('cf-browser-verification');
+  }
+
+  /// Dio GET with WebView fallback. Verify-minted `cf_clearance` is TLS-bound
+  /// to the browser fingerprint and often cannot authorize Dio on Android —
+  /// without this fallback the Verify button loops forever.
+  Future<({int status, String html, String url})> _getHtml(String url) async {
+    try {
+      final res = await _http.getHtml(url);
+      if (_isCfHtml(res.html)) {
+        throw CloudflareException(url);
+      }
+      return res;
+    } on CloudflareException catch (e) {
+      Log.warning(
+        'Linovelib',
+        'Dio GET CF ($e); WebView HTML fallback',
+      );
+      final html = await _fetchHtmlViaWebView(url);
+      return (status: 200, html: html, url: url);
+    }
+  }
+
+  Future<String> _fetchHtmlViaWebView(String url) async {
+    final completer = Completer<String>();
+    final ua = (appdata.implicitData['ua'] is String &&
+            (appdata.implicitData['ua'] as String).isNotEmpty)
+        ? appdata.implicitData['ua'] as String
+        : webUA;
+
+    late final HeadlessInAppWebView headless;
+    headless = HeadlessInAppWebView(
+      webViewEnvironment: AppWebview.webViewEnvironment,
+      initialSettings: InAppWebViewSettings(
+        userAgent: ua,
+        javaScriptEnabled: true,
+        thirdPartyCookiesEnabled: true,
+      ),
+      initialUrlRequest: URLRequest(url: WebUri(url)),
+      onLoadStop: (controller, loadedUrl) async {
+        if (completer.isCompleted) return;
+        try {
+          await _injectJarCookies(controller);
+          final html = await controller.evaluateJavascript(
+            source: 'document.documentElement.outerHTML',
+          );
+          if (html is! String || html.length < 200) return;
+          if (_isCfHtml(html)) {
+            // Still on interstitial — wait for next navigation.
+            return;
+          }
+          final cookies = await controller.getCookies('$_base/');
+          if (cookies != null && cookies.isNotEmpty) {
+            SingleInstanceCookieJar.instance
+                ?.saveFromResponse(Uri.parse('$_base/'), cookies);
+          }
+          final nextUa = await controller.getUA();
+          if (nextUa != null && nextUa.isNotEmpty) {
+            appdata.implicitData['ua'] = nextUa;
+            appdata.writeImplicitData();
+          }
+          if (!completer.isCompleted) completer.complete(html);
+          await headless.dispose();
+        } catch (e, s) {
+          Log.error('Linovelib', 'WebView HTML: $e\n$s');
+          if (!completer.isCompleted) completer.completeError(e);
+          try {
+            await headless.dispose();
+          } catch (_) {}
+        }
+      },
+    );
+
+    await headless.run();
+    try {
+      return await completer.future.timeout(const Duration(seconds: 45));
+    } on TimeoutException {
+      try {
+        await headless.dispose();
+      } catch (_) {}
+      // Still challenged — surface Verify for interactive solve, then retry.
+      throw CloudflareException(url);
+    }
   }
 
   String _extractAid(String href) {
@@ -160,7 +251,7 @@ class LinovelibClient {
     await ensureSession();
     final path =
         (_rankPaths[type] ?? _rankPaths['monthvisit']!).replaceAll('{page}', '$page');
-    final res = await _http.getHtml('$_base$path');
+    final res = await _getHtml('$_base$path');
     final doc = parseHtml(res.html);
     final items = _parseRank(doc);
     final pagerMax = parseHtmlMaxPage(doc);
@@ -183,7 +274,7 @@ class LinovelibClient {
   /// Homepage recommendation blocks (.top-title / .top-title-two).
   Future<Map<String, dynamic>> home() async {
     await ensureSession();
-    final res = await _http.getHtml('$_base/');
+    final res = await _getHtml('$_base/');
     final doc = parseHtml(res.html);
     final sections = <Map<String, dynamic>>[];
     final seenTitles = <String>{};
@@ -367,7 +458,7 @@ class LinovelibClient {
     if (type == 'author') {
       final url =
           '$_base/authorarticle/${Uri.encodeComponent(keyword)}.html';
-      final res = await _http.getHtml(url);
+      final res = await _getHtml(url);
       var items = _parseSearch(parseHtml(res.html));
       if (items.isEmpty) {
         final seen = <String>{};
@@ -672,7 +763,7 @@ class LinovelibClient {
 
   Future<Map<String, dynamic>> bookDetail(String aid) async {
     if (_bookCache.containsKey(aid)) return Map.from(_bookCache[aid]!);
-    final res = await _http.getHtml('$_base/novel/$aid.html');
+    final res = await _getHtml('$_base/novel/$aid.html');
     final doc = parseHtml(res.html);
     var name = _meta(doc, ['og:novel:book_name', 'og:title']) ?? '';
     if (name.isEmpty) {
@@ -740,7 +831,7 @@ class LinovelibClient {
     if (_catalogCache.containsKey(aid)) {
       return _catalogSummary(_catalogCache[aid]!);
     }
-    final res = await _http.getHtml('$_base/novel/$aid/catalog');
+    final res = await _getHtml('$_base/novel/$aid/catalog');
     final doc = parseHtml(res.html);
     var title = _meta(doc, ['og:novel:book_name', 'og:title']) ?? '';
     if (title.isEmpty) {
@@ -949,7 +1040,7 @@ class LinovelibClient {
     final seen = <String>{};
     while (url.isNotEmpty && !seen.contains(url)) {
       seen.add(url);
-      final res = await _http.getHtml(url);
+      final res = await _getHtml(url);
       final page = _parseChapterPage(res.html, cid);
       if (pageTitle.isEmpty) {
         pageTitle = (page['page_title'] as String?) ?? '';
