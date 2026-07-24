@@ -386,6 +386,16 @@ class HuanmengClient {
     if (t.contains('书籍已下架') || t.contains('因版权问题')) return true;
     if (t.contains('书籍下架通知')) return true;
     if (t.contains('aifun.ltd') || t.contains('AI风月')) return true;
+    // Probabilistic end-of-chapter ad (link3.cc / 总链接 / 免责声明).
+    if (t.contains('link3.cc') || t.contains('acg123')) return true;
+    if (t.contains('总链接') &&
+        (t.contains('轻小说') || t.contains('动漫') || t.contains('漫画'))) {
+      return true;
+    }
+    if (t.contains('仅供个人学习交流') || t.contains('禁作商业用途')) {
+      return true;
+    }
+    if (t.contains('本站不承担任何责任')) return true;
     return false;
   }
 
@@ -591,8 +601,36 @@ class HuanmengClient {
     };
   }
 
+  /// bookapi sometimes returns real `<img>`, sometimes entity-escaped
+  /// `&lt;img src=&quot;...&quot;&gt;` (illustration chapters). Normalize the
+  /// escaped form so the DOM parser can see tags; leave already-raw HTML alone.
+  String _normalizeContentHtml(String html) {
+    if (!html.contains('&lt;') && !html.contains('&#60;')) return html;
+    return html
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&#60;', '<')
+        .replaceAll('&#62;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#34;', '"')
+        .replaceAll('&#39;', "'")
+        .replaceAll('&amp;', '&');
+  }
+
+  /// Pull image URLs from both raw and still-escaped markup.
+  void _collectImgSrcs(String raw, void Function(String? src) addImg) {
+    final re = RegExp(
+      r'''(?:data-src|data-original|src)\s*=\s*(?:&quot;|&#34;|["'])([^"'&]+)(?:&quot;|&#34;|["'])''',
+      caseSensitive: false,
+    );
+    for (final m in re.allMatches(raw)) {
+      addImg(m.group(1));
+    }
+  }
+
   Map<String, dynamic> _parseContentHtml(String html, String fallbackTitle) {
-    final doc = html_parser.parse('<div id="root">$html</div>');
+    final normalized = _normalizeContentHtml(html);
+    final doc = html_parser.parse('<div id="root">$normalized</div>');
     final root = doc.querySelector('#root') ?? doc.body;
     final lines = <String>[];
     final images = <String>[];
@@ -611,6 +649,8 @@ class HuanmengClient {
     void addImg(String? src) {
       final u = preferHttps(absUrl(_base, src));
       if (u.isEmpty) return;
+      // Skip ad / watermark image hosts if any slip through as "text".
+      if (u.contains('aifun.ltd')) return;
       if (!images.contains(u)) images.add(u);
       if (!lines.contains(u)) lines.add(u);
     }
@@ -625,7 +665,7 @@ class HuanmengClient {
       }
       addText(p.text);
     }
-    if (lines.isEmpty) {
+    if (images.isEmpty) {
       for (final img in root.querySelectorAll('img')) {
         addImg(
           img.attributes['data-src'] ??
@@ -633,7 +673,14 @@ class HuanmengClient {
               img.attributes['src'],
         );
       }
-      if (lines.isEmpty) addText(root.text);
+    }
+    // Escaped illustration chapters: regex fallback on original + normalized.
+    if (images.isEmpty) {
+      _collectImgSrcs(html, addImg);
+      _collectImgSrcs(normalized, addImg);
+    }
+    if (lines.isEmpty && images.isEmpty) {
+      addText(root.text);
     }
     return {
       'page_title': fallbackTitle,
