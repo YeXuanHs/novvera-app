@@ -259,6 +259,7 @@ class NovelHttp {
       final bytes = Uint8List.fromList(res.data ?? const []);
       final html = decodeHtmlBytes(bytes, preferGbk: preferGbk);
       final finalUrl = res.realUri.toString();
+      throwIfSliderOrHumanCheck(finalUrl.isNotEmpty ? finalUrl : url, html);
       return (status: res.statusCode ?? 0, html: html, url: finalUrl);
     });
   }
@@ -286,6 +287,7 @@ class NovelHttp {
       final bytes = Uint8List.fromList(res.data ?? const []);
       final html = decodeHtmlBytes(bytes, preferGbk: preferGbk);
       final finalUrl = res.realUri.toString();
+      throwIfSliderOrHumanCheck(finalUrl.isNotEmpty ? finalUrl : url, html);
       return (status: res.statusCode ?? 0, html: html, url: finalUrl);
     });
   }
@@ -310,10 +312,22 @@ class NovelHttp {
         ),
       );
       final data = res.data;
-      if (data is Map<String, dynamic>) return data;
-      if (data is Map) return Map<String, dynamic>.from(data);
+      final finalUrl = res.realUri.toString();
+      final checkUrl = finalUrl.isNotEmpty ? finalUrl : url;
+      if (data is Map<String, dynamic>) {
+        // Some anti-CC gates return JSON with a human-check message.
+        final blob = data.toString();
+        throwIfSliderOrHumanCheck(checkUrl, blob);
+        return data;
+      }
+      if (data is Map) {
+        final map = Map<String, dynamic>.from(data);
+        throwIfSliderOrHumanCheck(checkUrl, map.toString());
+        return map;
+      }
       if (data is String) {
         final trimmed = data.trimLeft();
+        throwIfSliderOrHumanCheck(checkUrl, trimmed);
         if (trimmed.startsWith('<') || trimmed.contains('Just a moment')) {
           throw CloudflareException(url);
         }
