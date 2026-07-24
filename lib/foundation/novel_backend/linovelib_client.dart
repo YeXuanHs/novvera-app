@@ -377,6 +377,7 @@ class LinovelibClient {
     }
 
     String html;
+    var finalUrl = '$_base/S6/';
     try {
       var res = await _http.postForm(
         '$_base/S6/',
@@ -400,6 +401,7 @@ class LinovelibClient {
         );
       }
       html = res.html;
+      finalUrl = res.url;
     } on CloudflareException catch (e) {
       // Dio TLS ≠ browser TLS: cf_clearance from Verify cannot authorize Dio POST.
       // Searching inside WebView uses the same fingerprint as the cookie.
@@ -408,11 +410,24 @@ class LinovelibClient {
         'Dio POST /S6/ blocked ($e); falling back to WebView search '
         '(Verify homepage alone cannot fix this)',
       );
-      html = await _searchHtmlViaWebView(keyword);
+      final wv = await _searchHtmlViaWebView(keyword);
+      html = wv.html;
+      finalUrl = wv.url;
     }
 
     final doc = parseHtml(html);
-    final aids = _extractSearchAids(doc);
+    var aids = _extractSearchAids(doc);
+    // Site quirk: exact / unique hit redirects to `/novel/{aid}.html` (no list).
+    if (aids.isEmpty) {
+      final single = _extractAidFromDetailLanding(finalUrl, doc);
+      if (single != null) {
+        Log.info(
+          'Linovelib',
+          'search single-hit redirect → novel/$single.html',
+        );
+        aids = [single];
+      }
+    }
     final items = await _enrichAids(aids);
     final pagerMax = parseHtmlMaxPage(doc);
     final maxPage = inferMaxPage(
@@ -431,9 +446,36 @@ class LinovelibClient {
     };
   }
 
+  /// When search lands on a book detail page (1 match), pull that aid.
+  String? _extractAidFromDetailLanding(String url, Document doc) {
+    final fromUrl = _extractAid(url);
+    if (fromUrl.isNotEmpty) return fromUrl;
+    for (final key in ['og:url', 'og:novel:read_url']) {
+      final v = _meta(doc, [key]);
+      if (v == null || v.isEmpty) continue;
+      final aid = _extractAid(v);
+      if (aid.isNotEmpty) return aid;
+    }
+    final canon =
+        doc.querySelector('link[rel="canonical"]')?.attributes['href'] ?? '';
+    final fromCanon = _extractAid(canon);
+    if (fromCanon.isNotEmpty) return fromCanon;
+    // Detail pages always expose book_name; avoid treating random pages as hits.
+    final name = _meta(doc, ['og:novel:book_name']);
+    if (name == null || name.isEmpty) return null;
+    for (final a in doc.querySelectorAll('a[href*="/novel/"]')) {
+      final aid = _extractAid(a.attributes['href'] ?? '');
+      if (aid.isNotEmpty) return aid;
+    }
+    return null;
+  }
+
   /// Run search_guard + form POST inside WebView (browser TLS + cookies).
-  Future<String> _searchHtmlViaWebView(String keyword) async {
-    final completer = Completer<String>();
+  /// Returns HTML + final URL (may be `/novel/{aid}.html` on a unique hit).
+  Future<({String html, String url})> _searchHtmlViaWebView(
+    String keyword,
+  ) async {
+    final completer = Completer<({String html, String url})>();
     var submitted = false;
     final kwJson = jsonEncode(keyword);
 
@@ -501,7 +543,12 @@ class LinovelibClient {
             // Still on CF interstitial — wait for next loadStop.
             return;
           }
+          // Unique search hit: site redirects to `/novel/{aid}.html`.
+          final singleHit = _aidRe.hasMatch(href) ||
+              html.contains('og:novel:book_name') ||
+              html.contains('property="og:novel:book_name"');
           if (href.contains('/S6') ||
+              singleHit ||
               html.contains('se-result') ||
               html.contains('search-result') ||
               html.contains('没有搜索到') ||
@@ -514,7 +561,9 @@ class LinovelibClient {
             }
             appdata.implicitData['ua'] = _ua;
             appdata.writeImplicitData();
-            if (!completer.isCompleted) completer.complete(html);
+            if (!completer.isCompleted) {
+              completer.complete((html: html, url: href));
+            }
             await headless.dispose();
           }
         } catch (e, s) {
