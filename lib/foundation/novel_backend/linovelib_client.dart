@@ -415,11 +415,23 @@ class LinovelibClient {
     }
 
     final doc = parseHtml(html);
-    var aids = _extractSearchAids(doc);
-    // Site quirk: exact / unique hit redirects to `/novel/{aid}.html` (no list).
-    if (aids.isEmpty) {
-      final single = _extractAidFromDetailLanding(finalUrl, doc);
-      if (single != null) {
+    // Unique hit: site 302s to `/novel/{aid}.html`. That detail page also lists
+    // related books — scraping every /novel/*.html would inflate results.
+    // Prefer the landed book when URL/meta say we are on a detail page.
+    List<String> aids;
+    final single = _extractAidFromDetailLanding(finalUrl, doc);
+    final onDetail = single != null &&
+        _aidRe.hasMatch(finalUrl) &&
+        doc.querySelectorAll('.search-result-list, .se-result-book').isEmpty;
+    if (onDetail) {
+      Log.info(
+        'Linovelib',
+        'search single-hit redirect → novel/$single.html (ignore related links)',
+      );
+      aids = [single];
+    } else {
+      aids = _extractSearchAids(doc);
+      if (aids.isEmpty && single != null) {
         Log.info(
           'Linovelib',
           'search single-hit redirect → novel/$single.html',
@@ -656,34 +668,45 @@ class LinovelibClient {
 
   /// Fill name/author/cover/intro from `/novel/{aid}.html` only ([bookDetail]).
   /// Hollow / error detail pages are dropped (e.g. empty shells in search hits).
-  /// All aids are fetched concurrently (no concurrency cap).
+  /// Cap at 3 concurrent detail fetches — linovelib CF Error 1015 on bursts.
+  /// (huanmeng / wenku8 keep uncapped [Future.wait].)
+  static const _enrichConcurrency = 3;
+
   Future<List<Map<String, dynamic>>> _enrichAids(List<String> aids) async {
     if (aids.isEmpty) return [];
-    final parts = await Future.wait(aids.map((aid) async {
-      try {
-        final info = await bookDetail(aid);
-        if (info['hollow'] == true) {
-          Log.warning('Linovelib', 'enrich skip hollow aid=$aid');
+    final out = <Map<String, dynamic>?>[];
+    for (var i = 0; i < aids.length; i += _enrichConcurrency) {
+      final end = i + _enrichConcurrency < aids.length
+          ? i + _enrichConcurrency
+          : aids.length;
+      final batch = aids.sublist(i, end);
+      final parts = await Future.wait(batch.map((aid) async {
+        try {
+          final info = await bookDetail(aid);
+          if (info['hollow'] == true) {
+            Log.warning('Linovelib', 'enrich skip hollow aid=$aid');
+            return null;
+          }
+          final author = '${info['author_raw'] ?? info['author'] ?? ''}';
+          final cover = '${info['cover'] ?? ''}'.trim();
+          return <String, dynamic>{
+            'aid': aid,
+            'name': '${info['name'] ?? ''}',
+            'author': author,
+            'author_raw': author,
+            'cover': cover.isNotEmpty ? cover : linovelibCoverUrl(aid),
+            'status': '${info['status'] ?? ''}',
+            'intro': '${info['intro'] ?? ''}',
+          };
+        } catch (e) {
+          Log.warning('Linovelib', 'enrich aid=$aid: $e');
           return null;
         }
-        final author = '${info['author_raw'] ?? info['author'] ?? ''}';
-        final cover = '${info['cover'] ?? ''}'.trim();
-        return <String, dynamic>{
-          'aid': aid,
-          'name': '${info['name'] ?? ''}',
-          'author': author,
-          'author_raw': author,
-          'cover': cover.isNotEmpty ? cover : linovelibCoverUrl(aid),
-          'status': '${info['status'] ?? ''}',
-          'intro': '${info['intro'] ?? ''}',
-        };
-      } catch (e) {
-        Log.warning('Linovelib', 'enrich aid=$aid: $e');
-        return null;
-      }
-    }));
+      }));
+      out.addAll(parts);
+    }
     return [
-      for (final p in parts)
+      for (final p in out)
         if (p != null) p,
     ];
   }

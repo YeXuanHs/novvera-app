@@ -131,7 +131,6 @@ class _UpdateModalDialogState extends State<_UpdateModalDialog> {
     }
 
     final remote = _svc.remote;
-    final history = _svc.historyNewerThanCurrent();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -147,17 +146,6 @@ class _UpdateModalDialogState extends State<_UpdateModalDialog> {
             remote.desc.isEmpty ? '—' : remote.desc,
             style: const TextStyle(height: 1.4),
           ),
-        ],
-        if (history.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Text('Version history'.tl,
-              style: const TextStyle(fontWeight: FontWeight.bold)),
-          for (final h in history) ...[
-            const SizedBox(height: 8),
-            Text('v${h.version}',
-                style: const TextStyle(fontWeight: FontWeight.w600)),
-            SelectableText(h.desc, style: const TextStyle(height: 1.35)),
-          ],
         ],
         if (_svc.hasUpdate) ...[
           const SizedBox(height: 12),

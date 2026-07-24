@@ -6,39 +6,13 @@ const appRepoUrl = 'https://github.com/YeXuanHs/novvera-app';
 
 const appRepoReleasesUrl = '$appRepoUrl/releases';
 
-/// GitHub traffic proxy (try first; fall back to direct on failure).
-const githubProxyPrefix = 'https://gh.sixyin.com/https://';
-
-String githubProxied(String url) {
-  if (url.startsWith(githubProxyPrefix)) return url;
-  if (url.startsWith('https://')) {
-    return '$githubProxyPrefix$url';
-  }
-  if (url.startsWith('http://')) {
-    return '${githubProxyPrefix}https://${url.substring(7)}';
-  }
-  return url;
-}
-
-/// Strip sixyin proxy prefix if present.
-String githubDirect(String url) {
-  const p = githubProxyPrefix;
-  if (url.startsWith(p)) return url.substring(p.length);
-  return url;
-}
-
-/// Direct (unproxied) endpoints.
-const appVersionJsonUrlDirect =
+/// Update check / download hit GitHub directly (no traffic proxy).
+const appVersionJsonUrl =
     'https://raw.githubusercontent.com/YeXuanHs/novvera-app/main/publish/version.json';
-const appReleasesApiUrlDirect =
+const appReleasesApiUrl =
     'https://api.github.com/repos/YeXuanHs/novvera-app/releases/latest';
-const appRepoPubspecUrlDirect =
+const appRepoPubspecUrl =
     'https://raw.githubusercontent.com/YeXuanHs/novvera-app/main/pubspec.yaml';
-
-/// Proxied endpoints (preferred).
-final appVersionJsonUrl = githubProxied(appVersionJsonUrlDirect);
-final appReleasesApiUrl = githubProxied(appReleasesApiUrlDirect);
-final appRepoPubspecUrl = githubProxied(appRepoPubspecUrlDirect);
 
 /// Community QQ group invite.
 const appQqGroupUrl = 'https://qm.qq.com/q/P2br4CwKsy';

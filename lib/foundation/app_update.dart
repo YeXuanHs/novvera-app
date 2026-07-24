@@ -24,10 +24,21 @@ enum AppUpdateStatus {
   error,
 }
 
-class AppUpdateHistoryEntry {
-  const AppUpdateHistoryEntry({required this.version, required this.desc});
+class AppUpdateInfo {
+  const AppUpdateInfo({
+    required this.version,
+    required this.desc,
+    this.downloadUrl,
+    this.assetName,
+    this.archKey,
+  });
+
   final String version;
   final String desc;
+  final String? downloadUrl;
+  final String? assetName;
+  /// Matched downloads key, e.g. `arm64-v8a` / `x64`.
+  final String? archKey;
 }
 
 class AppUpdateProgress {
@@ -69,26 +80,7 @@ class AppUpdateProgress {
   }
 }
 
-class AppUpdateInfo {
-  const AppUpdateInfo({
-    required this.version,
-    required this.desc,
-    this.history = const [],
-    this.downloadUrl,
-    this.assetName,
-    this.archKey,
-  });
-
-  final String version;
-  final String desc;
-  final List<AppUpdateHistoryEntry> history;
-  final String? downloadUrl;
-  final String? assetName;
-  /// Matched downloads key, e.g. `arm64-v8a` / `x64`.
-  final String? archKey;
-}
-
-/// In-app updater: GitHub Releases API (primary) → version.json fallback.
+/// In-app updater: version/changelog from [version.json]; installer from Releases API.
 class AppUpdateService extends ChangeNotifier {
   AppUpdateService._();
   static final AppUpdateService instance = AppUpdateService._();
@@ -150,9 +142,8 @@ class AppUpdateService extends ChangeNotifier {
     return 0;
   }
 
-  Future<T> _getWithFallback<T>(
-    String proxiedUrl,
-    String directUrl,
+  Future<T> _getJson<T>(
+    String url,
     FutureOr<T> Function(Response res) parse,
   ) async {
     final dio = AppDio(
@@ -162,35 +153,22 @@ class AppUpdateService extends ChangeNotifier {
         headers: {'user-agent': webUA, 'Accept': 'application/json'},
       ),
     );
-    try {
-      final res = await dio.get(proxiedUrl);
-      if (res.statusCode != null && res.statusCode! >= 400) {
-        throw DioException(
-          requestOptions: res.requestOptions,
-          response: res,
-          message: 'HTTP ${res.statusCode}',
-        );
-      }
-      return await parse(res);
-    } catch (e) {
-      Log.warning('AppUpdate', 'proxy failed ($proxiedUrl): $e → direct');
-      final res = await dio.get(directUrl);
-      if (res.statusCode != null && res.statusCode! >= 400) {
-        throw DioException(
-          requestOptions: res.requestOptions,
-          response: res,
-          message: 'HTTP ${res.statusCode}',
-        );
-      }
-      return await parse(res);
+    final res = await dio.get(url);
+    if (res.statusCode != null && res.statusCode! >= 400) {
+      throw DioException(
+        requestOptions: res.requestOptions,
+        response: res,
+        message: 'HTTP ${res.statusCode}',
+      );
     }
+    return await parse(res);
   }
 
   Future<AppUpdateInfo> _fetchFromReleasesApi() async {
     final arch = await DeviceArch.detect();
     deviceArch = arch;
 
-    return _getWithFallback(appReleasesApiUrl, appReleasesApiUrlDirect, (res) {
+    return _getJson(appReleasesApiUrl, (res) {
       final raw = res.data;
       final map = raw is Map
           ? Map<String, dynamic>.from(raw)
@@ -218,9 +196,47 @@ class AppUpdateService extends ChangeNotifier {
     });
   }
 
-  /// Optional meta fallback (version / changelog). Installers come from Releases.
+  /// Installer URL only — version / changelog come from [version.json].
+  Future<({String? downloadUrl, String? assetName, String? archKey})>
+      _fetchReleaseAssets(String expectVersion) async {
+    final arch = deviceArch ?? await DeviceArch.detect();
+    deviceArch = arch;
+
+    return _getJson(appReleasesApiUrl, (res) {
+      final raw = res.data;
+      final map = raw is Map
+          ? Map<String, dynamic>.from(raw)
+          : jsonDecode(raw is String ? raw : raw.toString())
+              as Map<String, dynamic>;
+      var tag = (map['tag_name'] ?? map['name'] ?? '').toString().trim();
+      if (tag.toLowerCase().startsWith('v')) {
+        tag = tag.substring(1);
+      }
+      tag = tag.split('+').first;
+      if (tag.isEmpty) throw StateError('empty release tag');
+      if (compareVersion(tag, expectVersion) != 0) {
+        Log.warning(
+          'AppUpdate',
+          'release tag $tag ≠ version.json $expectVersion (still use assets)',
+        );
+      }
+      final assets = map['assets'];
+      final picked = DeviceArch.pickReleaseAsset(
+        assets is List ? assets : const [],
+        arch,
+        expectVersion,
+      );
+      return (
+        downloadUrl: picked?.$2,
+        assetName: picked?.$3,
+        archKey: picked?.$1,
+      );
+    });
+  }
+
+  /// Meta: version + latest changelog (no installer URLs).
   Future<AppUpdateInfo> _fetchVersionJson() async {
-    return _getWithFallback(appVersionJsonUrl, appVersionJsonUrlDirect, (res) {
+    return _getJson(appVersionJsonUrl, (res) {
       final raw = res.data;
       final map = raw is Map
           ? Map<String, dynamic>.from(raw)
@@ -228,23 +244,9 @@ class AppUpdateService extends ChangeNotifier {
               as Map<String, dynamic>;
       final ver = (map['version'] ?? '').toString().trim();
       if (ver.isEmpty) throw StateError('empty version.json');
-      final history = <AppUpdateHistoryEntry>[];
-      final h = map['history'];
-      if (h is List) {
-        for (final e in h) {
-          if (e is! Map) continue;
-          final v = (e['version'] ?? '').toString();
-          if (v.isEmpty) continue;
-          history.add(AppUpdateHistoryEntry(
-            version: v,
-            desc: (e['desc'] ?? '').toString(),
-          ));
-        }
-      }
       return AppUpdateInfo(
         version: ver.split('+').first,
         desc: (map['desc'] ?? '').toString(),
-        history: history,
       );
     });
   }
@@ -265,7 +267,7 @@ class AppUpdateService extends ChangeNotifier {
 
   /// Version-only fallback when release API / version.json are unreachable.
   Future<AppUpdateInfo> _fetchFromPubspec() async {
-    return _getWithFallback(appRepoPubspecUrl, appRepoPubspecUrlDirect, (res) {
+    return _getJson(appRepoPubspecUrl, (res) {
       final data = loadYaml(res.data.toString());
       final ver = (data['version'] ?? '0.0.0').toString().split('+').first;
       return AppUpdateInfo(version: ver, desc: '');
@@ -273,16 +275,35 @@ class AppUpdateService extends ChangeNotifier {
   }
 
   Future<AppUpdateInfo> fetchRemoteInfo() async {
+    // 1) Version + changelog from version.json
+    AppUpdateInfo? meta;
+    try {
+      meta = await _fetchVersionJson();
+    } catch (e) {
+      Log.warning('AppUpdate', 'version.json: $e');
+    }
+
+    if (meta != null) {
+      try {
+        final assets = await _fetchReleaseAssets(meta.version);
+        return AppUpdateInfo(
+          version: meta.version,
+          desc: meta.desc,
+          downloadUrl: assets.downloadUrl,
+          assetName: assets.assetName,
+          archKey: assets.archKey,
+        );
+      } catch (e) {
+        Log.warning('AppUpdate', 'releases assets: $e');
+        return meta;
+      }
+    }
+
+    // 2) Fallback: Releases API alone
     try {
       return await _fetchFromReleasesApi();
     } catch (e) {
       Log.warning('AppUpdate', 'releases api: $e');
-    }
-    // Meta-only fallback (no installer URLs — those live on Releases).
-    try {
-      return await _fetchVersionJson();
-    } catch (e) {
-      Log.warning('AppUpdate', 'version.json: $e');
     }
     try {
       return await _fetchFromPubspec();
@@ -329,12 +350,6 @@ class AppUpdateService extends ChangeNotifier {
     final dir = Directory(FilePath.join(App.cachePath, 'updates'));
     if (!dir.existsSync()) dir.createSync(recursive: true);
     return FilePath.join(dir.path, name);
-  }
-
-  /// Only proxy GitHub hosts; leave other CDNs alone (try as-is).
-  bool _isGithubHost(String url) {
-    final u = url.toLowerCase();
-    return u.contains('github.com') || u.contains('githubusercontent.com');
   }
 
   Future<void> startDownload() async {
@@ -466,23 +481,7 @@ class AppUpdateService extends ChangeNotifier {
       await tmpFile.rename(finalPath);
     }
 
-    if (_isGithubHost(url)) {
-      final proxied = githubProxied(githubDirect(url));
-      final direct = githubDirect(url);
-      try {
-        await attempt(proxied);
-      } catch (e) {
-        Log.warning('AppUpdate', 'proxied download failed: $e → direct');
-        if (tmpFile.existsSync()) {
-          try {
-            await tmpFile.delete();
-          } catch (_) {}
-        }
-        await attempt(direct, allowRange: false);
-      }
-    } else {
-      await attempt(url);
-    }
+    await attempt(url);
   }
 
   Future<void> installOrOpen() async {
@@ -511,12 +510,5 @@ class AppUpdateService extends ChangeNotifier {
       Log.error('AppUpdate', 'open/install failed: $e');
       rethrow;
     }
-  }
-
-  List<AppUpdateHistoryEntry> historyNewerThanCurrent() {
-    final list = remote?.history ?? const [];
-    return list
-        .where((e) => compareVersion(e.version, App.version) > 0)
-        .toList();
   }
 }
