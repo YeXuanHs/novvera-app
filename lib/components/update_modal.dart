@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -197,7 +198,9 @@ class _UpdateModalDialogState extends State<_UpdateModalDialog> {
         if (_svc.status == AppUpdateStatus.downloaded) ...[
           const SizedBox(height: 10),
           Text(
-            'Download complete. Open the installer to finish updating.'.tl,
+            Platform.isAndroid
+                ? 'Download complete. Tap install to open the system installer.'.tl
+                : 'Download complete. Open the installer to finish updating.'.tl,
             style: TextStyle(
               fontSize: 13,
               color: context.colorScheme.primary,
@@ -263,7 +266,7 @@ class _UpdateModalDialogState extends State<_UpdateModalDialog> {
               }
             }
           },
-          child: Text('Open installer'.tl),
+          child: Text(Platform.isAndroid ? 'Install'.tl : 'Open installer'.tl),
         ),
       );
       return actions;

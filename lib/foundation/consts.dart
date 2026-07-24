@@ -51,12 +51,13 @@ const changePoint = 600;
 /// If it is more than this value, it is considered as desktop.
 const changePoint2 = 1300;
 
-/// Default user agent for http requests.
+/// Desktop Chrome 124 UA for novel HTML + CF Verify WebView.
 ///
-/// Keep in sync with Playwright MCP Chromium (`navigator.userAgent`), so
-/// linovelib / Cloudflare sites see the same desktop Chrome fingerprint.
+/// Used by huanmeng, linovelib, and wenku8 **website** HTML. Keep Dio and the
+/// challenge WebView on the same string so `cf_clearance` matches.
+/// Never use Mobile Chrome here. wenku8 App relay keeps Dalvik separately.
 const webUA =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
 /// Pages for all comics is started from this value.
 const firstPage = 1;

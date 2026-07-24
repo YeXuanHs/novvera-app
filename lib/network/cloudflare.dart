@@ -65,17 +65,35 @@ class CloudflareException implements DioException {
   DioExceptionReadableStringBuilder? stringBuilder;
 }
 
+/// Sites that pin desktop Chrome 124 ([webUA]) for Dio + CF Verify.
+/// wenku8 **website** (HTML) is included; the App relay (Dalvik) is not.
+bool _pinsDesktopChromeUa(String url) {
+  final host = Uri.tryParse(url)?.host.toLowerCase() ?? '';
+  if (host.contains('wenku8-relay') || host.contains('mewx.org')) {
+    return false;
+  }
+  return host.contains('huanmengacg') ||
+      host.contains('linovelib') ||
+      host.contains('wenku8');
+}
+
 class CloudflareInterceptor extends Interceptor {
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
     if (options.headers['cookie'].toString().contains('cf_clearance')) {
-      // Keep an explicit UA (e.g. linovelib Playwright MCP pin). Only fill
-      // when the request did not set one.
-      final existing = options.headers['User-Agent'] ??
-          options.headers['user-agent'];
-      if (existing == null || '$existing'.trim().isEmpty) {
-        options.headers['user-agent'] =
-            appdata.implicitData['ua'] ?? webUA;
+      final url = options.uri.toString();
+      if (_pinsDesktopChromeUa(url)) {
+        // WebView Verify mints clearance under [webUA]; Dio must match.
+        options.headers['user-agent'] = webUA;
+        options.headers.remove('User-Agent');
+      } else {
+        // wenku8 / others: keep explicit request UA; only fill if missing.
+        final existing = options.headers['User-Agent'] ??
+            options.headers['user-agent'];
+        if (existing == null || '$existing'.trim().isEmpty) {
+          options.headers['user-agent'] =
+              appdata.implicitData['ua'] ?? webUA;
+        }
       }
     }
     handler.next(options);
@@ -164,8 +182,6 @@ String _challengeBrowseUrl(String url) {
   if (looksLikeAsset) {
     return '${uri.scheme}://${uri.host}/';
   }
-  // /S6/ POST challenges: open homepage only as last resort for cookie minting.
-  // Prefer / so WebView can run; Dio still cannot reuse cf_clearance (TLS bind).
   final isSearchPost =
       path == '/S6' || path == '/S6/' || path.startsWith('/S6/');
   if (isSearchPost) {
@@ -187,33 +203,22 @@ void _purgeJarCfClearance(Uri uri) {
   jar.delete(uri, 'cf_clearance');
 }
 
-Future<void> _purgeWebViewCfClearance(String url) async {
-  try {
-    final cm = CookieManager.instance(
-      webViewEnvironment: AppWebview.webViewEnvironment,
-    );
-    final uri = WebUri(url);
-    // deleteCookie (singular) takes `name`; deleteCookies clears all for a URL.
-    await cm.deleteCookie(url: uri, name: 'cf_clearance');
-    final host = uri.host;
-    if (host.isNotEmpty) {
-      await cm.deleteCookie(
-        url: WebUri('${uri.scheme}://$host/'),
-        name: 'cf_clearance',
-      );
-    }
-  } catch (e) {
-    Log.warning('Cloudflare', 'purge webview cf_clearance: $e');
-  }
+void _persistPinnedUa(String url) {
+  if (!_pinsDesktopChromeUa(url)) return;
+  appdata.implicitData['ua'] = webUA;
+  appdata.writeImplicitData();
 }
 
 void passCloudflare(CloudflareException e, void Function() onFinished) async {
   var url = _challengeBrowseUrl(e.url);
   var uri = Uri.parse(url);
-  Log.info('Cloudflare', 'Verify open $url (from ${e.url})');
-
-  // Do not purge jar cf_clearance before Verify succeeds. If cookie save
-  // fails (e.g. Baidu Hm_lvt commas), purging first leaves the app worse off.
+  // WebView follows the Dio UA we already pin for huanmeng/linovelib.
+  final verifyUa = _pinsDesktopChromeUa(url) ? webUA : null;
+  Log.info(
+    'Cloudflare',
+    'Verify open $url (from ${e.url})'
+    '${verifyUa != null ? ' ua=desktop-chrome-124' : ''}',
+  );
 
   void saveCookies(Map<String, String> cookies) {
     var domain = uri.host;
@@ -234,12 +239,7 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
 
   // windows version of package `flutter_inappwebview` cannot get some cookies
   // Using DesktopWebview instead
-  // Only finish after we *saw* a challenge UI then it cleared.
-  // Closing on "no challenge + leftover cookie" causes the verify loop:
-  // Dio TLS ≠ WebView TLS, so cf_clearance from Verify often cannot authorize
-  // Dio — retry fails → open Verify again → page already clear → instant exit.
   if (App.isLinux) {
-    var sawChallenge = false;
     var webview = DesktopWebview(
       initialUrl: url,
       onTitleChange: (title, controller) async {
@@ -257,38 +257,35 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
             body.contains("window._cf_chl_opt") ||
             title.contains('Just a moment') ||
             title.contains('Attention Required');
-        if (isChallenging) {
-          sawChallenge = true;
-          return;
-        }
-        if (!sawChallenge) {
+        if (!isChallenging) {
           Log.info(
             "Cloudflare",
-            "No challenge UI yet — keep Verify open (do not auto-close)",
+            "Cloudflare is passed due to there is no challenge css",
           );
-          return;
+          if (verifyUa != null) {
+            _persistPinnedUa(url);
+          } else {
+            var ua = controller.userAgent;
+            if (ua != null) {
+              appdata.implicitData['ua'] = ua;
+              appdata.writeImplicitData();
+            }
+          }
+          var cookiesMap = await controller.getCookies(url);
+          if (cookiesMap['cf_clearance'] == null) {
+            return;
+          }
+          _purgeJarCfClearance(uri);
+          saveCookies(cookiesMap);
+          controller.close();
+          onFinished();
         }
-        var ua = controller.userAgent;
-        if (ua != null) {
-          appdata.implicitData['ua'] = ua;
-          appdata.writeImplicitData();
-        }
-        var cookiesMap = await controller.getCookies(url);
-        if (cookiesMap['cf_clearance'] == null) {
-          return;
-        }
-        _purgeJarCfClearance(uri);
-        saveCookies(cookiesMap);
-        controller.close();
-        onFinished();
       },
       onClose: onFinished,
     );
     webview.open();
   } else {
     bool success = false;
-    var clearedWebView = false;
-    var sawChallenge = false;
     void check(InAppWebViewController controller) async {
       try {
         var head = await controller.evaluateJavascript(
@@ -304,34 +301,32 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
             body.contains("window._cf_chl_opt") ||
             title.contains('Just a moment') ||
             title.contains('Attention Required');
-        if (isChallenging) {
-          sawChallenge = true;
-          return;
-        }
-        if (!sawChallenge) {
+        if (!isChallenging) {
           Log.info(
             "Cloudflare",
-            "No challenge UI yet — keep Verify open (do not auto-close)",
+            "Cloudflare is passed due to there is no challenge css",
           );
-          return;
-        }
-        var ua = await controller.getUA();
-        if (ua != null) {
-          appdata.implicitData['ua'] = ua;
-          appdata.writeImplicitData();
-        }
-        var cookies = await controller.getCookies(url) ?? [];
-        if (cookies.firstWhereOrNull(
-                (element) => element.name == 'cf_clearance') ==
-            null) {
-          return;
-        }
-        // Replace any stale jar clearance only after a fresh one is in hand.
-        _purgeJarCfClearance(uri);
-        SingleInstanceCookieJar.instance?.saveFromResponse(uri, cookies);
-        if (!success) {
-          App.rootPop();
-          success = true;
+          if (verifyUa != null) {
+            _persistPinnedUa(url);
+          } else {
+            var ua = await controller.getUA();
+            if (ua != null) {
+              appdata.implicitData['ua'] = ua;
+              appdata.writeImplicitData();
+            }
+          }
+          var cookies = await controller.getCookies(url) ?? [];
+          if (cookies.firstWhereOrNull(
+                  (element) => element.name == 'cf_clearance') ==
+              null) {
+            return;
+          }
+          _purgeJarCfClearance(uri);
+          SingleInstanceCookieJar.instance?.saveFromResponse(uri, cookies);
+          if (!success) {
+            App.rootPop();
+            success = true;
+          }
         }
       } catch (err, st) {
         Log.error('Cloudflare', 'Verify check failed\n$err\n$st');
@@ -342,6 +337,7 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
       () => AppWebview(
         initialUrl: url,
         singlePage: true,
+        userAgent: verifyUa,
         onTitleChange: (title, controller) async {
           check(controller);
         },
@@ -349,17 +345,14 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
           check(controller);
         },
         onStarted: (controller) async {
-          if (!clearedWebView) {
-            clearedWebView = true;
-            await _purgeWebViewCfClearance(url);
-            // Reload so CF sees missing clearance and (if needed) shows challenge.
-            await controller.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
-            return;
-          }
-          var ua = await controller.getUA();
-          if (ua != null) {
-            appdata.implicitData['ua'] = ua;
-            appdata.writeImplicitData();
+          if (verifyUa != null) {
+            _persistPinnedUa(url);
+          } else {
+            var ua = await controller.getUA();
+            if (ua != null) {
+              appdata.implicitData['ua'] = ua;
+              appdata.writeImplicitData();
+            }
           }
           var cookies = await controller.getCookies(url) ?? [];
           SingleInstanceCookieJar.instance?.saveFromResponse(uri, cookies);

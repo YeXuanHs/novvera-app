@@ -17,6 +17,7 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
+import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.Lifecycle
@@ -134,6 +135,21 @@ class MainActivity : FlutterFragmentActivity() {
                             res.success(null)
                         else
                             onPickedDirectory(pickedDirectoryUri, res)
+                    }
+                }
+
+                "installApk" -> {
+                    val path = call.argument<String>("path")
+                    if (path.isNullOrBlank()) {
+                        res.error("bad_args", "path is required", null)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        installApk(path)
+                        res.success(true)
+                    } catch (e: Exception) {
+                        Log.e("Novvera", "installApk failed", e)
+                        res.error("install_failed", e.message, null)
                     }
                 }
 
@@ -402,6 +418,45 @@ class MainActivity : FlutterFragmentActivity() {
                 }
             }.start()
         }
+    }
+
+    /**
+     * Launch system package installer for a local APK path.
+     * Requires FileProvider + REQUEST_INSTALL_PACKAGES (user may need to
+     * grant "install unknown apps" on Android 8+).
+     */
+    private fun installApk(path: String) {
+        val file = File(path)
+        if (!file.exists()) {
+            throw IllegalArgumentException("APK not found: $path")
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (!packageManager.canRequestPackageInstalls()) {
+                val settings = Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:$packageName")
+                )
+                settings.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(settings)
+                // User must grant permission then tap install again.
+                throw IllegalStateException(
+                    "请先允许 Novvera 安装未知应用，然后再次点击安装"
+                )
+            }
+        }
+
+        val uri = FileProvider.getUriForFile(
+            this,
+            "$packageName.fileprovider",
+            file
+        )
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        startActivity(intent)
     }
 }
 

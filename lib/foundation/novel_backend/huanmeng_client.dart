@@ -1,5 +1,6 @@
 import 'package:html/dom.dart';
 import 'package:html/parser.dart' as html_parser;
+import 'package:novvera/foundation/consts.dart';
 import 'package:novvera/foundation/log.dart';
 import 'package:novvera/foundation/novel_backend/novel_http.dart';
 import 'package:novvera/network/cloudflare.dart';
@@ -9,14 +10,8 @@ const _base = 'https://www.huanmengacg.com';
 /// Official bookapi password from the site's published Legado source (9.0).
 const _apiPassword = 'chiyu666';
 
-/// Legado-published UA for bookapi.
-const _apiUa =
-    'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36';
-
-/// Always scrape desktop HTML — mobile/WebView UA yields different markup
-/// (broken titles / missing authors / different home sections).
-const _htmlUa =
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+/// Desktop Chrome 124 — same as [webUA] / CF Verify (never Mobile).
+const _desktopUa = webUA;
 
 /// Board + genre labels (match site nav / category pages).
 const _rankTypes = <String, String>{
@@ -108,12 +103,12 @@ class HuanmengClient {
   DateTime? _sessionAt;
 
   Map<String, String> get _apiHeaders => {
-        'User-Agent': _apiUa,
+        'User-Agent': _desktopUa,
         'Referer': '$_base/',
       };
 
   Map<String, String> get _htmlHeaders => {
-        'User-Agent': _htmlUa,
+        'User-Agent': _desktopUa,
         'Referer': '$_base/',
         'Accept':
             'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',

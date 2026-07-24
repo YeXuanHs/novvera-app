@@ -64,8 +64,7 @@ class LinovelibClient {
   final _bookCache = <String, Map<String, dynamic>>{};
   final _catalogCache = <String, Map<String, dynamic>>{};
 
-  /// Same desktop Chrome UA as Playwright MCP (`navigator.userAgent`).
-  /// Always pin it — do not reuse a stale WebView UA from [appdata].
+  /// Desktop Chrome 124 — same as [webUA] / CF Verify (never Mobile).
   static const _ua = webUA;
 
   Map<String, String> get _uaHeaders => const {'User-Agent': _ua};

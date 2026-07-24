@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/appdata.dart';
 import 'package:novvera/foundation/consts.dart';
@@ -365,6 +366,17 @@ class AppUpdateService extends ChangeNotifier {
       localFilePath = path;
       status = AppUpdateStatus.downloaded;
       progress = null;
+      notifyListeners();
+      // Android: jump straight into the system installer UI.
+      if (Platform.isAndroid) {
+        try {
+          await installOrOpen();
+        } catch (e) {
+          // Permission / user cancelled — keep "Open installer" button.
+          Log.warning('AppUpdate', 'auto install: $e');
+        }
+      }
+      return;
     } catch (e, s) {
       Log.error('AppUpdate', 'download failed: $e\n$s');
       errorMessage = e.toString();
@@ -488,33 +500,16 @@ class AppUpdateService extends ChangeNotifier {
       } else if (Platform.isLinux) {
         await Process.run('xdg-open', [path]);
       } else if (Platform.isAndroid) {
-        // Best-effort: open via file URI; proper install Intent needs FileProvider.
-        await Process.run('am', [
-          'start',
-          '-a',
-          'android.intent.action.VIEW',
-          '-t',
-          'application/vnd.android.package-archive',
-          '-d',
-          'file://$path',
-        ]);
+        // FileProvider + ACTION_VIEW via native MethodChannel.
+        // Shell `am start` + file:// does nothing on modern Android.
+        const channel = MethodChannel('novvera/method_channel');
+        await channel.invokeMethod<void>('installApk', {'path': path});
       } else {
         await Process.run('xdg-open', [File(path).parent.path]);
       }
     } catch (e) {
-      try {
-        final dir = File(path).parent.path;
-        if (Platform.isWindows) {
-          await Process.run('explorer', [dir]);
-        } else if (Platform.isMacOS) {
-          await Process.run('open', [dir]);
-        } else {
-          await Process.run('xdg-open', [dir]);
-        }
-      } catch (e2) {
-        Log.error('AppUpdate', 'open failed: $e / $e2');
-        rethrow;
-      }
+      Log.error('AppUpdate', 'open/install failed: $e');
+      rethrow;
     }
   }
 

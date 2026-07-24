@@ -16,7 +16,7 @@ class DeviceArch {
   /// Preferred arch key for this device (e.g. `x64`, `arm64-v8a`).
   final String primary;
 
-  /// Preference-ordered keys to try against version.json downloads.
+  /// Preference-ordered arch keys (e.g. Android ABI list).
   final List<String> candidates;
 
   static const _channel = MethodChannel('novvera/method_channel');
@@ -159,19 +159,14 @@ class DeviceArch {
         : const ['x64', 'arm64'];
   }
 
-  /// Pick URL from version.json `downloads` map.
+  /// Optional legacy helper: pick URL from a nested/flat `downloads` map.
+  /// Installers are normally resolved via [pickReleaseAsset].
   ///
-  /// Expected shape:
+  /// Expected shape (legacy):
   /// ```json
   /// "downloads": {
   ///   "windows": { "x64": "url", "arm64": "url" },
-  ///   "android": {
-  ///     "arm64-v8a": "url",
-  ///     "armeabi-v7a": "url",
-  ///     "x86_64": "url",
-  ///     "x86": "url",
-  ///     "universal": "url"
-  ///   }
+  ///   "android": { "arm64-v8a": "url", "universal": "url" }
   /// }
   /// ```
   /// Also accepts flat keys like `"windows-x64": "url"`.

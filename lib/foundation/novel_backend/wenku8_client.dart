@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:html/dom.dart';
 import 'package:novvera/foundation/app.dart';
+import 'package:novvera/foundation/consts.dart';
 import 'package:novvera/foundation/log.dart';
 import 'package:novvera/foundation/novel_backend/novel_http.dart';
 import 'package:novvera/network/app_dio.dart';
@@ -16,8 +17,11 @@ const _base = 'https://www.wenku8.net';
 const _relay = 'https://wenku8-relay.mewx.org/';
 const _apiAppVer = '1.29';
 const _apiAppCode = 'digital-bento';
+/// Official App relay — must stay Dalvik; Chrome UA breaks the API.
 const _apiUa =
     'Dalvik/2.1.0 (Linux; U; Android 13; Pixel 6 Build/TQ3A.230805.001)';
+/// Website HTML (home / login / register) — desktop Chrome 124, same as CF Verify.
+const _htmlUa = webUA;
 const _loginRefreshInterval = Duration(hours: 1);
 const _searchPageSize = 10;
 
@@ -220,7 +224,10 @@ class Wenku8Client {
           'submit': '注 册',
         },
         preferGbk: true,
-        headers: {'Referer': '$_base/register.php'},
+        headers: {
+          'User-Agent': _htmlUa,
+          'Referer': '$_base/register.php',
+        },
       );
       final ok = res.html.contains('注册成功') ||
           res.html.contains('恭喜') ||
@@ -238,7 +245,11 @@ class Wenku8Client {
 
   Future<bool> _login(String user, String pass) async {
     try {
-      await _http.getHtml('$_base/login.php', preferGbk: true);
+      await _http.getHtml(
+        '$_base/login.php',
+        preferGbk: true,
+        headers: {'User-Agent': _htmlUa},
+      );
       final res = await _http.postForm(
         '$_base/login.php?do=submit&jumpurl=${Uri.encodeComponent('$_base/index.php')}',
         {
@@ -250,6 +261,7 @@ class Wenku8Client {
         },
         preferGbk: true,
         headers: {
+          'User-Agent': _htmlUa,
           'Referer':
               '$_base/login.php?jumpurl=${Uri.encodeComponent('$_base/index.php')}',
         },
@@ -451,7 +463,11 @@ class Wenku8Client {
   /// Homepage blocks — scrape book IDs only; name/author/cover from App API.
   Future<Map<String, dynamic>> home() async {
     await ensureAccount();
-    final res = await _http.getHtml('$_base/index.php', preferGbk: true);
+    final res = await _http.getHtml(
+      '$_base/index.php',
+      preferGbk: true,
+      headers: {'User-Agent': _htmlUa},
+    );
     final doc = parseHtml(res.html);
     final sectionAids = <({String title, List<String> aids})>[];
     final allAids = <String>[];
