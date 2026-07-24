@@ -446,7 +446,7 @@ Iterable<Widget> _buildExplorePagePart(
   }
 
   Widget buildBooks(ExplorePagePart part) {
-    return SliverGridBooks(books: part.comics);
+    return SliverGridBooks(books: part.books);
   }
 
   yield buildTitle(part);

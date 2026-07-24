@@ -73,8 +73,8 @@ class SliverGridDelegateWithFixedHeight extends SliverGridDelegate {
   }
 }
 
-class SliverGridDelegateWithComics extends SliverGridDelegate {
-  SliverGridDelegateWithComics();
+class SliverGridDelegateWithBooks extends SliverGridDelegate {
+  SliverGridDelegateWithBooks();
 
   final bool useBriefMode = appdata.settings['bookDisplayMode'] == 'brief';
 
@@ -140,7 +140,7 @@ class SliverGridDelegateWithComics extends SliverGridDelegate {
 
   @override
   bool shouldRelayout(covariant SliverGridDelegate oldDelegate) {
-    if (oldDelegate is! SliverGridDelegateWithComics) return true;
+    if (oldDelegate is! SliverGridDelegateWithBooks) return true;
     if (oldDelegate.scale != scale ||
         oldDelegate.useBriefMode != useBriefMode) {
       return true;

@@ -141,10 +141,10 @@ Future<List<FavoriteItem>> updateBooksInfo(String folder) async {
     while (true) {
       try {
         var c = books[index];
-        var comicSource = c.type.comicSource;
-        if (comicSource == null) return;
+        var bookSource = c.type.bookSource;
+        if (bookSource == null) return;
 
-        var newInfo = (await comicSource.loadComicInfo!(c.id)).data;
+        var newInfo = (await bookSource.loadBookInfo!(c.id)).data;
 
         var newTags = <String>[];
         for (var entry in newInfo.tags.entries) {
@@ -309,14 +309,14 @@ Future<void> importNetworkFolder(
   String? folder,
   String? folderID,
 ) async {
-  var comicSource = BookSource.find(source);
-  if (comicSource == null) {
+  var bookSource = BookSource.find(source);
+  if (bookSource == null) {
     return;
   }
   if (folder != null && folder.isEmpty) {
     folder = null;
   }
-  var resultName = folder ?? comicSource.name;
+  var resultName = folder ?? bookSource.name;
   var exists = LocalFavoritesManager().existsFolder(resultName);
   if (exists) {
     if (!LocalFavoritesManager()
@@ -333,7 +333,7 @@ Future<void> importNetworkFolder(
       folderID ?? "",
     );
   }
-  bool isOldToNewSort = comicSource.favoriteData?.isOldToNewSort ?? false;
+  bool isOldToNewSort = bookSource.favoriteData?.isOldToNewSort ?? false;
   var current = 0;
   int receivedBooks = 0;
   int requestCount = 0;
@@ -343,19 +343,19 @@ Future<void> importNetworkFolder(
   String? next;
   // 如果是从旧到新, 先取一下maxPage
   if (isOldToNewSort) {
-    var res = await comicSource.favoriteData?.loadComic!(1, folderID);
+    var res = await bookSource.favoriteData?.loadBook!(1, folderID);
     maxPage = res?.subData ?? 1;
   }
   Future<void> fetchNext() async {
     var retry = 3;
     while (updatePageNum > requestCount && !isFinished) {
       try {
-        if (comicSource.favoriteData?.loadBook != null) {
+        if (bookSource.favoriteData?.loadBook != null) {
           // 从旧到新的情况下, 假设有10页, 更新3页, 则从第8页开始, 8, 9, 10 三页
           next ??=
               isOldToNewSort ? (maxPage - updatePageNum + 1).toString() : '1';
           var page = int.parse(next!);
-          var res = await comicSource.favoriteData!.loadBook!(page, folderID);
+          var res = await bookSource.favoriteData!.loadBook!(page, folderID);
           var count = 0;
           receivedBooks += res.data.length;
           for (var c in res.data) {
@@ -380,8 +380,8 @@ Future<void> importNetworkFolder(
           } else {
             next = (page + 1).toString();
           }
-        } else if (comicSource.favoriteData?.loadNext != null) {
-          var res = await comicSource.favoriteData!.loadNext!(next, folderID);
+        } else if (bookSource.favoriteData?.loadNext != null) {
+          var res = await bookSource.favoriteData!.loadNext!(next, folderID);
           var count = 0;
           receivedBooks += res.data.length;
           for (var c in res.data) {

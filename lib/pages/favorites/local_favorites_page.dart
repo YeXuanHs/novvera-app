@@ -23,7 +23,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
   String? networkSource;
   String? networkFolder;
 
-  Map<Comic, bool> selectedBooks = {};
+  Map<Book, bool> selectedBooks = {};
 
   var selectedLocalFolders = <String>{};
 
@@ -234,7 +234,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
   }
 
   bool downloadBook(FavoriteItem c) {
-    var source = c.type.comicSource;
+    var source = c.type.bookSource;
     if (source != null) {
       bool isDownloaded = LocalManager().isDownloaded(
         c.id,
@@ -245,8 +245,8 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
       }
       LocalManager().addTask(ImagesDownloadTask(
         source: source,
-        comicId: c.id,
-        comicTitle: c.title,
+        bookId: c.id,
+        bookTitle: c.title,
       ));
       return true;
     }
@@ -531,7 +531,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                 if (!isAllFolder)
                   MenuEntry(
                       icon: Icons.delete_outline,
-                      text: "Delete Comic".tl,
+                      text: "Delete Book".tl,
                       color: context.colorScheme.error,
                       onClick: () {
                         showConfirmDialog(
@@ -1065,7 +1065,7 @@ class _ReorderBooksPageState extends State<_ReorderBooksPage> {
           return GridView(
             key: _key,
             controller: _scrollController,
-            gridDelegate: SliverGridDelegateWithComics(),
+            gridDelegate: SliverGridDelegateWithBooks(),
             children: children,
           );
         },
