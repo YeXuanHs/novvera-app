@@ -166,80 +166,18 @@ String _peekBody(Response response) {
   return '';
 }
 
-/// Anti-CC / slider human-check pages (e.g. huanmeng under heavy load).
-///
-/// Live samples are rare, so detection is keyword-based (CN + EN):
-/// slider phrases, and bilingual 「验证」+ verify/verification with a
-/// captcha-ish companion signal to limit false positives on normal pages.
+/// Anti-CC / slider page: 「验证」 or English verify/verification.
+/// Blunt on purpose. Ignore SEO tags like `baidu-site-verification`.
 bool looksLikeSliderOrHumanCheck(String body) {
   if (body.isEmpty) return false;
-  final text = body.length > 16000 ? body.substring(0, 16000) : body;
-  final lower = text.toLowerCase();
-
-  const zhStrong = [
-    '滑块验证',
-    '滑动验证',
-    '拖动滑块',
-    '请完成滑块',
-    '完成安全验证',
-    '请完成安全验证',
-    '安全验证',
-    '人机验证',
-    '请完成验证',
-    '点击按钮进行验证',
-  ];
-  for (final k in zhStrong) {
-    if (text.contains(k)) return true;
-  }
-  if (text.contains('滑块') && text.contains('验证')) return true;
-
-  const enStrong = [
-    'slider verification',
-    'slide to verify',
-    'slide verification',
-    'drag the slider',
-    'complete the slider',
-    'security verification',
-    'human verification',
-    'complete the security check',
-  ];
-  for (final k in enStrong) {
-    if (lower.contains(k)) return true;
-  }
-  if (lower.contains('slider') &&
-      (lower.contains('captcha') ||
-          lower.contains('verify') ||
-          lower.contains('verification'))) {
-    return true;
-  }
-
-  // Common captcha SDKs / DOM hooks.
-  if (lower.contains('geetest') ||
-      lower.contains('tcaptcha') ||
-      lower.contains('tencentcaptcha') ||
-      lower.contains('aliyuncaptcha') ||
-      lower.contains('nc_wrapper') ||
-      lower.contains('nc-container') ||
-      lower.contains('captcha_id') ||
-      lower.contains('captcha-box')) {
-    return true;
-  }
-
-  // Bilingual pair 「验证」+ verify/verification, only with a companion signal.
-  final hasZhVerify = text.contains('验证');
-  final hasEnVerify = lower.contains('verification') ||
-      RegExp(r'\bverify\b').hasMatch(lower);
-  if (hasZhVerify && hasEnVerify) {
-    if (text.contains('滑块') ||
-        text.contains('人机') ||
-        text.contains('安全') ||
-        lower.contains('captcha') ||
-        lower.contains('slider') ||
-        lower.contains('security') ||
-        lower.contains('human')) {
-      return true;
-    }
-  }
+  if (body.contains('验证')) return true;
+  // Strip common SEO meta names that contain the substring "verification".
+  final lower = body
+      .toLowerCase()
+      .replaceAll('site-verification', '')
+      .replaceAll('domain-verification', '');
+  if (lower.contains('verification')) return true;
+  if (RegExp(r'\bverify\b').hasMatch(lower)) return true;
   return false;
 }
 

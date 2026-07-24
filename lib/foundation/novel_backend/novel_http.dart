@@ -315,18 +315,14 @@ class NovelHttp {
       final finalUrl = res.realUri.toString();
       final checkUrl = finalUrl.isNotEmpty ? finalUrl : url;
       if (data is Map<String, dynamic>) {
-        // Some anti-CC gates return JSON with a human-check message.
-        final blob = data.toString();
-        throwIfSliderOrHumanCheck(checkUrl, blob);
         return data;
       }
       if (data is Map) {
-        final map = Map<String, dynamic>.from(data);
-        throwIfSliderOrHumanCheck(checkUrl, map.toString());
-        return map;
+        return Map<String, dynamic>.from(data);
       }
       if (data is String) {
         final trimmed = data.trimLeft();
+        // Only scan string/HTML bodies — never JSON book payloads.
         throwIfSliderOrHumanCheck(checkUrl, trimmed);
         if (trimmed.startsWith('<') || trimmed.contains('Just a moment')) {
           throw CloudflareException(url);
