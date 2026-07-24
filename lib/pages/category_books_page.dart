@@ -36,10 +36,10 @@ class _CategoryBooksPageState extends State<CategoryBooksPage> {
   void findData() {
     for (final source in BookSource.all()) {
       if (source.categoryData?.key == widget.categoryKey) {
-        if (source.categoryComicsData == null) {
+        if (source.categoryBooksData == null) {
           throw "The book source ${source.name} does not support category books";
         }
-        data = source.categoryComicsData!;
+        data = source.categoryBooksData!;
         optionsLoader = data.optionsLoader;
         if (data.options != null) {
           options = data.options!.where((element) {

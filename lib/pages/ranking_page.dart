@@ -21,7 +21,7 @@ class _RankingPageState extends State<RankingPage> {
   void findData() {
     for (final source in BookSource.all()) {
       if (source.categoryData?.key == widget.categoryKey) {
-        data = source.categoryComicsData!;
+        data = source.categoryBooksData!;
         options = data.rankingData!.options;
         optionValue = options.keys.first;
         return;

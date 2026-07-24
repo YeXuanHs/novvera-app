@@ -333,7 +333,7 @@ abstract mixin class _BookPageActions {
       bookId: book.id,
       book: book,
       chapters: selected!.map((e) => e.id).toList(),
-      saveRoot: saveRoot,
+      saveRoot: rootDir,
       bookTitle: book.title,
     ));
     App.rootContext.showMessage(message: "Download started".tl);

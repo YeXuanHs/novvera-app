@@ -370,10 +370,10 @@ class _NetworkSectionState extends State<_NetworkSection> {
           var name = entry.value;
           var id = entry.key;
           var isAdded = addedFolders.contains(id);
-          // When `singleFolderForSingleComic` is `false`, all add and remove buttons are clickable.
-          // When `singleFolderForSingleComic` is `true`, the remove button is always clickable, 
+          // When `singleFolderForSingleBook` is `false`, all add and remove buttons are clickable.
+          // When `singleFolderForSingleBook` is `true`, the remove button is always clickable, 
           // while the add button is only clickable if the book has not been added to any list.
-          var enabled = !(widget.bookSource.favoriteData!.singleFolderForSingleComic && addedFolders.isNotEmpty && !isAdded);
+          var enabled = !(widget.bookSource.favoriteData!.singleFolderForSingleBook && addedFolders.isNotEmpty && !isAdded);
 
           return ListTile(
             title: Row(

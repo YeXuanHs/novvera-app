@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:novvera/foundation/local.dart';
 import 'package:novvera/utils/io.dart';
 import 'base_image_provider.dart';
-import 'local_comic_image.dart' as image_provider;
+import 'local_book_image.dart' as image_provider;
 
 class LocalBookImageProvider
     extends BaseImageProvider<image_provider.LocalBookImageProvider> {

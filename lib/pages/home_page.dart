@@ -935,7 +935,7 @@ class _ImageFavoritesState extends State<ImageFavorites> {
                 buildChart(switch (displayType) {
                   0 => imageFavoritesCompute!.tags,
                   1 => imageFavoritesCompute!.authors,
-                  2 => imageFavoritesCompute!.comics,
+                  2 => imageFavoritesCompute!.books,
                   _ => [],
                 })
                     .paddingHorizontal(16)

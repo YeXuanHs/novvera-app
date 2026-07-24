@@ -210,7 +210,7 @@ Future<void> importPicaData(File file) async {
           );
         }
         List<ImageFavoritesComic> imageFavoritesBookList =
-            ImageFavoriteManager().comics;
+            ImageFavoriteManager().books;
         for (var book in db.select("SELECT * FROM image_favorites;")) {
           String sourceKey = book["id"].split("-")[0];
           // 换名字了, 绅士漫画
