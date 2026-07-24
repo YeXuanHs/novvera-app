@@ -289,4 +289,39 @@ class NovelHttp {
       return (status: res.statusCode ?? 0, html: html, url: finalUrl);
     });
   }
+
+  /// JSON GET (novel site APIs). Throws [CloudflareException] when challenged.
+  Future<Map<String, dynamic>> getJson(
+    String url, {
+    Map<String, String>? headers,
+  }) async {
+    return _guardDio(() async {
+      final res = await _dio.get<dynamic>(
+        url,
+        options: Options(
+          responseType: ResponseType.json,
+          followRedirects: true,
+          headers: {
+            if (defaultReferer != null) 'Referer': defaultReferer!,
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            ...?headers,
+          },
+        ),
+      );
+      final data = res.data;
+      if (data is Map<String, dynamic>) return data;
+      if (data is Map) return Map<String, dynamic>.from(data);
+      if (data is String) {
+        final trimmed = data.trimLeft();
+        if (trimmed.startsWith('<') || trimmed.contains('Just a moment')) {
+          throw CloudflareException(url);
+        }
+        final decoded = jsonDecode(data);
+        if (decoded is Map<String, dynamic>) return decoded;
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      }
+      throw StateError('Expected JSON object from $url');
+    });
+  }
 }

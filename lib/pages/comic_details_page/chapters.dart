@@ -205,11 +205,14 @@ class _GroupedComicChaptersState extends State<_GroupedComicChapters>
   void didChangeDependencies() {
     state = context.findAncestorStateOfType<_ComicPageState>()!;
     chapters = state.comic.chapters!;
+    final groupCount = math.max(1, chapters.groupCount);
+    final initial = index.clamp(0, groupCount - 1);
     tabController = TabController(
-      initialIndex: index,
-      length: chapters.ids.length,
+      initialIndex: initial,
+      length: groupCount,
       vsync: this,
     );
+    index = initial;
     tabController.addListener(onTabChange);
     super.didChangeDependencies();
   }

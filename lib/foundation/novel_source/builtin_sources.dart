@@ -70,7 +70,8 @@ const _linovelibRankTypes = <String, String>{
 
 /// https://www.huanmengacg.com — 排行 / 完本 + 题材 tags.
 const _huanmengBoardTypes = <String, String>{
-  'top': '排行',
+  'top': '最新',
+  'serializing': '连载',
   'done': '完本',
 };
 
@@ -124,6 +125,7 @@ const _huanmengTagTypes = <String, String>{
   'tag_47': '耽美',
   'tag_48': 'NTR',
   'tag_49': '女性视角',
+  'tag_50': '暂未分类',
 };
 
 Map<String, String> _rankTypesFor(String key) => switch (key) {
