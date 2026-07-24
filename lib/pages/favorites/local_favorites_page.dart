@@ -110,7 +110,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
   List<FavoriteItem> filterBooks(List<FavoriteItem> curComics) {
     return curComics.where((comic) {
       var history =
-          HistoryManager().find(comic.id, ComicType(comic.sourceKey.hashCode));
+          HistoryManager().find(comic.id, BookType(comic.sourceKey.hashCode));
       if (readFilterSelect == "UnCompleted") {
         return history == null || history.page != history.maxPage;
       } else if (readFilterSelect == "Completed") {
@@ -584,7 +584,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                     text: "Jump to Detail".tl,
                     onClick: () {
                       final c = selectedBooks.keys.first as FavoriteItem;
-                      App.mainNavigatorKey?.currentContext?.to(() => ComicPage(
+                      App.mainNavigatorKey?.currentContext?.to(() => BookPage(
                             id: c.id,
                             sourceKey: c.sourceKey,
                           )
@@ -708,7 +708,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                 });
               } else if (appdata.settings["onClickFavorite"] == "viewDetail") {
                 App.mainNavigatorKey?.currentContext?.to(
-                  () => ComicPage(
+                  () => BookPage(
                     id: c.id,
                     sourceKey: c.sourceKey,
                     cover: c.cover,
@@ -989,21 +989,21 @@ class _ReorderBooksPageState extends State<_ReorderBooksPage> {
     var type = appdata.settings['bookDisplayMode'];
     var tiles = books.map(
       (e) {
-        var comicSource = e.type.comicSource;
+        var bookSource = e.type.bookSource;
         return BookTile(
           key: Key(e.hashCode.toString()),
           enableLongPressed: false,
-          comic: Comic(
+          comic: Book(
             e.name,
             e.coverPath,
             e.id,
             e.author,
             e.tags,
             type == 'detailed'
-                ? "${e.time} | ${comicSource?.name ?? "Unknown"}"
-                : "${e.type.comicSource?.name ?? "Unknown"} | ${e.time}",
-            comicSource?.key ??
-                (e.type == ComicType.local ? "local" : "Unknown"),
+                ? "${e.time} | ${bookSource?.name ?? "Unknown"}"
+                : "${e.type.bookSource?.name ?? "Unknown"} | ${e.time}",
+            bookSource?.key ??
+                (e.type == BookType.local ? "local" : "Unknown"),
             null,
             null,
           ),
@@ -1106,7 +1106,7 @@ class _SelectUpdatePageNumState extends State<_SelectUpdatePageNum> {
 
   @override
   Widget build(BuildContext context) {
-    var source = ComicSource.find(widget.networkSource);
+    var source = BookSource.find(widget.networkSource);
     var sourceName = source?.name ?? widget.networkSource;
     var text = "The folder is Linked to @source".tlParams({
       "source": sourceName,

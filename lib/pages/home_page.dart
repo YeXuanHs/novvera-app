@@ -304,7 +304,7 @@ class _HistoryState extends State<_History> {
                     itemBuilder: (context, index) {
                       final heroID = history[index].id.hashCode;
                       return SimpleBookTile(
-                        book: history[index],
+                        comic: history[index],
                         heroID: heroID,
                         onTap: () {
                           context.to(
@@ -414,7 +414,7 @@ class _LocalState extends State<_Local> {
                     itemBuilder: (context, index) {
                       final heroID = local[index].id.hashCode;
                       return SimpleBookTile(
-                        book: local[index],
+                        comic: local[index],
                         heroID: heroID,
                         onTap: () {
                           context.to(

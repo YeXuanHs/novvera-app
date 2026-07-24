@@ -6,7 +6,7 @@ Future<bool> _deleteComic(
   String sourceKey,
   String? favId,
 ) async {
-  var source = ComicSource.find(sourceKey);
+  var source = BookSource.find(sourceKey);
   if (source == null) {
     return false;
   }
@@ -82,7 +82,7 @@ class _NormalFavoritePage extends StatefulWidget {
 }
 
 class _NormalFavoritePageState extends State<_NormalFavoritePage> {
-  final comicListKey = GlobalKey<ComicListState>();
+  final comicListKey = GlobalKey<BookListState>();
 
   void showFolders() {
     context
@@ -92,7 +92,7 @@ class _NormalFavoritePageState extends State<_NormalFavoritePage> {
 
   @override
   Widget build(BuildContext context) {
-    return ComicList(
+    return BookList(
       key: comicListKey,
       leadingSliver: SliverAppbar(
         style:
@@ -544,11 +544,11 @@ class _FavoriteFolder extends StatelessWidget {
 
   final String title;
 
-  final comicListKey = GlobalKey<ComicListState>();
+  final comicListKey = GlobalKey<BookListState>();
 
   @override
   Widget build(BuildContext context) {
-    return ComicList(
+    return BookList(
       key: comicListKey,
       enablePageStorage: true,
       leadingSliver: SliverAppbar(

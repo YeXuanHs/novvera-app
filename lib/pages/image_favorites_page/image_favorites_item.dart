@@ -23,7 +23,7 @@ class _ImageFavoritesItemState extends State<_ImageFavoritesItem> {
   late final imageFavorites = widget.imageFavoritesComic.images.toList();
 
   void goComicInfo(ImageFavoritesComic comic) {
-    App.mainNavigatorKey?.currentContext?.to(() => ComicPage(
+    App.mainNavigatorKey?.currentContext?.to(() => BookPage(
           id: comic.id,
           sourceKey: comic.sourceKey,
         ));
@@ -256,7 +256,7 @@ class _ImageFavoritesItemState extends State<_ImageFavoritesItem> {
         break;
       }
     }
-    var comicSource = ComicSource.find(widget.imageFavoritesComic.sourceKey);
+    var comicSource = BookSource.find(widget.imageFavoritesComic.sourceKey);
     return Row(
       children: [
         Text(

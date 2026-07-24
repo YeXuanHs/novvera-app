@@ -77,7 +77,7 @@ String? validateFolderName(String newFolderName) {
   return null;
 }
 
-void addFavorite(List<Comic> books) {
+void addFavorite(List<Book> books) {
   var folders = LocalFavoritesManager().folderNames;
 
   showDialog(
@@ -113,7 +113,7 @@ void addFavorite(List<Comic> books) {
                         name: comic.title,
                         coverPath: comic.cover,
                         author: comic.subtitle ?? '',
-                        type: ComicType((comic.sourceKey == 'local'
+                        type: BookType((comic.sourceKey == 'local'
                             ? 0
                             : comic.sourceKey.hashCode)),
                         tags: comic.tags ?? [],
@@ -309,7 +309,7 @@ Future<void> importNetworkFolder(
   String? folder,
   String? folderID,
 ) async {
-  var comicSource = ComicSource.find(source);
+  var comicSource = BookSource.find(source);
   if (comicSource == null) {
     return;
   }
@@ -360,13 +360,13 @@ Future<void> importNetworkFolder(
           receivedBooks += res.data.length;
           for (var c in res.data) {
             if (!LocalFavoritesManager()
-                .bookExists(resultName, c.id, ComicType(source.hashCode))) {
+                .bookExists(resultName, c.id, BookType(source.hashCode))) {
               count++;
               books.add(FavoriteItem(
                 id: c.id,
                 name: c.title,
                 coverPath: c.cover,
-                type: ComicType(source.hashCode),
+                type: BookType(source.hashCode),
                 author: c.subtitle ?? '',
                 tags: c.tags ?? [],
               ));
@@ -386,13 +386,13 @@ Future<void> importNetworkFolder(
           receivedBooks += res.data.length;
           for (var c in res.data) {
             if (!LocalFavoritesManager()
-                .bookExists(resultName, c.id, ComicType(source.hashCode))) {
+                .bookExists(resultName, c.id, BookType(source.hashCode))) {
               count++;
               books.add(FavoriteItem(
                 id: c.id,
                 name: c.title,
                 coverPath: c.cover,
-                type: ComicType(source.hashCode),
+                type: BookType(source.hashCode),
                 author: c.subtitle ?? '',
                 tags: c.tags ?? [],
               ));

@@ -1,13 +1,13 @@
 part of 'components.dart';
 
-ImageProvider? _findImageProvider(Comic comic) {
+ImageProvider? _findImageProvider(Book comic) {
   ImageProvider image;
-  if (comic is LocalComic) {
-    image = LocalComicImageProvider(comic);
+  if (comic is LocalBook) {
+    image = LocalBookImageProvider(comic);
   } else if (comic is History) {
     image = HistoryImageProvider(comic);
   } else if (comic.sourceKey == 'local') {
-    var localComic = LocalManager().find(comic.id, ComicType.local);
+    var localComic = LocalManager().find(comic.id, BookType.local);
     if (localComic == null) {
       return null;
     }
@@ -35,7 +35,7 @@ class BookTile extends StatelessWidget {
     this.heroID,
   });
 
-  final Comic comic;
+  final Book comic;
 
   final bool enableLongPressed;
 
@@ -55,7 +55,7 @@ class BookTile extends StatelessWidget {
       return;
     }
     App.mainNavigatorKey?.currentContext?.to(
-      () => ComicPage(
+      () => BookPage(
         id: comic.id,
         sourceKey: comic.sourceKey,
         cover: comic.cover,
@@ -96,7 +96,7 @@ class BookTile extends StatelessWidget {
           text: 'Details'.tl,
           onClick: () {
             App.mainNavigatorKey?.currentContext?.to(
-              () => ComicPage(
+              () => BookPage(
                 id: comic.id,
                 sourceKey: comic.sourceKey,
                 cover: comic.cover,
@@ -140,10 +140,10 @@ class BookTile extends StatelessWidget {
 
     var isFavorite = appdata.settings['showFavoriteStatusOnTile']
         ? LocalFavoritesManager()
-            .isExist(comic.id, ComicType(comic.sourceKey.hashCode))
+            .isExist(comic.id, BookType(comic.sourceKey.hashCode))
         : false;
     var history = appdata.settings['showHistoryStatusOnTile']
-        ? HistoryManager().find(comic.id, ComicType(comic.sourceKey.hashCode))
+        ? HistoryManager().find(comic.id, BookType(comic.sourceKey.hashCode))
         : null;
     if (history?.page == 0) {
       history!.page = 1;
@@ -264,7 +264,7 @@ class BookTile extends StatelessWidget {
                 size: const Size(16, 5),
               ),
               Expanded(
-                child: _ComicDescription(
+                child: _BookDescription(
                   // Comics may prefix [NP]; novels never show page/line counts.
                   title: (comic.maxPage != null &&
                           !isNovelSource(comic.sourceKey))
@@ -276,7 +276,7 @@ class BookTile extends StatelessWidget {
                   tags: comic.tags,
                   maxLines: 2,
                   enableTranslate:
-                      ComicSource.find(comic.sourceKey)?.enableTagsTranslate ??
+                      BookSource.find(comic.sourceKey)?.enableTagsTranslate ??
                           false,
                   rating: comic.stars,
                 ),
@@ -531,8 +531,8 @@ class BookTile extends StatelessWidget {
   }
 }
 
-class _ComicDescription extends StatelessWidget {
-  const _ComicDescription({
+class _BookDescription extends StatelessWidget {
+  const _BookDescription({
     required this.title,
     required this.subtitle,
     required this.description,
@@ -765,26 +765,26 @@ class SliverGridBooks extends StatefulWidget {
       this.onLongPressed,
       this.selections});
 
-  final List<Comic> books;
+  final List<Book> books;
 
-  final Map<Comic, bool>? selections;
+  final Map<Book, bool>? selections;
 
   final void Function()? onLastItemBuild;
 
-  final String? Function(Comic)? badgeBuilder;
+  final String? Function(Book)? badgeBuilder;
 
-  final List<MenuEntry> Function(Comic)? menuBuilder;
+  final List<MenuEntry> Function(Book)? menuBuilder;
 
-  final void Function(Comic, int heroID)? onTap;
+  final void Function(Book, int heroID)? onTap;
 
-  final void Function(Comic, int heroID)? onLongPressed;
+  final void Function(Book, int heroID)? onLongPressed;
 
   @override
   State<SliverGridBooks> createState() => _SliverGridBooksState();
 }
 
 class _SliverGridBooksState extends State<SliverGridBooks> {
-  List<Comic> books = [];
+  List<Book> books = [];
   List<int> heroIDs = [];
 
   static int _nextHeroID = 0;
@@ -866,21 +866,21 @@ class _SliverGridBooks extends StatelessWidget {
     this.selection,
   });
 
-  final List<Comic> books;
+  final List<Book> books;
 
   final List<int> heroIDs;
 
-  final Map<Comic, bool>? selection;
+  final Map<Book, bool>? selection;
 
   final void Function()? onLastItemBuild;
 
-  final String? Function(Comic)? badgeBuilder;
+  final String? Function(Book)? badgeBuilder;
 
-  final List<MenuEntry> Function(Comic)? menuBuilder;
+  final List<MenuEntry> Function(Book)? menuBuilder;
 
-  final void Function(Comic, int heroID)? onTap;
+  final void Function(Book, int heroID)? onTap;
 
-  final void Function(Comic, int heroID)? onLongPressed;
+  final void Function(Book, int heroID)? onLongPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -923,13 +923,13 @@ class _SliverGridBooks extends StatelessWidget {
           child: comic,
         );
       }, childCount: books.length),
-      gridDelegate: SliverGridDelegateWithComics(),
+      gridDelegate: SliverGridDelegateWithBooks(),
     );
   }
 }
 
 /// return the first blocked keyword, or null if not blocked
-String? isBlocked(Comic item) {
+String? isBlocked(Book item) {
   for (var word in appdata.settings['blockedWords']) {
     if (item.title.contains(word)) {
       return word;
@@ -969,9 +969,9 @@ class BookList extends StatefulWidget {
     this.enablePageStorage = false,
   });
 
-  final Future<Res<List<Comic>>> Function(int page)? loadPage;
+  final Future<Res<List<Book>>> Function(int page)? loadPage;
 
-  final Future<Res<List<Comic>>> Function(String? next)? loadNext;
+  final Future<Res<List<Book>>> Function(String? next)? loadNext;
 
   final Widget? leadingSliver;
 
@@ -979,7 +979,7 @@ class BookList extends StatefulWidget {
 
   final Widget? errorLeading;
 
-  final List<MenuEntry> Function(Comic)? menuBuilder;
+  final List<MenuEntry> Function(Book)? menuBuilder;
 
   final ScrollController? controller;
 
@@ -994,7 +994,7 @@ class BookList extends StatefulWidget {
 class BookListState extends State<BookList> {
   int? _maxPage;
 
-  final Map<int, List<Comic>> _data = {};
+  final Map<int, List<Book>> _data = {};
 
   int _page = 1;
 
@@ -1053,7 +1053,7 @@ class BookListState extends State<BookList> {
     widget.refreshHandlerCallback?.call(refresh);
   }
 
-  void remove(Comic c) {
+  void remove(Book c) {
     if (_data[_page] == null || !_data[_page]!.remove(c)) {
       for (var page in _data.values) {
         if (page.remove(c)) {
@@ -1650,7 +1650,7 @@ class SimpleBookTile extends StatelessWidget {
   const SimpleBookTile(
       {super.key, required this.comic, this.onTap, this.withTitle = false, this.heroID});
 
-  final Comic comic;
+  final Book comic;
 
   final void Function()? onTap;
 
@@ -1695,7 +1695,7 @@ class SimpleBookTile extends StatelessWidget {
       onTap: onTap ??
           () {
             context.to(
-              () => ComicPage(
+              () => BookPage(
                 id: comic.id,
                 sourceKey: comic.sourceKey,
                 cover: comic.cover,
