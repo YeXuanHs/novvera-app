@@ -17,7 +17,6 @@ import 'package:novvera/pages/history_page.dart';
 import 'package:novvera/pages/image_favorites_page/image_favorites_page.dart';
 import 'package:novvera/pages/search_page.dart';
 import 'package:novvera/utils/data_sync.dart';
-import 'package:novvera/utils/import_novel.dart';
 import 'package:novvera/utils/tags_translation.dart';
 import 'package:novvera/utils/translations.dart';
 
@@ -431,9 +430,9 @@ class _LocalState extends State<_Local> {
                     },
                   ),
                 ).paddingHorizontal(8),
-              Row(
-                children: [
-                  if (LocalManager().downloadingTasks.isNotEmpty)
+              if (LocalManager().downloadingTasks.isNotEmpty)
+                Row(
+                  children: [
                     Button.outlined(
                       child: Row(
                         children: [
@@ -451,13 +450,8 @@ class _LocalState extends State<_Local> {
                         showPopUpWidget(context, const DownloadingPage());
                       },
                     ),
-                  const Spacer(),
-                  Button.filled(
-                    onPressed: import,
-                    child: Text("Import".tl),
-                  ),
-                ],
-              ).paddingHorizontal(16).paddingVertical(8),
+                  ],
+                ).paddingHorizontal(16).paddingVertical(8),
             ],
           ),
         ),
@@ -465,166 +459,6 @@ class _LocalState extends State<_Local> {
     );
   }
 
-  void import() {
-    showDialog(
-      barrierDismissible: false,
-      context: App.rootContext,
-      builder: (context) {
-        return const _ImportBooksWidget();
-      },
-    );
-  }
-}
-
-class _ImportBooksWidget extends StatefulWidget {
-  const _ImportBooksWidget();
-
-  @override
-  State<_ImportBooksWidget> createState() => _ImportBooksWidgetState();
-}
-
-class _ImportBooksWidgetState extends State<_ImportBooksWidget> {
-  int type = 0;
-
-  bool loading = false;
-
-  var key = GlobalKey();
-
-  var height = 200.0;
-
-  var folders = LocalFavoritesManager().folderNames;
-
-  String? selectedFolder;
-
-  bool copyToLocalFolder = true;
-
-  bool cancelled = false;
-
-  @override
-  void dispose() {
-    loading = false;
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    String info = [
-      "选择包含小说文件的目录（支持PDF和EPUB，自动识别层级结构）".tl,
-      "选择一个EPUB文件（支持单章节和多章节合并）".tl,
-      "选择一个PDF文件（支持纯文字、纯图片和混合内容）".tl,
-      "选择一个ZIP/CBZ压缩包".tl,
-      "选择包含多个ZIP/CBZ压缩包的目录".tl,
-      "扫描本地路径并恢复下载记录".tl,
-    ][type];
-    List<String> importMethods = [
-      "文件夹导入".tl,
-      "EPUB导入".tl,
-      "PDF导入".tl,
-      "单个归档文件".tl,
-      "多个归档文件".tl,
-      "恢复本地下载".tl,
-    ];
-
-    return ContentDialog(
-      dismissible: !loading,
-      title: "Import Books".tl,
-      content: loading
-          ? SizedBox(
-              width: 600,
-              height: height,
-              child: const Center(
-                child: CircularProgressIndicator(),
-              ),
-            )
-          : RadioGroup<int>(
-              groupValue: type,
-              onChanged: (value) {
-                setState(() {
-                  type = value ?? type;
-                  if (type == 5) {
-                    selectedFolder = null;
-                  }
-                });
-              },
-              child: Column(
-                key: key,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(width: 600),
-                  ...List.generate(importMethods.length, (index) {
-                    return RadioListTile<int>(
-                      title: Text(importMethods[index]),
-                      value: index,
-                    );
-                  }),
-                  if (type != 5)
-                    ListTile(
-                      title: Text("Add to favorites".tl),
-                      trailing: Select(
-                        current: selectedFolder,
-                        values: folders,
-                        minWidth: 112,
-                        onTap: (v) {
-                          setState(() {
-                            selectedFolder = folders[v];
-                          });
-                        },
-                      ),
-                    ).paddingHorizontal(8),
-                  if (!App.isIOS &&
-                      !App.isMacOS &&
-                      type != 1 &&
-                      type != 2 &&
-                      type != 5)
-                    CheckboxListTile(
-                        enabled: true,
-                        title: Text("Copy to app local path".tl),
-                        value: copyToLocalFolder,
-                        onChanged: (v) {
-                          setState(() {
-                            copyToLocalFolder = !copyToLocalFolder;
-                          });
-                        }).paddingHorizontal(8),
-                  const SizedBox(height: 8),
-                  Text(info).paddingHorizontal(24),
-                ],
-              ),
-          ),
-      actions: [
-        Button.filled(
-          isLoading: loading,
-          onPressed: selectAndImport,
-          child: Text("Select".tl),
-        )
-      ],
-    );
-  }
-
-  void selectAndImport() async {
-    height = key.currentContext!.size!.height;
-
-    setState(() {
-      loading = true;
-    });
-    var importer = ImportNovel(
-        selectedFolder: selectedFolder, copyToLocal: copyToLocalFolder);
-    var result = switch (type) {
-      0 => await importer.directory(true),
-      1 => await importer.epub(),
-      2 => await importer.pdf(),
-      3 => await importer.zip(),
-      4 => await importer.multipleZip(),
-      5 => await importer.localDownloads(),
-      _ => false,
-    };
-    if (result) {
-      context.pop();
-    } else if (mounted) {
-      setState(() {
-        loading = false;
-      });
-    }
-  }
 }
 
 class _BookSourceWidget extends StatefulWidget {

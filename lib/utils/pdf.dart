@@ -534,6 +534,7 @@ class NovelPdfGenerator {
 
   void _newPage() {
     _currentPage = _PdfPage();
+    _currentPage!.y = _margin;
     _pages.add(_currentPage!);
   }
 
@@ -610,7 +611,8 @@ class NovelPdfGenerator {
     _ensurePage();
     // Simple line wrapping: split by character count
     // For CJK, each character is roughly the same width
-    final charsPerLine = (_contentW / (_fontSize * 0.55)).floor();
+    // CJK characters in SimHei are roughly equal to fontSize in width
+    final charsPerLine = (_contentW / _fontSize).floor();
     final lines = <String>[];
     var remaining = text;
     while (remaining.isNotEmpty) {

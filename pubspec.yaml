@@ -4,7 +4,7 @@ publish_to: 'none'
 homepage: https://github.com/YeXuanHs/novvera-app
 repository: https://github.com/YeXuanHs/novvera-app
 
-version: 1.4.2+142
+version: 1.4.3+143
 
 environment:
   sdk: '>=3.8.0 <4.0.0'
