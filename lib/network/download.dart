@@ -1088,9 +1088,11 @@ class NovelDownloadTask extends DownloadTask with _TransferSpeedMixin {
         continue;
       }
 
-      final res = await _runWithRetry(
-        () => loadNovelChapter(source.key, bookId, chapId),
-      );
+      final res = await _runWithRetry<Map<String, dynamic>>(() async {
+        final r = await loadNovelChapter(source.key, bookId, chapId);
+        if (r.error) throw r.errorMessage ?? 'Failed to load chapter';
+        return r.data;
+      });
       if (!_isRunning) return;
       if (res.error) {
         Log.warning("Download", "Chapter $chapId failed: ${res.errorMessage}");

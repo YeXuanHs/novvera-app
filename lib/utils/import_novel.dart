@@ -72,7 +72,7 @@ class ImportNovel {
       for (final entry in archive) {
         if (!entry.isFile) continue;
         final outPath = FilePath.join(tempDir.path, entry.name);
-        Directory(FilePath.dirname(outPath)).createSync(recursive: true);
+        Directory(File(outPath).parent.path).createSync(recursive: true);
         await File(outPath).writeAsBytes(entry.content as List<int>);
       }
 
