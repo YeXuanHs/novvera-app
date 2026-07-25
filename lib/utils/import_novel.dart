@@ -542,6 +542,7 @@ class ImportNovel {
   }
 
   /// Novvera offline layout: cover image + chapter dirs each with `chapter.json`.
+  /// Also supports folders with EPUB files in subdirectories.
   Future<LocalBook?> _checkSingleNovel(
     Directory directory, {
     String? id,
@@ -561,25 +562,65 @@ class ImportNovel {
     final chapterIds = <String>[];
     final chapterTitles = <String, String>{};
     String coverPath = '';
+    bool hasEpubSubdirs = false;
 
     await for (final entry in directory.list()) {
       if (entry is Directory) {
         final jsonFile = File(FilePath.join(entry.path, 'chapter.json'));
-        if (!jsonFile.existsSync()) continue;
-        final chapId = entry.name;
-        chapterIds.add(chapId);
-        try {
-          final map = jsonDecode(jsonFile.readAsStringSync()) as Map;
-          final t = (map['title'] ?? '').toString().trim();
-          chapterTitles[chapId] = t.isNotEmpty ? t : chapId;
-        } catch (_) {
-          chapterTitles[chapId] = chapId;
+        if (jsonFile.existsSync()) {
+          // Standard chapter.json layout
+          final chapId = entry.name;
+          chapterIds.add(chapId);
+          try {
+            final map = jsonDecode(jsonFile.readAsStringSync()) as Map;
+            final t = (map['title'] ?? '').toString().trim();
+            chapterTitles[chapId] = t.isNotEmpty ? t : chapId;
+          } catch (_) {
+            chapterTitles[chapId] = chapId;
+          }
+        } else {
+          // Check if subdirectory contains .epub files
+          final epubFiles = await entry.list().where((e) =>
+              e is File && e.path.toLowerCase().endsWith('.epub')).toList();
+          if (epubFiles.isNotEmpty) {
+            hasEpubSubdirs = true;
+          }
         }
       } else if (entry is File) {
         const imageExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'jpe'];
         if (imageExtensions.contains(entry.extension) &&
             entry.name.toLowerCase().startsWith('cover')) {
           coverPath = entry.name;
+        }
+      }
+    }
+
+    // If no chapter.json found but EPUBs exist in subdirs, import them
+    if (chapterIds.isEmpty && hasEpubSubdirs) {
+      var idx = 0;
+      await for (final entry in directory.list()) {
+        if (entry is Directory) {
+          final epubFiles = await entry.list().where((e) =>
+              e is File && e.path.toLowerCase().endsWith('.epub')).toList();
+          for (final epubFile in epubFiles) {
+            idx++;
+            final chapId = '$idx';
+            final epubFileName =
+                (epubFile as File).name.replaceAll(RegExp(r'\.epub$', caseSensitive: false), '');
+            final chapTitle = epubFileName.isNotEmpty ? epubFileName : 'Chapter $idx';
+            chapterTitles[chapId] = chapTitle;
+            // Extract EPUB content into chapter directory
+            try {
+              await _extractEpubToChapterDir(
+                epubFile as File,
+                Directory(FilePath.join(directory.path, chapId)),
+              );
+              chapterIds.add(chapId);
+            } catch (e, s) {
+              Log.warning("Import Novel",
+                  "Failed to extract EPUB ${epubFile.name}: $e");
+            }
+          }
         }
       }
     }
@@ -620,6 +661,179 @@ class ImportNovel {
       bookType: BookType.local,
       downloadedChapters: chapterIds,
       createdAt: createTime ?? DateTime.now(),
+    );
+  }
+
+  /// Extract an EPUB file into a chapter directory with `chapter.json`.
+  Future<void> _extractEpubToChapterDir(File epubFile, Directory chapDir) async {
+    final bytes = await epubFile.readAsBytes();
+    final archive = ZipDecoder().decodeBytes(bytes);
+    if (archive.isEmpty) return;
+    await chapDir.create(recursive: true);
+
+    // Find container.xml → OPF path
+    ArchiveFile? findEntry(String name) {
+      final lower = name.toLowerCase().replaceAll('\\', '/');
+      for (final f in archive.files) {
+        if (!f.isFile) continue;
+        if (f.name.toLowerCase().replaceAll('\\', '/') == lower) return f;
+      }
+      return null;
+    }
+
+    String readText(ArchiveFile f) =>
+        utf8.decode(f.content as List<int>, allowMalformed: true);
+
+    final container = findEntry('META-INF/container.xml');
+    if (container == null) {
+      await _createFallbackChapterFromEpub(epubFile, chapDir);
+      return;
+    }
+    final containerXml = readText(container);
+    final opfPath = RegExp(
+      r'full-path\s*=\s*"([^"]+)"',
+      caseSensitive: false,
+    ).firstMatch(containerXml)?.group(1);
+    if (opfPath == null || opfPath.isEmpty) {
+      await _createFallbackChapterFromEpub(epubFile, chapDir);
+      return;
+    }
+
+    final opf = findEntry(opfPath);
+    if (opf == null) {
+      await _createFallbackChapterFromEpub(epubFile, chapDir);
+      return;
+    }
+    final opfXml = readText(opf);
+    final opfDir = opfPath.contains('/')
+        ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1)
+        : '';
+
+    // id → href
+    final idHref = <String, String>{};
+    for (final m in RegExp(
+      r'<item[^>]+>',
+      caseSensitive: false,
+    ).allMatches(opfXml)) {
+      final tag = m.group(0)!;
+      final idAttr = RegExp(r'\bid\s*=\s*"([^"]+)"', caseSensitive: false)
+          .firstMatch(tag)
+          ?.group(1);
+      final href = RegExp(r'\bhref\s*=\s*"([^"]+)"', caseSensitive: false)
+          .firstMatch(tag)
+          ?.group(1);
+      if (idAttr != null && href != null) idHref[idAttr] = href;
+    }
+
+    final spine = <String>[];
+    for (final m in RegExp(
+      r'<itemref[^>]+idref\s*=\s*"([^"]+)"',
+      caseSensitive: false,
+    ).allMatches(opfXml)) {
+      spine.add(m.group(1)!);
+    }
+
+    // Extract text from spine items
+    final contentLines = <String>[];
+    final imageNames = <String>[];
+    var imgIdx = 0;
+    var hasCover = false;
+
+    for (final idref in spine) {
+      final href = idHref[idref];
+      if (href == null) continue;
+      final entry = findEntry(_joinEpubPath(opfDir, href));
+      if (entry == null) continue;
+      final html = readText(entry);
+
+      // Extract text
+      final text = _htmlToNovelText(html);
+      if (text.trim().isNotEmpty) {
+        contentLines.addAll(text.split('\n'));
+      }
+
+      // Extract images from this HTML (inline base64 or local refs)
+      for (final imgMatch in RegExp(r'<img[^>]+src\s*=\s*"([^"]+)"',
+              caseSensitive: false)
+          .allMatches(html)) {
+        final src = imgMatch.group(1)!;
+        if (src.startsWith('http://') || src.startsWith('https://')) continue;
+        final imgEntry = findEntry(_joinEpubPath(opfDir, src));
+        if (imgEntry != null) {
+          final imgBytes = imgEntry.content as List<int>;
+          final ext = _detectImageExt(Uint8List.fromList(imgBytes));
+          final imgName = 'img$imgIdx.$ext';
+          await File(FilePath.join(chapDir.path, imgName))
+              .writeAsBytes(imgBytes);
+          contentLines.add('file://${FilePath.join(chapDir.path, imgName)}');
+          imageNames.add(imgName);
+          if (!hasCover) {
+            await File(FilePath.join(chapDir.path.parent, 'cover.$ext'))
+                .writeAsBytes(imgBytes);
+            hasCover = true;
+          }
+          imgIdx++;
+        }
+      }
+    }
+
+    // Also check for standalone image items in manifest
+    for (final m in RegExp(r'<item[^>]+>', caseSensitive: false)
+        .allMatches(opfXml)) {
+      final tag = m.group(0)!;
+      final href = RegExp(r'\bhref\s*=\s*"([^"]+)"', caseSensitive: false)
+          .firstMatch(tag)
+          ?.group(1);
+      final mediaType =
+          RegExp(r'\bmedia-type\s*=\s*"([^"]+)"', caseSensitive: false)
+              .firstMatch(tag)
+              ?.group(1);
+      if (href == null) continue;
+      if (mediaType != null &&
+          (mediaType.contains('image/jpeg') || mediaType.contains('image/png'))) {
+        final imgEntry = findEntry(_joinEpubPath(opfDir, href));
+        if (imgEntry != null) {
+          // Skip if already extracted via HTML img tags
+          final hrefName = href.split('/').last;
+          if (imageNames.any((n) => n.endsWith(hrefName))) continue;
+          final imgBytes = imgEntry.content as List<int>;
+          final ext = _detectImageExt(Uint8List.fromList(imgBytes));
+          final imgName = 'img$imgIdx.$ext';
+          await File(FilePath.join(chapDir.path, imgName))
+              .writeAsBytes(imgBytes);
+          imageNames.add(imgName);
+          imgIdx++;
+        }
+      }
+    }
+
+    if (contentLines.isEmpty) {
+      await _createFallbackChapterFromEpub(epubFile, chapDir);
+      return;
+    }
+
+    await File(FilePath.join(chapDir.path, 'chapter.json')).writeAsString(
+      jsonEncode({
+        'content': contentLines.join('\n'),
+        'images': imageNames,
+        'title': epubFile.name
+            .replaceAll(RegExp(r'\.epub$', caseSensitive: false), ''),
+      }),
+    );
+  }
+
+  /// Fallback: if EPUB parsing fails, create a chapter with the raw filename.
+  Future<void> _createFallbackChapterFromEpub(
+      File epubFile, Directory chapDir) async {
+    await chapDir.create(recursive: true);
+    final title = epubFile.name
+        .replaceAll(RegExp(r'\.epub$', caseSensitive: false), '');
+    await File(FilePath.join(chapDir.path, 'chapter.json')).writeAsString(
+      jsonEncode({
+        'content': '',
+        'images': <String>[],
+        'title': title,
+      }),
     );
   }
 

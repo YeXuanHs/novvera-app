@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:isolate';
+import 'package:archive/archive.dart' as archive_lib;
 import 'package:flutter/services.dart';
 import 'package:flutter_saf/flutter_saf.dart';
 import 'package:novvera/foundation/app.dart';
@@ -402,7 +403,7 @@ class PdfGenerator {
       data[i * 3 + 1] = pixel.g;
       data[i * 3 + 2] = pixel.b;
     }
-    data = tdeflCompressData(data, true, true, 9);
+    data = archive_lib.ZLibEncoder().encodeBytes(data);
     return (width: width, height: height, data: data);
   }
 }
@@ -675,7 +676,7 @@ class NovelPdfGenerator {
         rgbData[i * 3 + 1] = pixel.g;
         rgbData[i * 3 + 2] = pixel.b;
       }
-      final compressed = tdeflCompressData(rgbData, true, true, 9);
+      final compressed = archive_lib.ZLibEncoder().encodeBytes(rgbData);
 
       final page = _currentPage!;
       page.elements.add(_PdfImageElement(
@@ -740,7 +741,7 @@ class NovelPdfGenerator {
     // FontFile2
     _objectOffsets[fontFileId] = _totalLength;
     final compressedFont = fontFileBytes.isNotEmpty
-        ? tdeflCompressData(fontFileBytes, true, true, 9)
+        ? archive_lib.ZLibEncoder().encodeBytes(fontFileBytes)
         : fontFileBytes;
     _write('$fontFileId 0 obj\n<<\n/Length ${compressedFont.length}\n'
         '/Filter /FlateDecode\n/Length1 ${fontFileBytes.length}\n>>\nstream\n');
@@ -879,51 +880,75 @@ class NovelPdfGenerator {
         (ttf[offset + 2] << 8) | ttf[offset + 3];
 
     final numTables = readU16(4);
-    int cmapOffset = 0;
+    int cmapTableOffset = 0;
+    // TTF offset table record: tag(4) + checksum(4) + offset(4) + length(4) = 16 bytes
+    // 'cmap' = 0x636D6170
     for (var i = 0; i < numTables; i++) {
-      final base = 12 + i * 8;
-      final platform = readU16(base);
-      final encoding = readU16(base + 2);
-      final offset = readU32(base + 4);
+      final base = 12 + i * 16;
+      if (base + 16 > ttf.length) break;
+      final tag = readU32(base);
+      final offset = readU32(base + 8);
+      if (tag == 0x636D6170) {
+        cmapTableOffset = offset;
+        break;
+      }
+    }
+    if (cmapTableOffset == 0) return {};
+
+    // Parse cmap subtable header
+    // cmap table: version(2) + numSubtables(2) + subtableRecords...
+    // subtableRecord: platformID(2) + encodingID(2) + offset(4)
+    if (cmapTableOffset + 4 > ttf.length) return {};
+    final numSubtables = readU16(cmapTableOffset + 2);
+    int cmapOffset = 0;
+    for (var i = 0; i < numSubtables; i++) {
+      final recBase = cmapTableOffset + 4 + i * 8;
+      if (recBase + 8 > ttf.length) break;
+      final platform = readU16(recBase);
+      final encoding = readU16(recBase + 2);
+      final subOffset = readU32(recBase + 4);
       // Prefer Windows Unicode BMP (platform 3, encoding 1)
       if (platform == 3 && encoding == 1) {
-        cmapOffset = offset;
+        cmapOffset = cmapTableOffset + subOffset;
         break;
       }
       if (platform == 0 && cmapOffset == 0) {
-        cmapOffset = offset;
+        cmapOffset = cmapTableOffset + subOffset;
       }
     }
-    if (cmapOffset == 0 && numTables > 0) {
-      cmapOffset = readU32(12 + 4);
-    }
-    if (cmapOffset == 0) return {};
+    if (cmapOffset == 0 || cmapOffset + 2 > ttf.length) return {};
 
     final format = readU16(cmapOffset);
     final result = <int, int>{};
 
     if (format == 4) {
       // Segment mapping format
-      final segCount = readU16(cmapOffset + 6) ~/ 2;
+      if (cmapOffset + 8 > ttf.length) return {};
+      final segCountX2 = readU16(cmapOffset + 6);
+      final segCount = segCountX2 ~/ 2;
       final endCodes = <int>[];
       final startCodes = <int>[];
       final idDeltas = <int>[];
       final idRangeOffsets = <int>[];
       var off = cmapOffset + 14;
       for (var i = 0; i < segCount; i++) {
+        if (off + 2 > ttf.length) return {};
         endCodes.add(readU16(off));
         off += 2;
       }
       off += 2; // reservedPad
       for (var i = 0; i < segCount; i++) {
+        if (off + 2 > ttf.length) return {};
         startCodes.add(readU16(off));
         off += 2;
       }
       for (var i = 0; i < segCount; i++) {
+        if (off + 2 > ttf.length) return {};
         idDeltas.add(readU16(off));
         off += 2;
       }
       for (var i = 0; i < segCount; i++) {
+        if (off + 2 > ttf.length) return {};
         idRangeOffsets.add(readU16(off));
         off += 2;
       }
@@ -956,9 +981,11 @@ class NovelPdfGenerator {
       }
     } else if (format == 6) {
       // Trimmed table format
+      if (cmapOffset + 10 > ttf.length) return {};
       final firstCode = readU16(cmapOffset + 6);
       final entryCount = readU16(cmapOffset + 8);
       for (var i = 0; i < entryCount; i++) {
+        if (cmapOffset + 10 + i * 2 + 2 > ttf.length) break;
         final gid = readU16(cmapOffset + 10 + i * 2);
         if (gid != 0) {
           result[firstCode + i] = gid;
