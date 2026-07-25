@@ -684,12 +684,12 @@ class NovelPdfGenerator {
     // Pages
     _objectOffsets[++_objectId] = _totalLength;
     _write('$_objectId 0 obj\n<<\n/Type /Pages\n/Kids [');
-    var nextObjId = _objectId + 1;
+    var nextObjId = _objectId + 1 + 4; // +4 for shared CIDFont objects below
     for (var i = 0; i < _pages.length; i++) {
       final page = _pages[i];
       final imgCount = page.elements.whereType<_PdfImageElement>().length;
       _write('$nextObjId 0 R ');
-      nextObjId += 2 + imgCount + 1; // page + font(4 objs shared) + images + content
+      nextObjId += 2 + imgCount; // page + images + content
     }
     _write(']\n/Count ${_pages.length}\n>>\nendobj\n\n');
     final pagesId = _objectId;
