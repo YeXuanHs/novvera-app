@@ -1050,10 +1050,10 @@ class NovelPdfGenerator {
       buf.write('endbfrange\n');
     }
 
-    buf.write('endcmap\n')
-      ..write('CMapName currentdict /CMap defineresource pop\n')
-      ..write('end\n')
-      ..write('end\n');
+    buf.write('endcmap\n');
+    buf.write('CMapName currentdict /CMap defineresource pop\n');
+    buf.write('end\n');
+    buf.write('end\n');
 
     return utf8.encode(buf.toString());
   }
