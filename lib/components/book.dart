@@ -593,18 +593,18 @@ class _BookDescription extends StatelessWidget {
           ),
         if (updateTime != null)
           Padding(
-            padding: const EdgeInsets.only(top: 2),
+            padding: const EdgeInsets.only(top: 4),
             child: Text(
               updateTime!,
               style: TextStyle(
-                  fontSize: 10.0,
-                  color: context.colorScheme.onSurface),
+                  fontSize: 11.0,
+                  color: context.colorScheme.onSurface.toOpacity(0.6)),
               maxLines: 1,
               softWrap: true,
               overflow: TextOverflow.ellipsis,
             ),
           ),
-        const SizedBox(height: 4),
+        if (updateTime == null) const SizedBox(height: 4),
         if (tags != null && tags!.isNotEmpty)
           Expanded(
             child: LayoutBuilder(builder: (context, constraints) {

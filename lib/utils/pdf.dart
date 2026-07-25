@@ -704,7 +704,7 @@ class NovelPdfGenerator {
     _objectOffsets[fontType0Id] = _totalLength;
     _write('$fontType0Id 0 obj\n<<\n/Type /Font\n/Subtype /Type0\n'
         '/BaseFont /STSong-Light\n/Encoding /UniGB-UCS2-H\n'
-        '/DescendantFonts [$fontCidId 0 R]\n>>\nendobj\n\n');
+        '/DescendantFonts [$fontCidId 0 R]\n/ToUnicode $cMapId 0 R\n>>\nendobj\n\n');
 
     // CIDFont descendant
     _objectOffsets[fontCidId] = _totalLength;
@@ -733,7 +733,7 @@ class NovelPdfGenerator {
         '/Flags 34\n/FontBBox [-171 -249 1073 1054]\n/ItalicAngle 0\n'
         '/Ascent 859\n/Descent -141\n/CapHeight 700\n/StemV 58\n'
         '/AvgWidth 500\n/MaxWidth 1000\n/Leading 0\n'
-        '/FontFile2 $cMapId 0 R\n>>\nendobj\n\n');
+        '>>\nendobj\n\n');
 
     // ToUnicode CMap
     final cMapContent = StringBuffer()
