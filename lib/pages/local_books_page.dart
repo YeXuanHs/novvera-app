@@ -597,13 +597,18 @@ class _LocalBooksPageState extends State<LocalBooksPage> {
         } catch (_) {}
 
         if (book.chapters != null && book.chapters!.isGrouped) {
-          // Grouped: 书名/卷名/章节.ext
+          // Grouped: 书名/卷名/章节.ext — only export volumes with downloaded chapters
           for (final groupName in book.chapters!.groups) {
+            final chapMap = book.chapters!.getGroup(groupName);
+            // Filter to only downloaded chapters in this group
+            final downloadedInGroup = chapMap.entries
+                .where((e) => book.downloadedChapters.contains(e.key))
+                .toList();
+            if (downloadedInGroup.isEmpty) continue;
             final groupDir =
                 Directory(FilePath.join(bookDir.path, sanitizeFileName(groupName)));
             if (!groupDir.existsSync()) groupDir.createSync(recursive: true);
-            final chapMap = book.chapters!.getGroup(groupName);
-            for (final entry in chapMap.entries) {
+            for (final entry in downloadedInGroup) {
               if (canceled) break;
               final chapName = sanitizeFileName(entry.value, maxLength: 80);
               final outPath = FilePath.join(groupDir.path, '$chapName$ext');
@@ -611,9 +616,10 @@ class _LocalBooksPageState extends State<LocalBooksPage> {
             }
           }
         } else {
-          // Flat: 书名/章节.ext
+          // Flat: 书名/章节.ext — only export downloaded chapters
           final chapMap = book.chapters?.allChapters ?? {};
           for (final entry in chapMap.entries) {
+            if (!book.downloadedChapters.contains(entry.key)) continue;
             if (canceled) break;
             final chapName = sanitizeFileName(entry.value, maxLength: 80);
             final outPath = FilePath.join(bookDir.path, '$chapName$ext');
@@ -676,7 +682,15 @@ class _LocalBooksPageState extends State<LocalBooksPage> {
       final t = raw.trim();
       if (t.isEmpty) continue;
       if (t.startsWith('file://')) {
-        final rel = 'images/chap_img$imgIdx';
+        final path = t.substring(7);
+        var ext = 'jpg';
+        try {
+          final bytes = File(path).readAsBytesSync();
+          ext = detectFileType(bytes).ext;
+          if (ext.startsWith('.')) ext = ext.substring(1);
+          if (ext.isEmpty) ext = 'jpg';
+        } catch (_) {}
+        final rel = 'images/chap_img$imgIdx.$ext';
         body.writeln('    <p><img src="$rel" alt="illustration"/></p>');
         imgIdx++;
       } else if (t.startsWith('http://') || t.startsWith('https://')) {

@@ -672,18 +672,75 @@ class NovelPdfGenerator {
     // Pages
     _objectOffsets[++_objectId] = _totalLength;
     _write('$_objectId 0 obj\n<<\n/Type /Pages\n/Kids [');
-    final pageIds = <int>[];
     var nextObjId = _objectId + 1;
     for (var i = 0; i < _pages.length; i++) {
-      pageIds.add(nextObjId);
-      _write('$nextObjId 0 R ');
-      // Each page: 1 page obj + 1 font obj + N image objs + 1 content obj
       final page = _pages[i];
       final imgCount = page.elements.whereType<_PdfImageElement>().length;
-      nextObjId += 2 + imgCount + 1; // page + font + images + content
+      _write('$nextObjId 0 R ');
+      nextObjId += 2 + imgCount + 1; // page + font(4 objs shared) + images + content
     }
     _write(']\n/Count ${_pages.length}\n>>\nendobj\n\n');
     final pagesId = _objectId;
+
+    // Shared CIDFont objects (STSong-Light for CJK)
+    final fontType0Id = ++_objectId;
+    final fontCidId = ++_objectId;
+    final fontDescId = ++_objectId;
+    final cMapId = ++_objectId;
+
+    // Type0 font
+    _objectOffsets[fontType0Id] = _totalLength;
+    _write('$fontType0Id 0 obj\n<<\n/Type /Font\n/Subtype /Type0\n'
+        '/BaseFont /STSong-Light\n/Encoding /UniGB-UCS2-H\n'
+        '/DescendantFonts [$fontCidId 0 R]\n>>\nendobj\n\n');
+
+    // CIDFont descendant
+    _objectOffsets[fontCidId] = _totalLength;
+    _write('$fontCidId 0 obj\n<<\n/Type /Font\n/Subtype /CIDFontType2\n'
+        '/BaseFont /STSong-Light\n'
+        '/CIDSystemInfo <<\n/Registry (Adobe)\n/Ordering (GB1)\n/Supplement 2\n>>\n'
+        '/FontDescriptor $fontDescId 0 R\n/Widths ['
+        ' 250 333 408 500 500 833 778 333 333 333 500 570 250 333 250 278'
+        ' 500 500 500 500 500 500 500 500 500 500 278 278 570 570 570 500'
+        ' 833 722 722 722 722 667 611 778 722 278 556 722 611 833 722 778'
+        ' 667 778 722 667 611 722 667 944 667 667 611 333 278 333 570 500'
+        ' 333 500 500 444 500 444 278 500 500 278 278 444 278 778 500 500'
+        ' 500 500 333 389 278 500 500 722 500 500 444 480 200 480 541 350'
+        ' 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0'
+        ' 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0'
+        ' 250 333 500 500 500 500 200 500 333 760 276 500 570 333 760 500'
+        ' 400 570 300 300 333 500 523 250 333 300 310 500 750 750 750 500'
+        ' 722 722 722 722 722 722 722 570 722 722 722 722 722 667 667 500'
+        ' 500 500 500 500 500 500 722 444 444 444 444 444 278 278 278 278'
+        ' 500 500 500 500 500 500 500 570 500 500 500 500 500 500 500 500'
+        ']\n>>\nendobj\n\n');
+
+    // Font descriptor
+    _objectOffsets[fontDescId] = _totalLength;
+    _write('$fontDescId 0 obj\n<<\n/Type /FontDescriptor\n/FontName /STSong-Light\n'
+        '/Flags 34\n/FontBBox [-171 -249 1073 1054]\n/ItalicAngle 0\n'
+        '/Ascent 859\n/Descent -141\n/CapHeight 700\n/StemV 58\n'
+        '/AvgWidth 500\n/MaxWidth 1000\n/Leading 0\n'
+        '/FontFile2 $cMapId 0 R\n>>\nendobj\n\n');
+
+    // ToUnicode CMap
+    final cMapContent = StringBuffer()
+      ..write('2 dict begin\n')
+      ..write('begincmap\n')
+      ..write('/CMapName /UniGB-UCS2-H def\n')
+      ..write('/CMapType 2 def\n')
+      ..write('/CIDSystemInfo << /Registry (Adobe) /Ordering (GB1) /Supplement 2 >> def\n')
+      ..write('1 begincodespacerange\n')
+      ..write('<0000> <FFFF>\n')
+      ..write('endcodespacerange\n')
+      ..write('endcmap\n')
+      ..write('CMapName currentdict /CMap defineresource pop\n')
+      ..write('end\n');
+    final cMapBytes = utf8.encode(cMapContent.toString());
+    _objectOffsets[cMapId] = _totalLength;
+    _write('$cMapId 0 obj\n<<\n/Length ${cMapBytes.length}\n>>\nstream\n');
+    _writeBytes(cMapBytes);
+    _write('\nendstream\nendobj\n\n');
 
     // Per-page objects
     for (var pi = 0; pi < _pages.length; pi++) {
@@ -695,22 +752,18 @@ class NovelPdfGenerator {
       final pageObjId = _objectId;
       _write('$_objectId 0 obj\n<<\n/Type /Page\n/Parent $pagesId 0 R\n');
       _write('/Resources <<\n');
-      _write('/Font << /F1 ${_objectId + 1} 0 R >>\n');
+      _write('/Font << /F1 $fontType0Id 0 R >>\n');
       if (imgElements.isNotEmpty) {
         _write('/XObject <<');
         for (var ii = 0; ii < imgElements.length; ii++) {
-          _write(' /Im${ii + 1} ${_objectId + 2 + ii} 0 R');
+          _write(' /Im${ii + 1} ${_objectId + 1 + ii} 0 R');
         }
         _write(' >>\n');
       }
       _write('>>\n');
       _write('/MediaBox [0 0 $_pageW $_pageH]\n');
-      _write('/Contents ${_objectId + 1 + 1 + imgElements.length} 0 R\n');
+      _write('/Contents ${_objectId + 1 + imgElements.length} 0 R\n');
       _write('>>\nendobj\n\n');
-
-      // Font object (Helvetica)
-      _objectOffsets[++_objectId] = _totalLength;
-      _write('$_objectId 0 obj\n<<\n/Type /Font\n/Subtype /Type1\n/BaseFont /Helvetica\n/Encoding /WinAnsiEncoding\n>>\nendobj\n\n');
 
       // Image XObjects
       for (final img in imgElements) {
@@ -733,7 +786,7 @@ class NovelPdfGenerator {
         if (elem is _PdfTextElement) {
           contentStream.writeln('/F1 ${elem.fontSize} Tf');
           contentStream.writeln('1 0 0 1 ${elem.x} ${elem.y} Tm');
-          contentStream.writeln('(${_escapePdfString(elem.text)}) Tj');
+          contentStream.writeln('<${_toHexUtf16be(elem.text)}> Tj');
         } else if (elem is _PdfImageElement) {
           contentStream.writeln('ET');
           contentStream.writeln('q');
@@ -754,8 +807,8 @@ class NovelPdfGenerator {
 
     // Info object
     final infoId = ++_objectId;
-    _objectOffsets[_objectId] = _totalLength;
-    _write('$_objectId 0 obj\n<<\n');
+    _objectOffsets[infoId] = _totalLength;
+    _write('$infoId 0 obj\n<<\n');
     _write('/Title (${_escapePdfString(title)})\n');
     _write('/Author (${_escapePdfString(author)})\n');
     _write('/Producer (novvera v${App.version})\n');
@@ -773,6 +826,24 @@ class NovelPdfGenerator {
 
     await _output.flush();
     await _output.close();
+  }
+
+  /// Encode a string as hex UTF-16BE for PDF CIDFont text operators.
+  static String _toHexUtf16be(String s) {
+    final buf = StringBuffer();
+    for (final unit in s.runes) {
+      if (unit <= 0xFFFF) {
+        buf.write(unit.toRadixString(16).padLeft(4, '0'));
+      } else {
+        // Surrogate pair
+        final base = unit - 0x10000;
+        final hi = 0xD800 + ((base & 0xFFC00) >> 10);
+        final lo = 0xDC00 + (base & 0x3FF);
+        buf.write(hi.toRadixString(16).padLeft(4, '0'));
+        buf.write(lo.toRadixString(16).padLeft(4, '0'));
+      }
+    }
+    return buf.toString().toUpperCase();
   }
 
   static String _escapePdfString(String s) {
