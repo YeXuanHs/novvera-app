@@ -768,7 +768,7 @@ class ImportNovel {
           contentLines.add('file://${FilePath.join(chapDir.path, imgName)}');
           imageNames.add(imgName);
           if (!hasCover) {
-            await File(FilePath.join(chapDir.path.parent, 'cover.$ext'))
+            await File(FilePath.join(chapDir.parent.path, 'cover.$ext'))
                 .writeAsBytes(imgBytes);
             hasCover = true;
           }
