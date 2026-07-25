@@ -674,6 +674,17 @@ class _LocalBooksPageState extends State<LocalBooksPage> {
     }
   }
 
+  /// Resolve a content line to a local image file path, or null.
+  String? _resolveImagePath(String line, Directory chapDir) {
+    if (line.startsWith('file://')) return line.substring(7);
+    // Bare filename like "img0.jpg" stored by download logic
+    if (!line.startsWith('http://') && !line.startsWith('https://')) {
+      final f = File(FilePath.join(chapDir.path, line));
+      if (f.existsSync()) return f.path;
+    }
+    return null;
+  }
+
   /// Convert chapter content lines to EPUB XHTML body.
   String _contentToHtml(String content, Directory chapDir) {
     final body = StringBuffer();
@@ -681,11 +692,11 @@ class _LocalBooksPageState extends State<LocalBooksPage> {
     for (final raw in content.split('\n')) {
       final t = raw.trim();
       if (t.isEmpty) continue;
-      if (t.startsWith('file://')) {
-        final path = t.substring(7);
+      final localPath = _resolveImagePath(t, chapDir);
+      if (localPath != null) {
         var ext = 'jpg';
         try {
-          final bytes = File(path).readAsBytesSync();
+          final bytes = File(localPath).readAsBytesSync();
           ext = detectFileType(bytes).ext;
           if (ext.startsWith('.')) ext = ext.substring(1);
           if (ext.isEmpty) ext = 'jpg';
@@ -710,10 +721,10 @@ class _LocalBooksPageState extends State<LocalBooksPage> {
     var imgIdx = 0;
     for (final raw in content.split('\n')) {
       final t = raw.trim();
-      if (t.startsWith('file://')) {
-        final path = t.substring(7);
+      final localPath = _resolveImagePath(t, chapDir);
+      if (localPath != null) {
         try {
-          final bytes = File(path).readAsBytesSync();
+          final bytes = File(localPath).readAsBytesSync();
           var ext = detectFileType(bytes).ext;
           if (ext.startsWith('.')) ext = ext.substring(1);
           if (ext.isEmpty) ext = 'jpg';

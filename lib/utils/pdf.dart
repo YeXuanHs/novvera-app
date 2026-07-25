@@ -524,6 +524,17 @@ class NovelPdfGenerator {
     _totalLength += data.length;
   }
 
+  /// Resolve a content line to a local image file path, or null.
+  String? _resolveImagePath(String line, Directory chapDir) {
+    if (line.startsWith('file://')) return line.substring(7);
+    // Bare filename like "img0.jpg" stored by download logic
+    if (!line.startsWith('http://') && !line.startsWith('https://')) {
+      final f = File(FilePath.join(chapDir.path, line));
+      if (f.existsSync()) return f.path;
+    }
+    return null;
+  }
+
   /// Add a chapter's content to the PDF.
   Future<void> addChapter(
       String chapterTitle, String content, Directory chapDir) async {
@@ -537,8 +548,9 @@ class NovelPdfGenerator {
         _advanceY(_paragraphSpacing);
         continue;
       }
-      if (t.startsWith('file://')) {
-        await _addLocalImage(t.substring(7), chapDir);
+      final localPath = _resolveImagePath(t, chapDir);
+      if (localPath != null) {
+        await _addLocalImage(localPath, chapDir);
       } else if (t.startsWith('http://') || t.startsWith('https://')) {
         _addText('[image: $t]');
       } else {
@@ -816,12 +828,13 @@ class NovelPdfGenerator {
 
     // Xref
     final xrefOffset = _totalLength;
-    _write('xref\n0 $_objectId\n');
+    final xrefCount = _objectId + 1; // includes free entry at index 0
+    _write('xref\n0 $xrefCount\n');
     _write('0000000000 65535 f\r\n');
     for (var i = 1; i <= _objectId; i++) {
       _write('${(_objectOffsets[i]!).toString().padLeft(10, '0')} 00000 n\r\n');
     }
-    _write('trailer\n<<\n/Size $_objectId\n/Root $catalogId 0 R\n/Info $infoId 0 R\n>>\n');
+    _write('trailer\n<<\n/Size $xrefCount\n/Root $catalogId 0 R\n/Info $infoId 0 R\n>>\n');
     _write('startxref\n$xrefOffset\n%%EOF\n');
 
     await _output.flush();

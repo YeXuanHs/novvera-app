@@ -489,10 +489,17 @@ Future<File> createNovelEpubFromLocalBook(
     for (final raw in content.split('\n')) {
       final t = raw.trim();
       if (t.isEmpty) continue;
+      // Resolve image path: file:// URI or bare filename in chapter dir
+      String? imagePath;
       if (t.startsWith('file://')) {
-        final path = t.substring(7);
+        imagePath = t.substring(7);
+      } else if (!t.startsWith('http://') && !t.startsWith('https://')) {
+        final f = File(FilePath.join(chapDir.path, t));
+        if (f.existsSync()) imagePath = f.path;
+      }
+      if (imagePath != null) {
         try {
-          final bytes = File(path).readAsBytesSync();
+          final bytes = File(imagePath).readAsBytesSync();
           var ext = detectFileType(bytes).ext;
           if (ext.startsWith('.')) ext = ext.substring(1);
           if (ext.isEmpty) ext = 'jpg';
