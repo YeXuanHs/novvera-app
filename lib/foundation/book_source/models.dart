@@ -103,35 +103,6 @@ class Book {
         favoriteId = json["favoriteId"],
         stars = (json["stars"] as num?)?.toDouble();
 
-  /// Extract update time from tags like "更新:2026-07-25"
-  String? findUpdateTime() {
-    const acceptedKeys = [
-      "更新",
-      "最後更新",
-      "最后更新",
-      "update",
-      "last update",
-    ];
-    for (var tag in tags ?? []) {
-      var parts = tag.split(":");
-      if (parts.length >= 2 &&
-          acceptedKeys.contains(parts[0].toLowerCase())) {
-        var time = parts.sublist(1).join(":").split(" ").first;
-        var segments = time.split("-");
-        if (segments.length == 3) {
-          var y = int.tryParse(segments[0]);
-          var m = int.tryParse(segments[1]);
-          var d = int.tryParse(segments[2]);
-          if (y != null && m != null && d != null &&
-              y >= 2000 && y <= 3000 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
-            return "$y-$m-$d";
-          }
-        }
-      }
-    }
-    return null;
-  }
-
   @override
   bool operator ==(Object other) {
     if (other is! Book) return false;
@@ -586,5 +557,36 @@ class PageJumpTarget {
     } else {
       Log.error("Page Jump", "Unknown page: $page");
     }
+  }
+}
+
+/// Extract update time from tags like "更新:2026-07-25"
+extension BookUpdateTime on Book {
+  String? findUpdateTime() {
+    const acceptedKeys = [
+      "更新",
+      "最後更新",
+      "最后更新",
+      "update",
+      "last update",
+    ];
+    for (var tag in tags ?? []) {
+      var parts = tag.split(":");
+      if (parts.length >= 2 &&
+          acceptedKeys.contains(parts[0].toLowerCase())) {
+        var time = parts.sublist(1).join(":").split(" ").first;
+        var segments = time.split("-");
+        if (segments.length == 3) {
+          var y = int.tryParse(segments[0]);
+          var m = int.tryParse(segments[1]);
+          var d = int.tryParse(segments[2]);
+          if (y != null && m != null && d != null &&
+              y >= 2000 && y <= 3000 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+            return "$y-$m-$d";
+          }
+        }
+      }
+    }
+    return null;
   }
 }
