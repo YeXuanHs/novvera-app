@@ -668,9 +668,9 @@ class LinovelibClient {
 
   /// Fill name/author/cover/intro from `/novel/{aid}.html` only ([bookDetail]).
   /// Hollow / error detail pages are dropped (e.g. empty shells in search hits).
-  /// Cap at 3 concurrent detail fetches — linovelib CF Error 1015 on bursts.
+  /// Single-threaded to avoid CF Error 1015 rate-limit bursts on linovelib.
   /// (huanmeng / wenku8 keep uncapped [Future.wait].)
-  static const _enrichConcurrency = 3;
+  static const _enrichConcurrency = 1;
 
   Future<List<Map<String, dynamic>>> _enrichAids(List<String> aids) async {
     if (aids.isEmpty) return [];

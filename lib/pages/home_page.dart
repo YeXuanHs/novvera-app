@@ -514,6 +514,9 @@ class _ImportBooksWidgetState extends State<_ImportBooksWidget> {
       "Select an EPUB file.".tl,
       "Select a directory which contains multiple EPUB files.".tl,
       "Scan the current local path and restore the local database.".tl,
+      "Select a ZIP/CBZ file containing a book folder.".tl,
+      "Select a PDF file.".tl,
+      "Select a directory which contains multiple PDF files.".tl,
     ][type];
     List<String> importMethods = [
       "Single Book".tl,
@@ -521,6 +524,9 @@ class _ImportBooksWidgetState extends State<_ImportBooksWidget> {
       "An EPUB file".tl,
       "Multiple EPUB files".tl,
       "Restore local downloads".tl,
+      "A ZIP file".tl,
+      "A PDF file".tl,
+      "Multiple PDF files".tl,
     ];
 
     return ContentDialog(
@@ -612,6 +618,9 @@ class _ImportBooksWidgetState extends State<_ImportBooksWidget> {
       2 => await importer.epub(),
       3 => await importer.multipleEpub(),
       4 => await importer.localDownloads(),
+      5 => await importer.zip(),
+      6 => await importer.pdf(),
+      7 => await importer.multiplePdf(),
       _ => false,
     };
     if (result) {

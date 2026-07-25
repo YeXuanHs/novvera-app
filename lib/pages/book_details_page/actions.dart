@@ -302,7 +302,7 @@ abstract mixin class _BookPageActions {
     update();
   }
 
-  /// Offline novel → LocalManager with user-chosen folder.
+  /// Offline novel → save to app local directory (export via local page).
   Future<void> _downloadNovelOffline() async {
     if (LocalManager().isDownloading(book.id, book.bookType)) {
       App.rootContext.showMessage(message: "The book is downloading".tl);
@@ -324,16 +324,13 @@ abstract mixin class _BookPageActions {
     );
     if (selected == null || selected!.isEmpty) return;
 
-    final picker = DirectoryPicker();
-    final rootDir = await picker.pickDirectory();
-    if (rootDir == null) return;
-
+    // Save directly to app local directory — no directory picker.
+    // Users can export from the local books page when needed.
     LocalManager().addTask(NovelDownloadTask(
       source: bookSource,
       bookId: book.id,
       book: book,
       chapters: selected!.map((e) => e.id).toList(),
-      saveRoot: rootDir.path,
       bookTitle: book.title,
     ));
     App.rootContext.showMessage(message: "Download started".tl);

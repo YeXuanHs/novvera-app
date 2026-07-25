@@ -405,3 +405,423 @@ class PdfGenerator {
     return (width: width, height: height, data: data);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Novel PDF generation (flow-based: text + images mixed)
+// ---------------------------------------------------------------------------
+
+/// Export a whole offline novel as a single PDF.
+Future<File> createNovelPdfFromLocalBook(
+  LocalBook book,
+  String outFilePath,
+) async {
+  if (!book.hasChapters) {
+    throw StateError('Not a chaptered novel');
+  }
+  final generator = NovelPdfGenerator(
+    title: book.title,
+    author: book.subtitle,
+    outputPath: outFilePath,
+    decodeImage: Image.decodeImage,
+  );
+  generator.startDocument();
+
+  for (final chapId in book.downloadedChapters) {
+    final chapDirName = LocalManager.getChapterDirectoryName(chapId);
+    final chapDir = Directory(FilePath.join(book.baseDir, chapDirName));
+    final jsonFile = File(FilePath.join(chapDir.path, 'chapter.json'));
+    if (!jsonFile.existsSync()) continue;
+    final map = jsonDecode(jsonFile.readAsStringSync()) as Map;
+    final title =
+        (map['title'] ?? book.chapters?[chapId] ?? chapId).toString();
+    final content = (map['content'] ?? '').toString();
+    await generator.addChapter(title, content, chapDir);
+  }
+
+  await generator.finish();
+  return File(outFilePath);
+}
+
+/// Export a single chapter as a standalone PDF file.
+Future<File> createNovelPdfChapter({
+  required String title,
+  required String content,
+  required Directory chapterDir,
+  required String outputPath,
+}) async {
+  final generator = NovelPdfGenerator(
+    title: title,
+    author: '',
+    outputPath: outputPath,
+    decodeImage: Image.decodeImage,
+  );
+  generator.startDocument();
+  await generator.addChapter(title, content, chapterDir);
+  await generator.finish();
+  return File(outputPath);
+}
+
+/// Flow-based PDF generator for novels.
+///
+/// Supports:
+/// - Pure text paragraphs
+/// - Pure image pages (illustrations)
+/// - Mixed text + image content
+class NovelPdfGenerator {
+  final String title;
+  final String author;
+  final String outputPath;
+  final DecodeImage decodeImage;
+
+  static const double _pageW = 595.0;
+  static const double _pageH = 842.0;
+  static const double _margin = 50.0;
+  static const double _contentW = _pageW - _margin * 2;
+  static const double _lineHeight = 20.0;
+  static const double _fontSize = 12.0;
+  static const double _titleFontSize = 18.0;
+  static const double _titleLineHeight = 28.0;
+  static const double _paragraphSpacing = 8.0;
+  static const double _imageSpacing = 12.0;
+
+  final List<_PdfPage> _pages = [];
+  _PdfPage? _currentPage;
+
+  int _objectId = 0;
+  final Map<int, int> _objectOffsets = {};
+  int _totalLength = 0;
+  late IOSink _output;
+
+  NovelPdfGenerator({
+    required this.title,
+    required this.author,
+    required this.outputPath,
+    required this.decodeImage,
+  });
+
+  void startDocument() {
+    _output = File(outputPath).openWrite();
+    _newPage();
+  }
+
+  void _newPage() {
+    _currentPage = _PdfPage();
+    _pages.add(_currentPage!);
+  }
+
+  void _ensurePage() {
+    _currentPage ??= _PdfPage();
+  }
+
+  void _write(String str) {
+    var data = utf8.encode(str);
+    _output.add(data);
+    _totalLength += data.length;
+  }
+
+  void _writeBytes(List<int> data) {
+    _output.add(data);
+    _totalLength += data.length;
+  }
+
+  /// Add a chapter's content to the PDF.
+  Future<void> addChapter(
+      String chapterTitle, String content, Directory chapDir) async {
+    // Chapter title
+    _addTitle(chapterTitle);
+
+    final lines = content.split('\n');
+    for (final raw in lines) {
+      final t = raw.trim();
+      if (t.isEmpty) {
+        _advanceY(_paragraphSpacing);
+        continue;
+      }
+      if (t.startsWith('file://')) {
+        await _addLocalImage(t.substring(7), chapDir);
+      } else if (t.startsWith('http://') || t.startsWith('https://')) {
+        _addText('[image: $t]');
+      } else {
+        _addText(t);
+      }
+    }
+
+    // Page break between chapters
+    _currentPage = null;
+  }
+
+  void _addTitle(String text) {
+    _ensurePage();
+    final page = _currentPage!;
+    if (page.y + _titleLineHeight > _pageH - _margin) {
+      _newPage();
+    }
+    page.elements.add(_PdfTextElement(
+      text: text,
+      x: _margin,
+      y: _pageH - page.y - _titleFontSize,
+      fontSize: _titleFontSize,
+      isTitle: true,
+    ));
+    page.y += _titleLineHeight + _paragraphSpacing;
+  }
+
+  void _addText(String text) {
+    _ensurePage();
+    // Simple line wrapping: split by character count
+    // For CJK, each character is roughly the same width
+    final charsPerLine = (_contentW / (_fontSize * 0.55)).floor();
+    final lines = <String>[];
+    var remaining = text;
+    while (remaining.isNotEmpty) {
+      if (remaining.length <= charsPerLine) {
+        lines.add(remaining);
+        break;
+      }
+      lines.add(remaining.substring(0, charsPerLine));
+      remaining = remaining.substring(charsPerLine);
+    }
+    for (final line in lines) {
+      _ensurePage();
+      final page = _currentPage!;
+      if (page.y + _lineHeight > _pageH - _margin) {
+        _newPage();
+      }
+      final p = _currentPage!;
+      p.elements.add(_PdfTextElement(
+        text: line,
+        x: _margin,
+        y: _pageH - p.y - _fontSize,
+        fontSize: _fontSize,
+        isTitle: false,
+      ));
+      p.y += _lineHeight;
+    }
+    _advanceY(_paragraphSpacing);
+  }
+
+  Future<void> _addLocalImage(String path, Directory chapDir) async {
+    File? file;
+    if (File(path).existsSync()) {
+      file = File(path);
+    } else {
+      final inChap = File(FilePath.join(chapDir.path, path));
+      if (inChap.existsSync()) file = inChap;
+    }
+    if (file == null) return;
+
+    try {
+      final bytes = await file.readAsBytes();
+      final image = await decodeImage(bytes);
+      final imgW = image.width.toDouble();
+      final imgH = image.height.toDouble();
+
+      // Scale to fit content area
+      final scaleW = _contentW / imgW;
+      final scaleH = (_pageH - _margin * 2) / imgH;
+      final scale = scaleW < scaleH ? scaleW : scaleH;
+      final drawW = imgW * scale;
+      final drawH = imgH * scale;
+
+      _ensurePage();
+      if (_currentPage!.y + drawH + _imageSpacing > _pageH - _margin) {
+        _newPage();
+      }
+
+      // Raw RGB data
+      final rgbData = Uint8List(imgW.toInt() * imgH.toInt() * 3);
+      for (var i = 0; i < imgW.toInt() * imgH.toInt(); i++) {
+        final pixel = image.getPixelAtIndex(i);
+        rgbData[i * 3] = pixel.r;
+        rgbData[i * 3 + 1] = pixel.g;
+        rgbData[i * 3 + 2] = pixel.b;
+      }
+      final compressed = tdeflCompressData(rgbData, true, true, 9);
+
+      final page = _currentPage!;
+      page.elements.add(_PdfImageElement(
+        x: _margin,
+        y: _pageH - page.y - drawH,
+        drawW: drawW,
+        drawH: drawH,
+        imgW: imgW.toInt(),
+        imgH: imgH.toInt(),
+        compressedData: compressed,
+      ));
+      page.y += drawH + _imageSpacing;
+    } catch (e) {
+      _addText('[image error: $path]');
+    }
+  }
+
+  void _advanceY(double amount) {
+    _ensurePage();
+    _currentPage!.y += amount;
+  }
+
+  /// Write the final PDF document.
+  Future<void> finish() async {
+    // Write header
+    _write('%PDF-1.7\n%\xFF\xFF\xFF\xFF\n\n');
+
+    // Catalog
+    _objectOffsets[++_objectId] = _totalLength;
+    _write('$_objectId 0 obj\n<<\n/Type /Catalog\n/Pages ${_objectId + 1} 0 R\n>>\nendobj\n\n');
+    final catalogId = _objectId;
+
+    // Pages
+    _objectOffsets[++_objectId] = _totalLength;
+    _write('$_objectId 0 obj\n<<\n/Type /Pages\n/Kids [');
+    final pageIds = <int>[];
+    var nextObjId = _objectId + 1;
+    for (var i = 0; i < _pages.length; i++) {
+      pageIds.add(nextObjId);
+      _write('$nextObjId 0 R ');
+      // Each page: 1 page obj + 1 font obj + N image objs + 1 content obj
+      final page = _pages[i];
+      final imgCount = page.elements.whereType<_PdfImageElement>().length;
+      nextObjId += 2 + imgCount + 1; // page + font + images + content
+    }
+    _write(']\n/Count ${_pages.length}\n>>\nendobj\n\n');
+    final pagesId = _objectId;
+
+    // Per-page objects
+    for (var pi = 0; pi < _pages.length; pi++) {
+      final page = _pages[pi];
+      final imgElements = page.elements.whereType<_PdfImageElement>().toList();
+
+      // Page object
+      _objectOffsets[++_objectId] = _totalLength;
+      final pageObjId = _objectId;
+      _write('$_objectId 0 obj\n<<\n/Type /Page\n/Parent $pagesId 0 R\n');
+      _write('/Resources <<\n');
+      _write('/Font << /F1 ${_objectId + 1} 0 R >>\n');
+      if (imgElements.isNotEmpty) {
+        _write('/XObject <<');
+        for (var ii = 0; ii < imgElements.length; ii++) {
+          _write(' /Im${ii + 1} ${_objectId + 2 + ii} 0 R');
+        }
+        _write(' >>\n');
+      }
+      _write('>>\n');
+      _write('/MediaBox [0 0 $_pageW $_pageH]\n');
+      _write('/Contents ${_objectId + 1 + 1 + imgElements.length} 0 R\n');
+      _write('>>\nendobj\n\n');
+
+      // Font object (Helvetica)
+      _objectOffsets[++_objectId] = _totalLength;
+      _write('$_objectId 0 obj\n<<\n/Type /Font\n/Subtype /Type1\n/BaseFont /Helvetica\n/Encoding /WinAnsiEncoding\n>>\nendobj\n\n');
+
+      // Image XObjects
+      for (final img in imgElements) {
+        _objectOffsets[++_objectId] = _totalLength;
+        _write('$_objectId 0 obj\n<<\n/Type /XObject\n/Subtype /Image\n');
+        _write('/Width ${img.imgW}\n/Height ${img.imgH}\n');
+        _write('/ColorSpace /DeviceRGB\n/BitsPerComponent 8\n');
+        _write('/Filter /FlateDecode\n/Length ${img.compressedData.length}\n');
+        _write('>>\nstream\n');
+        _writeBytes(img.compressedData);
+        _write('\nendstream\nendobj\n\n');
+      }
+
+      // Content stream
+      _objectOffsets[++_objectId] = _totalLength;
+      final contentStream = StringBuffer();
+      contentStream.writeln('BT');
+      int imgIdx = 0;
+      for (final elem in page.elements) {
+        if (elem is _PdfTextElement) {
+          contentStream.writeln('/F1 ${elem.fontSize} Tf');
+          contentStream.writeln('1 0 0 1 ${elem.x} ${elem.y} Tm');
+          contentStream.writeln('(${_escapePdfString(elem.text)}) Tj');
+        } else if (elem is _PdfImageElement) {
+          contentStream.writeln('ET');
+          contentStream.writeln('q');
+          contentStream.writeln(
+              '${elem.drawW} 0 0 ${elem.drawH} ${elem.x} ${elem.y} cm');
+          contentStream.writeln('/Im${imgIdx + 1} Do');
+          contentStream.writeln('Q');
+          contentStream.writeln('BT');
+          imgIdx++;
+        }
+      }
+      contentStream.writeln('ET');
+      final streamBytes = utf8.encode(contentStream.toString());
+      _write('$_objectId 0 obj\n<<\n/Length ${streamBytes.length}\n>>\nstream\n');
+      _writeBytes(streamBytes);
+      _write('\nendstream\nendobj\n\n');
+    }
+
+    // Info object
+    final infoId = ++_objectId;
+    _objectOffsets[_objectId] = _totalLength;
+    _write('$_objectId 0 obj\n<<\n');
+    _write('/Title (${_escapePdfString(title)})\n');
+    _write('/Author (${_escapePdfString(author)})\n');
+    _write('/Producer (novvera v${App.version})\n');
+    _write('>>\nendobj\n\n');
+
+    // Xref
+    final xrefOffset = _totalLength;
+    _write('xref\n0 $_objectId\n');
+    _write('0000000000 65535 f\r\n');
+    for (var i = 1; i <= _objectId; i++) {
+      _write('${(_objectOffsets[i]!).toString().padLeft(10, '0')} 00000 n\r\n');
+    }
+    _write('trailer\n<<\n/Size $_objectId\n/Root $catalogId 0 R\n/Info $infoId 0 R\n>>\n');
+    _write('startxref\n$xrefOffset\n%%EOF\n');
+
+    await _output.flush();
+    await _output.close();
+  }
+
+  static String _escapePdfString(String s) {
+    return s
+        .replaceAll('\\', '\\\\')
+        .replaceAll('(', '\\(')
+        .replaceAll(')', '\\)')
+        .replaceAll('\r', '\\r')
+        .replaceAll('\n', '\\n');
+  }
+}
+
+abstract class _PdfPageElement {
+  final double x;
+  final double y;
+  const _PdfPageElement({required this.x, required this.y});
+}
+
+class _PdfTextElement extends _PdfPageElement {
+  final String text;
+  final double fontSize;
+  final bool isTitle;
+  const _PdfTextElement({
+    required super.x,
+    required super.y,
+    required this.text,
+    required this.fontSize,
+    required this.isTitle,
+  });
+}
+
+class _PdfImageElement extends _PdfPageElement {
+  final double drawW;
+  final double drawH;
+  final int imgW;
+  final int imgH;
+  final Uint8List compressedData;
+  const _PdfImageElement({
+    required super.x,
+    required super.y,
+    required this.drawW,
+    required this.drawH,
+    required this.imgW,
+    required this.imgH,
+    required this.compressedData,
+  });
+}
+
+class _PdfPage {
+  double y = 0;
+  final List<_PdfPageElement> elements = [];
+}

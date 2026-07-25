@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:novvera/components/components.dart';
 import 'package:novvera/foundation/app.dart';
@@ -9,7 +11,9 @@ import 'package:novvera/pages/book_details_page/book_page.dart';
 import 'package:novvera/pages/downloading_page.dart';
 import 'package:novvera/pages/favorites/favorites_page.dart';
 import 'package:novvera/utils/epub.dart';
+import 'package:novvera/utils/file_type.dart';
 import 'package:novvera/utils/io.dart';
+import 'package:novvera/utils/pdf.dart';
 import 'package:novvera/utils/translations.dart';
 import 'package:zip_flutter/zip_flutter.dart';
 import 'package:url_launcher/url_launcher_string.dart';
@@ -434,24 +438,81 @@ class _LocalBooksPageState extends State<LocalBooksPage> {
   }
 
   List<MenuEntry> exportActions(List<LocalBook> books) {
-    // Light-novel app: local library exports EPUB only.
     return [
       MenuEntry(
-        icon: Icons.import_contacts_outlined,
-        text: "Export as epub".tl,
-        onClick: () async {
-          exportBooks(books, createNovelEpubFromLocalBook, ".epub");
-        },
+        icon: Icons.outbox_outlined,
+        text: "Export".tl,
+        onClick: () => _showExportDialog(books),
       ),
     ];
   }
 
-  /// Export given books to a file.
-  void exportBooks(
-      List<LocalBook> books, ExportBookFunc export, String ext) async {
+  void _showExportDialog(List<LocalBook> books) {
+    var format = 0; // 0 = EPUB, 1 = PDF
+    var merged = true; // true = single file, false = folder hierarchy
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(builder: (ctx, setState) {
+          return ContentDialog(
+            title: "Export".tl,
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text("Format".tl).paddingHorizontal(16),
+                RadioGroup<int>(
+                  groupValue: format,
+                  onChanged: (v) => setState(() => format = v ?? format),
+                  child: Column(children: [
+                    RadioListTile<int>(
+                      title: const Text('EPUB'),
+                      value: 0,
+                    ),
+                    RadioListTile<int>(
+                      title: const Text('PDF'),
+                      value: 1,
+                    ),
+                  ]),
+                ),
+                const Divider(),
+                CheckboxListTile(
+                  title: Text("Merge into single file".tl),
+                  subtitle: Text(merged
+                      ? "Single file".tl
+                      : format == 0
+                          ? "书名/卷名/章节名.epub"
+                          : "书名/卷名/章节名.pdf"),
+                  value: merged,
+                  onChanged: (v) => setState(() => merged = v ?? merged),
+                ),
+              ],
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  if (merged) {
+                    _exportMerged(books, format == 0 ? '.epub' : '.pdf',
+                        format == 0 ? 'epub' : 'pdf');
+                  } else {
+                    _exportHierarchy(books, format == 0 ? '.epub' : '.pdf',
+                        format == 0 ? 'epub' : 'pdf');
+                  }
+                },
+                child: Text("Export".tl),
+              ),
+            ],
+          );
+        });
+      },
+    );
+  }
+
+  /// Single file export: one EPUB or PDF containing all chapters.
+  void _exportMerged(List<LocalBook> books, String ext, String format) async {
     var current = 0;
     var cacheDir = FilePath.join(App.cachePath, 'books_export');
-    var outFile = FilePath.join(App.cachePath, 'books_export.zip');
     bool canceled = false;
     if (Directory(cacheDir).existsSync()) {
       Directory(cacheDir).deleteSync(recursive: true);
@@ -462,59 +523,199 @@ class _LocalBooksPageState extends State<LocalBooksPage> {
       allowCancel: true,
       message: "${"Exporting".tl} $current/${books.length}",
       withProgress: books.length > 1,
-      onCancel: () {
-        canceled = true;
-      },
+      onCancel: () => canceled = true,
     );
     try {
       var fileName = "";
       for (var book in books) {
+        if (canceled) break;
         fileName = FilePath.join(
           cacheDir,
           sanitizeFileName(book.title, maxLength: 100) + ext,
         );
-        await export(book, fileName);
+        if (format == 'epub') {
+          await createNovelEpubFromLocalBook(book, fileName);
+        } else {
+          await createNovelPdfFromLocalBook(book, fileName);
+        }
         current++;
         if (books.length > 1) {
           loadingController
               .setMessage("${"Exporting".tl} $current/${books.length}");
           loadingController.setProgress(current / books.length);
         }
-        if (canceled) {
-          return;
-        }
       }
+      if (canceled) return;
       if (books.length == 1) {
-        await saveFile(
-          file: File(fileName),
-          filename: File(fileName).name,
-        );
-        Directory(cacheDir).deleteSync(recursive: true);
-        loadingController.close();
-        return;
-      }
-      loadingController.setProgress(null);
-      loadingController.setMessage("Compressing".tl);
-      await ZipFile.compressFolderAsync(cacheDir, outFile);
-      if (canceled) {
+        await saveFile(file: File(fileName), filename: File(fileName).name);
+      } else {
+        var outFile = FilePath.join(App.cachePath, 'books_export.zip');
+        loadingController.setProgress(null);
+        loadingController.setMessage("Compressing".tl);
+        await ZipFile.compressFolderAsync(cacheDir, outFile);
+        await saveFile(file: File(outFile), filename: "books_export.zip");
         File(outFile).deleteIgnoreError();
-        return;
       }
     } catch (e, s) {
-      Log.error("Export Books", e, s);
+      Log.error("Export", e, s);
       context.showMessage(message: e.toString());
-      loadingController.close();
-      return;
     } finally {
+      loadingController.close();
       Directory(cacheDir).deleteIgnoreError(recursive: true);
     }
-    await saveFile(
-      file: File(outFile),
-      filename: "books_export.zip",
-    );
-    loadingController.close();
-    File(outFile).deleteIgnoreError();
   }
+
+  /// Folder hierarchy export: 书名/卷名/章节.ext
+  void _exportHierarchy(
+      List<LocalBook> books, String ext, String format) async {
+    final picker = DirectoryPicker();
+    final dest = await picker.pickDirectory();
+    if (dest == null) return;
+
+    var current = 0;
+    bool canceled = false;
+    final loadingController = showLoadingDialog(
+      context,
+      allowCancel: true,
+      message: "${"Exporting".tl} $current/${books.length}",
+      withProgress: books.length > 1,
+      onCancel: () => canceled = true,
+    );
+    try {
+      for (final book in books) {
+        if (canceled) break;
+        final bookName = sanitizeFileName(book.title, maxLength: 100);
+        final bookDir = Directory(FilePath.join(dest.path, bookName));
+        if (!bookDir.existsSync()) bookDir.createSync(recursive: true);
+
+        // Copy cover
+        try {
+          final coverFile = book.coverFile;
+          if (coverFile.existsSync()) {
+            await coverFile.copy(FilePath.join(bookDir.path, book.cover));
+          }
+        } catch (_) {}
+
+        if (book.chapters != null && book.chapters!.isGrouped) {
+          // Grouped: 书名/卷名/章节.ext
+          for (final groupName in book.chapters!.groups) {
+            final groupDir =
+                Directory(FilePath.join(bookDir.path, sanitizeFileName(groupName)));
+            if (!groupDir.existsSync()) groupDir.createSync(recursive: true);
+            final chapMap = book.chapters!.getGroup(groupName);
+            for (final entry in chapMap.entries) {
+              if (canceled) break;
+              final chapName = sanitizeFileName(entry.value, maxLength: 80);
+              final outPath = FilePath.join(groupDir.path, '$chapName$ext');
+              await _exportChapter(book, entry.key, outPath, format);
+            }
+          }
+        } else {
+          // Flat: 书名/章节.ext
+          final chapMap = book.chapters?.allChapters ?? {};
+          for (final entry in chapMap.entries) {
+            if (canceled) break;
+            final chapName = sanitizeFileName(entry.value, maxLength: 80);
+            final outPath = FilePath.join(bookDir.path, '$chapName$ext');
+            await _exportChapter(book, entry.key, outPath, format);
+          }
+        }
+        current++;
+        if (books.length > 1) {
+          loadingController
+              .setMessage("${"Exporting".tl} $current/${books.length}");
+          loadingController.setProgress(current / books.length);
+        }
+      }
+    } catch (e, s) {
+      Log.error("Export", e, s);
+      context.showMessage(message: e.toString());
+    }
+    loadingController.close();
+  }
+
+  /// Export a single chapter to EPUB or PDF.
+  Future<void> _exportChapter(
+      LocalBook book, String chapId, String outPath, String format) async {
+    final chapDirName = LocalManager.getChapterDirectoryName(chapId);
+    final chapDir = Directory(FilePath.join(book.baseDir, chapDirName));
+    final jsonFile = File(FilePath.join(chapDir.path, 'chapter.json'));
+    if (!jsonFile.existsSync()) return;
+
+    final map = jsonDecode(jsonFile.readAsStringSync()) as Map;
+    final title =
+        (map['title'] ?? book.chapters?[chapId] ?? chapId).toString();
+    final content = (map['content'] ?? '').toString();
+
+    if (format == 'epub') {
+      await createNovelEpub(
+        NovelEpubData(
+          title: title,
+          author: book.subtitle,
+          chapters: {title: _contentToHtml(content, chapDir)},
+        ),
+        App.cachePath,
+        outPath,
+        _collectEmbeddedImages(content, chapDir),
+      );
+    } else {
+      await createNovelPdfChapter(
+        title: title,
+        content: content,
+        chapterDir: chapDir,
+        outputPath: outPath,
+      );
+    }
+  }
+
+  /// Convert chapter content lines to EPUB XHTML body.
+  String _contentToHtml(String content, Directory chapDir) {
+    final body = StringBuffer();
+    var imgIdx = 0;
+    for (final raw in content.split('\n')) {
+      final t = raw.trim();
+      if (t.isEmpty) continue;
+      if (t.startsWith('file://')) {
+        final rel = 'images/chap_img$imgIdx';
+        body.writeln('    <p><img src="$rel" alt="illustration"/></p>');
+        imgIdx++;
+      } else if (t.startsWith('http://') || t.startsWith('https://')) {
+        body.writeln(
+            '    <p><img src="${_xmlEscape(t)}" alt="illustration"/></p>');
+      } else {
+        body.writeln('    <p>${_xmlEscape(t)}</p>');
+      }
+    }
+    if (body.isEmpty) body.writeln('    <p>（本章无内容）</p>');
+    return body.toString();
+  }
+
+  Map<String, List<int>> _collectEmbeddedImages(
+      String content, Directory chapDir) {
+    final embedded = <String, List<int>>{};
+    var imgIdx = 0;
+    for (final raw in content.split('\n')) {
+      final t = raw.trim();
+      if (t.startsWith('file://')) {
+        final path = t.substring(7);
+        try {
+          final bytes = File(path).readAsBytesSync();
+          var ext = detectFileType(bytes).ext;
+          if (ext.startsWith('.')) ext = ext.substring(1);
+          if (ext.isEmpty) ext = 'jpg';
+          embedded['images/chap_img$imgIdx.$ext'] = bytes;
+        } catch (_) {}
+        imgIdx++;
+      }
+    }
+    return embedded;
+  }
+
+  static String _xmlEscape(String s) => s
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;');
 }
 
 typedef ExportBookFunc = Future<File> Function(

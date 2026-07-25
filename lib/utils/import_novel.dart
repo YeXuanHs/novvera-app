@@ -54,6 +54,64 @@ class ImportNovel {
     return registerBooks(imported, copyToLocal);
   }
 
+  /// Pick a `.zip` / `.cbz` file containing a novel folder structure.
+  Future<bool> zip() async {
+    final file = await selectFile(ext: ['zip', 'cbz']);
+    if (file == null) return false;
+    final controller = showLoadingDialog(App.rootContext, allowCancel: false);
+    try {
+      final bytes = await File(file.path).readAsBytes();
+      final archive = ZipDecoder().decodeBytes(bytes);
+      final tempDir = Directory(FilePath.join(
+        App.cachePath,
+        'novel_import_zip',
+      ));
+      if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
+      tempDir.createSync(recursive: true);
+
+      for (final entry in archive) {
+        if (!entry.isFile) continue;
+        final outPath = FilePath.join(tempDir.path, entry.name);
+        Directory(FilePath.dirname(outPath)).createSync(recursive: true);
+        await File(outPath).writeAsBytes(entry.content as List<int>);
+      }
+
+      final imported = <String?, List<LocalBook>>{selectedFolder: []};
+
+      // Check if the root itself is a novel (has chapter dirs)
+      final rootResult = await _checkSingleNovel(tempDir);
+      if (rootResult != null) {
+        imported[selectedFolder]!.add(rootResult);
+      } else {
+        // Check subdirectories
+        await for (final entry in tempDir.list()) {
+          if (entry is Directory) {
+            final result = await _checkSingleNovel(entry);
+            if (result != null) imported[selectedFolder]!.add(result);
+          }
+        }
+      }
+
+      controller.close();
+
+      if (imported[selectedFolder]!.isEmpty) {
+        App.rootContext.showMessage(message: "No valid books found".tl);
+        try { tempDir.deleteSync(recursive: true); } catch (_) {}
+        return false;
+      }
+
+      // Copy to local dir (imported books reference tempDir paths)
+      final ok = await registerBooks(imported, copyToLocal);
+      try { tempDir.deleteSync(recursive: true); } catch (_) {}
+      return ok;
+    } catch (e, s) {
+      controller.close();
+      Log.error("Import Novel", e.toString(), s);
+      App.rootContext.showMessage(message: e.toString());
+      return false;
+    }
+  }
+
   /// Pick a single `.epub` file.
   Future<bool> epub() async {
     final file = await selectFile(ext: ['epub']);
@@ -104,6 +162,287 @@ class ImportNovel {
       return false;
     }
     return registerBooks({selectedFolder: books}, false);
+  }
+
+  /// Pick a single `.pdf` file and extract text as a book.
+  Future<bool> pdf() async {
+    final file = await selectFile(ext: ['pdf']);
+    if (file == null) return false;
+    final controller = showLoadingDialog(App.rootContext, allowCancel: false);
+    try {
+      final book = await _importPdfFile(File(file.path));
+      controller.close();
+      if (book == null) {
+        App.rootContext.showMessage(message: "Invalid PDF or unreadable".tl);
+        return false;
+      }
+      return registerBooks({selectedFolder: [book]}, false);
+    } catch (e, s) {
+      controller.close();
+      Log.error("Import Novel", e.toString(), s);
+      App.rootContext.showMessage(message: e.toString());
+      return false;
+    }
+  }
+
+  /// Pick a directory of `.pdf` files.
+  Future<bool> multiplePdf() async {
+    final picker = DirectoryPicker();
+    final dir = await picker.pickDirectory(directAccess: true);
+    if (dir == null) return false;
+    final files = (await dir.list().toList())
+        .whereType<File>()
+        .where((e) => e.extension == 'pdf')
+        .toList();
+    if (files.isEmpty) {
+      App.rootContext.showMessage(message: "No valid books found".tl);
+      return false;
+    }
+    final controller = showLoadingDialog(App.rootContext, allowCancel: false);
+    final books = <LocalBook>[];
+    for (final file in files) {
+      try {
+        final book = await _importPdfFile(file);
+        if (book != null) books.add(book);
+      } catch (e, s) {
+        Log.error("Import Novel", e.toString(), s);
+      }
+    }
+    controller.close();
+    if (books.isEmpty) {
+      App.rootContext.showMessage(message: "No valid books found".tl);
+      return false;
+    }
+    return registerBooks({selectedFolder: books}, false);
+  }
+
+  /// Import a PDF file by extracting text and/or images from each page.
+  /// Supports: text-only, image-only, and mixed (text+image) PDFs.
+  Future<LocalBook?> _importPdfFile(File pdfFile) async {
+    final bytes = await pdfFile.readAsBytes();
+    final title =
+        pdfFile.name.replaceAll(RegExp(r'\.pdf$', caseSensitive: false), '');
+
+    if (LocalManager().findByName(title) != null) {
+      Log.info("Import Novel", "Book already exists: $title");
+      return null;
+    }
+
+    final parsed = _parsePdf(bytes);
+    if (parsed.isEmpty) return null;
+
+    final outRoot = Directory(FilePath.join(
+      LocalManager().path,
+      findValidDirectoryName(LocalManager().path, sanitizeFileName(title)),
+    ));
+    await outRoot.create(recursive: true);
+
+    final chapterIds = <String>[];
+    final chapterTitles = <String, String>{};
+    var hasCover = false;
+
+    for (var i = 0; i < parsed.length; i++) {
+      final page = parsed[i];
+      final chapId = '${i + 1}';
+      final chapTitle = 'Page ${i + 1}';
+      final chapDir = Directory(FilePath.join(outRoot.path, chapId));
+      await chapDir.create(recursive: true);
+
+      final imageNames = <String>[];
+      // Save extracted images
+      for (var j = 0; j < page.images.length; j++) {
+        final imgData = page.images[j];
+        var ext = _detectImageExt(imgData);
+        final imgName = 'img$j.$ext';
+        await File(FilePath.join(chapDir.path, imgName)).writeAsBytes(imgData);
+        imageNames.add(imgName);
+
+        // Use first image as cover
+        if (!hasCover) {
+          await File(FilePath.join(outRoot.path, 'cover.$ext'))
+              .writeAsBytes(imgData);
+          hasCover = true;
+        }
+      }
+
+      // Build content: text lines + image file references
+      final contentLines = <String>[];
+      if (page.text.trim().isNotEmpty) {
+        contentLines.addAll(page.text.split('\n'));
+      }
+      for (final imgName in imageNames) {
+        contentLines.add('file://${FilePath.join(chapDir.path, imgName)}');
+      }
+
+      if (contentLines.isEmpty) continue;
+
+      await File(FilePath.join(chapDir.path, 'chapter.json')).writeAsString(
+        jsonEncode({
+          'content': contentLines.join('\n'),
+          'images': imageNames,
+          'title': chapTitle,
+        }),
+      );
+      chapterIds.add(chapId);
+      chapterTitles[chapId] = chapTitle;
+    }
+
+    if (chapterIds.isEmpty) {
+      try {
+        await outRoot.delete(recursive: true);
+      } catch (_) {}
+      return null;
+    }
+
+    return LocalBook(
+      id: '0',
+      title: title,
+      subtitle: '',
+      tags: const ['type:novel', 'format:pdf'],
+      directory: outRoot.name,
+      chapters: BookChapters(
+        {for (final id in chapterIds) id: chapterTitles[id] ?? id},
+      ),
+      cover: hasCover ? 'cover.jpg' : 'cover.jpg',
+      bookType: BookType.local,
+      downloadedChapters: chapterIds,
+      createdAt: DateTime.now(),
+    );
+  }
+
+  /// Parse a PDF into pages, each with text and/or images.
+  static List<_PdfPageData> _parsePdf(Uint8List bytes) {
+    final pages = <_PdfPageData>[];
+    try {
+      final raw = latin1.decode(bytes, allowInvalid: true);
+
+      // Find all stream objects
+      final streamRegex = RegExp(r'stream\r?\n([\s\S]*?)\r?\nendstream');
+      final streams = streamRegex.allMatches(raw).toList();
+
+      // Also find object headers to detect image objects
+      final objRegex = RegExp(
+          r'(\d+)\s+\d+\s+obj\s*<<([\s\S]*?)>>[\s\S]*?stream\r?\n([\s\S]*?)\r?\nendstream');
+
+      var currentPage = _PdfPageData();
+
+      for (final match in objRegex.allMatches(raw)) {
+        final dict = match.group(2) ?? '';
+        final streamData = match.group(3) ?? '';
+
+        // Check if this is a page object (starts a new page)
+        if (dict.contains('/Type /Page') && !dict.contains('/Type /Pages')) {
+          if (currentPage.text.isNotEmpty || currentPage.images.isNotEmpty) {
+            pages.add(currentPage);
+          }
+          currentPage = _PdfPageData();
+          continue;
+        }
+
+        // Try to decompress
+        List<int>? decodedBytes;
+        String decodedText = '';
+        try {
+          decodedBytes = ZLibDecoder().decodeBytes(latin1.encode(streamData));
+          decodedText = utf8.decode(decodedBytes!, allowMalformed: true);
+        } catch (_) {
+          decodedText = streamData;
+        }
+
+        // Check if this is an image object
+        if (dict.contains('/Subtype /Image') ||
+            dict.contains('/Subtype/Image')) {
+          // Extract image data
+          List<int>? imageData;
+          if (decodedBytes != null && decodedBytes.isNotEmpty) {
+            imageData = decodedBytes;
+          } else {
+            imageData = latin1.encode(streamData);
+          }
+          if (imageData.isNotEmpty) {
+            // Check if it's JPEG (starts with FF D8 FF)
+            if (imageData.length > 3 &&
+                imageData[0] == 0xFF &&
+                imageData[1] == 0xD8 &&
+                imageData[2] == 0xFF) {
+              currentPage.images.add(Uint8List.fromList(imageData));
+            }
+            // Check if it's PNG (starts with 89 50 4E 47)
+            else if (imageData.length > 4 &&
+                imageData[0] == 0x89 &&
+                imageData[1] == 0x50 &&
+                imageData[2] == 0x4E &&
+                imageData[3] == 0x47) {
+              currentPage.images.add(Uint8List.fromList(imageData));
+            }
+            // Raw RGB data: try to read as image
+            else if (decodedBytes != null && decodedBytes.length > 100) {
+              // Try to detect raw RGB by checking /Width and /Height in dict
+              final widthMatch =
+                  RegExp(r'/Width\s+(\d+)').firstMatch(dict);
+              final heightMatch =
+                  RegExp(r'/Height\s+(\d+)').firstMatch(dict);
+              if (widthMatch != null && heightMatch != null) {
+                final w = int.parse(widthMatch.group(1)!);
+                final h = int.parse(heightMatch.group(1)!);
+                if (w > 0 && h > 0 && decodedBytes.length >= w * h * 3) {
+                  // Raw RGB → encode as simple BMP-like image
+                  // For simplicity, save raw RGB and let the app handle it
+                  currentPage.images
+                      .add(Uint8List.fromList(decodedBytes));
+                }
+              }
+            }
+          }
+          continue;
+        }
+
+        // Check if this stream contains text operators
+        final textToCheck = decodedText.isNotEmpty ? decodedText : streamData;
+        final tjRegex = RegExp(r'\(([^)]*)\)\s*Tj');
+        final tJRegex = RegExp(r'\[(.*?)\]\s*TJ');
+
+        final pageText = StringBuffer();
+        for (final tj in tjRegex.allMatches(textToCheck)) {
+          pageText.write(tj.group(1) ?? '');
+        }
+        for (final tJ in tJRegex.allMatches(textToCheck)) {
+          final inner = tJ.group(1) ?? '';
+          final parts = RegExp(r'\(([^)]*)\)').allMatches(inner);
+          for (final p in parts) {
+            pageText.write(p.group(1) ?? '');
+          }
+        }
+        final extractedText = pageText.toString().trim();
+        if (extractedText.isNotEmpty) {
+          if (currentPage.text.isNotEmpty) {
+            currentPage.text += '\n';
+          }
+          currentPage.text += extractedText;
+        }
+      }
+
+      // Don't forget the last page
+      if (currentPage.text.isNotEmpty || currentPage.images.isNotEmpty) {
+        pages.add(currentPage);
+      }
+    } catch (e) {
+      Log.error("Import PDF", "Failed to parse PDF: $e");
+    }
+    return pages;
+  }
+
+  static String _detectImageExt(Uint8List data) {
+    if (data.length > 3 &&
+        data[0] == 0xFF &&
+        data[1] == 0xD8 &&
+        data[2] == 0xFF) return 'jpg';
+    if (data.length > 4 &&
+        data[0] == 0x89 &&
+        data[1] == 0x50 &&
+        data[2] == 0x4E &&
+        data[3] == 0x47) return 'png';
+    return 'jpg';
   }
 
   /// Rescan [LocalManager.path] and re-register folders that look like novels.
@@ -561,4 +900,10 @@ class ImportNovel {
     }
     return true;
   }
+}
+
+/// Data extracted from a single PDF page.
+class _PdfPageData {
+  String text = '';
+  final List<Uint8List> images = [];
 }

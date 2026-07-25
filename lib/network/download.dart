@@ -1088,11 +1088,16 @@ class NovelDownloadTask extends DownloadTask with _TransferSpeedMixin {
         continue;
       }
 
-      final res = await loadNovelChapter(source.key, bookId, chapId);
+      final res = await _runWithRetry(
+        () => loadNovelChapter(source.key, bookId, chapId),
+      );
       if (!_isRunning) return;
       if (res.error) {
-        _setError("Error: ${res.errorMessage}");
-        return;
+        Log.warning("Download", "Chapter $chapId failed: ${res.errorMessage}");
+        _chapterIndex++;
+        _done++;
+        await LocalManager().saveCurrentDownloadingTasks();
+        continue;
       }
 
       final data = res.data;
