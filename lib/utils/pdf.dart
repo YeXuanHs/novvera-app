@@ -703,6 +703,15 @@ class NovelPdfGenerator {
     // Write header
     _write('%PDF-1.7\n%\xFF\xFF\xFF\xFF\n\n');
 
+    // Parse TTF cmap to build Unicode→GlyphID mapping
+    final fontFileBytes = await _findAndReadChineseFont();
+    final cmap = _parseTtfCmap(fontFileBytes);
+    // Reverse map: glyphId → unicode for ToUnicode CMap
+    final glyphToUnicode = <int, int>{};
+    for (final entry in cmap.entries) {
+      glyphToUnicode[entry.value] = entry.key;
+    }
+
     // Catalog
     _objectOffsets[++_objectId] = _totalLength;
     _write('$_objectId 0 obj\n<<\n/Type /Catalog\n/Pages ${_objectId + 1} 0 R\n>>\nendobj\n\n');
@@ -711,25 +720,24 @@ class NovelPdfGenerator {
     // Pages
     _objectOffsets[++_objectId] = _totalLength;
     _write('$_objectId 0 obj\n<<\n/Type /Pages\n/Kids [');
-    var nextObjId = _objectId + 1 + 5; // +5 for FontFile2 + CIDFont objects below
+    var nextObjId = _objectId + 1 + 5; // font objects
     for (var i = 0; i < _pages.length; i++) {
       final page = _pages[i];
       final imgCount = page.elements.whereType<_PdfImageElement>().length;
       _write('$nextObjId 0 R ');
-      nextObjId += 2 + imgCount; // page + images + content
+      nextObjId += 2 + imgCount;
     }
     _write(']\n/Count ${_pages.length}\n>>\nendobj\n\n');
     final pagesId = _objectId;
 
-    // Embed a real system Chinese TTF font
-    final fontFileBytes = await _findAndReadChineseFont();
-    final fontFileId = ++_objectId; // FontFile2 stream (compressed TTF)
+    // Font objects
+    final fontFileId = ++_objectId;
     final fontType0Id = ++_objectId;
     final fontCidId = ++_objectId;
     final fontDescId = ++_objectId;
     final cMapId = ++_objectId;
 
-    // Write FontFile2 (embedded TTF, FlateDecode compressed)
+    // FontFile2
     _objectOffsets[fontFileId] = _totalLength;
     final compressedFont = fontFileBytes.isNotEmpty
         ? tdeflCompressData(fontFileBytes, true, true, 9)
@@ -739,34 +747,21 @@ class NovelPdfGenerator {
     _writeBytes(compressedFont);
     _write('\nendstream\nendobj\n\n');
 
-    // Type0 font
+    // Type0 font — Identity-H: char codes = glyph IDs directly
     _objectOffsets[fontType0Id] = _totalLength;
     _write('$fontType0Id 0 obj\n<<\n/Type /Font\n/Subtype /Type0\n'
-        '/BaseFont /SimHei\n/Encoding /UniGB-UCS2-H\n'
+        '/BaseFont /SimHei\n/Encoding /Identity-H\n'
         '/DescendantFonts [$fontCidId 0 R]\n/ToUnicode $cMapId 0 R\n>>\nendobj\n\n');
 
-    // CIDFont descendant
+    // CIDFont descendant — Identity-H, no CIDSystemInfo needed
     _objectOffsets[fontCidId] = _totalLength;
     _write('$fontCidId 0 obj\n<<\n/Type /Font\n/Subtype /CIDFontType2\n'
         '/BaseFont /SimHei\n'
-        '/CIDSystemInfo <<\n/Registry (Adobe)\n/Ordering (GB1)\n/Supplement 2\n>>\n'
-        '/FontDescriptor $fontDescId 0 R\n/Widths ['
-        ' 250 333 408 500 500 833 778 333 333 333 500 570 250 333 250 278'
-        ' 500 500 500 500 500 500 500 500 500 500 278 278 570 570 570 500'
-        ' 833 722 722 722 722 667 611 778 722 278 556 722 611 833 722 778'
-        ' 667 778 722 667 611 722 667 944 667 667 611 333 278 333 570 500'
-        ' 333 500 500 444 500 444 278 500 500 278 278 444 278 778 500 500'
-        ' 500 500 333 389 278 500 500 722 500 500 444 480 200 480 541 350'
-        ' 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0'
-        ' 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0'
-        ' 250 333 500 500 500 500 200 500 333 760 276 500 570 333 760 500'
-        ' 400 570 300 300 333 500 523 250 333 300 310 500 750 750 750 500'
-        ' 722 722 722 722 722 722 722 570 722 722 722 722 722 667 667 500'
-        ' 500 500 500 500 500 500 722 444 444 444 444 444 278 278 278 278'
-        ' 500 500 500 500 500 500 500 570 500 500 500 500 500 500 500 500'
-        ']\n>>\nendobj\n\n');
+        '/CIDSystemInfo <<\n/Registry (Adobe)\n/Ordering (Identity)\n/Supplement 0\n>>\n'
+        '/DW 1000\n'
+        '/FontDescriptor $fontDescId 0 R\n>>\nendobj\n\n');
 
-    // Font descriptor (with /FontFile2 reference)
+    // Font descriptor
     _objectOffsets[fontDescId] = _totalLength;
     _write('$fontDescId 0 obj\n<<\n/Type /FontDescriptor\n/FontName /SimHei\n'
         '/Flags 32\n/FontBBox [-171 -249 1073 1054]\n/ItalicAngle 0\n'
@@ -774,21 +769,9 @@ class NovelPdfGenerator {
         '/AvgWidth 500\n/MaxWidth 1000\n/Leading 0\n'
         '/FontFile2 $fontFileId 0 R\n>>\nendobj\n\n');
 
-    // ToUnicode CMap
-    final cMapContent = StringBuffer()
-      ..write('2 dict begin\n')
-      ..write('begincmap\n')
-      ..write('/CMapName /UniGB-UCS2-H def\n')
-      ..write('/CMapType 2 def\n')
-      ..write('/CIDSystemInfo << /Registry (Adobe) /Ordering (GB1) /Supplement 2 >> def\n')
-      ..write('1 begincodespacerange\n')
-      ..write('<0000> <FFFF>\n')
-      ..write('endcodespacerange\n')
-      ..write('endcmap\n')
-      ..write('CMapName currentdict /CMap defineresource pop\n')
-      ..write('end\n');
-    final cMapBytes = utf8.encode(cMapContent.toString());
+    // ToUnicode CMap — built from font cmap: glyphId → Unicode
     _objectOffsets[cMapId] = _totalLength;
+    final cMapBytes = _buildToUnicodeCMap(glyphToUnicode);
     _write('$cMapId 0 obj\n<<\n/Length ${cMapBytes.length}\n>>\nstream\n');
     _writeBytes(cMapBytes);
     _write('\nendstream\nendobj\n\n');
@@ -800,7 +783,6 @@ class NovelPdfGenerator {
 
       // Page object
       _objectOffsets[++_objectId] = _totalLength;
-      final pageObjId = _objectId;
       _write('$_objectId 0 obj\n<<\n/Type /Page\n/Parent $pagesId 0 R\n');
       _write('/Resources <<\n');
       _write('/Font << /F1 $fontType0Id 0 R >>\n');
@@ -828,7 +810,7 @@ class NovelPdfGenerator {
         _write('\nendstream\nendobj\n\n');
       }
 
-      // Content stream
+      // Content stream — each char encoded as glyph index
       _objectOffsets[++_objectId] = _totalLength;
       final contentStream = StringBuffer();
       contentStream.writeln('BT');
@@ -837,7 +819,13 @@ class NovelPdfGenerator {
         if (elem is _PdfTextElement) {
           contentStream.writeln('/F1 ${elem.fontSize} Tf');
           contentStream.writeln('1 0 0 1 ${elem.x} ${elem.y} Tm');
-          contentStream.writeln('<${_toHexUtf16be(elem.text)}> Tj');
+          // Encode each char as its glyph index (Identity-H)
+          final hex = StringBuffer();
+          for (final rune in elem.text.runes) {
+            final gid = cmap[rune] ?? 0;
+            hex.write(gid.toRadixString(16).padLeft(4, '0'));
+          }
+          contentStream.writeln('<${hex}> Tj');
         } else if (elem is _PdfImageElement) {
           contentStream.writeln('ET');
           contentStream.writeln('q');
@@ -867,7 +855,7 @@ class NovelPdfGenerator {
 
     // Xref
     final xrefOffset = _totalLength;
-    final xrefCount = _objectId + 1; // includes free entry at index 0
+    final xrefCount = _objectId + 1;
     _write('xref\n0 $xrefCount\n');
     _write('0000000000 65535 f\r\n');
     for (var i = 1; i <= _objectId; i++) {
@@ -880,23 +868,197 @@ class NovelPdfGenerator {
     await _output.close();
   }
 
-  /// Encode a string as hex UTF-16BE for PDF CIDFont text operators.
-  static String _toHexUtf16be(String s) {
-    final buf = StringBuffer();
-    for (final unit in s.runes) {
-      if (unit <= 0xFFFF) {
-        buf.write(unit.toRadixString(16).padLeft(4, '0'));
-      } else {
-        // Surrogate pair
-        final base = unit - 0x10000;
-        final hi = 0xD800 + ((base & 0xFFC00) >> 10);
-        final lo = 0xDC00 + (base & 0x3FF);
-        buf.write(hi.toRadixString(16).padLeft(4, '0'));
-        buf.write(lo.toRadixString(16).padLeft(4, '0'));
+  /// Parse TTF cmap table to get Unicode codepoint → glyph index mapping.
+  static Map<int, int> _parseTtfCmap(Uint8List ttf) {
+    if (ttf.length < 12) return {};
+    // Read offset table
+    int readU16(int offset) =>
+        (ttf[offset] << 8) | ttf[offset + 1];
+    int readU32(int offset) =>
+        (ttf[offset] << 24) | (ttf[offset + 1] << 16) |
+        (ttf[offset + 2] << 8) | ttf[offset + 3];
+
+    final numTables = readU16(4);
+    int cmapOffset = 0;
+    for (var i = 0; i < numTables; i++) {
+      final base = 12 + i * 8;
+      final platform = readU16(base);
+      final encoding = readU16(base + 2);
+      final offset = readU32(base + 4);
+      // Prefer Windows Unicode BMP (platform 3, encoding 1)
+      if (platform == 3 && encoding == 1) {
+        cmapOffset = offset;
+        break;
+      }
+      if (platform == 0 && cmapOffset == 0) {
+        cmapOffset = offset;
       }
     }
-    return buf.toString().toUpperCase();
+    if (cmapOffset == 0 && numTables > 0) {
+      cmapOffset = readU32(12 + 4);
+    }
+    if (cmapOffset == 0) return {};
+
+    final format = readU16(cmapOffset);
+    final result = <int, int>{};
+
+    if (format == 4) {
+      // Segment mapping format
+      final segCount = readU16(cmapOffset + 6) ~/ 2;
+      final endCodes = <int>[];
+      final startCodes = <int>[];
+      final idDeltas = <int>[];
+      final idRangeOffsets = <int>[];
+      var off = cmapOffset + 14;
+      for (var i = 0; i < segCount; i++) {
+        endCodes.add(readU16(off));
+        off += 2;
+      }
+      off += 2; // reservedPad
+      for (var i = 0; i < segCount; i++) {
+        startCodes.add(readU16(off));
+        off += 2;
+      }
+      for (var i = 0; i < segCount; i++) {
+        idDeltas.add(readU16(off));
+        off += 2;
+      }
+      for (var i = 0; i < segCount; i++) {
+        idRangeOffsets.add(readU16(off));
+        off += 2;
+      }
+      final glyphIdArrayOffset = off;
+
+      for (var seg = 0; seg < segCount; seg++) {
+        for (var c = startCodes[seg]; c <= endCodes[seg]; c++) {
+          if (c == 0xFFFF) continue;
+          int glyphId;
+          if (idRangeOffsets[seg] == 0) {
+            glyphId = (c + idDeltas[seg]) & 0xFFFF;
+          } else {
+            final rangeOff = glyphIdArrayOffset +
+                idRangeOffsets[seg] +
+                (seg - segCount) * 2;
+            final idOffset = rangeOff + (c - startCodes[seg]) * 2;
+            if (idOffset + 1 < ttf.length) {
+              glyphId = readU16(idOffset);
+              if (glyphId != 0) {
+                glyphId = (glyphId + idDeltas[seg]) & 0xFFFF;
+              }
+            } else {
+              continue;
+            }
+          }
+          if (glyphId != 0) {
+            result[c] = glyphId;
+          }
+        }
+      }
+    } else if (format == 6) {
+      // Trimmed table format
+      final firstCode = readU16(cmapOffset + 6);
+      final entryCount = readU16(cmapOffset + 8);
+      for (var i = 0; i < entryCount; i++) {
+        final gid = readU16(cmapOffset + 10 + i * 2);
+        if (gid != 0) {
+          result[firstCode + i] = gid;
+        }
+      }
+    }
+
+    return result;
   }
+
+  /// Build a ToUnicode CMap that maps glyph indices back to Unicode code points.
+  static Uint8List _buildToUnicodeCMap(Map<int, int> glyphToUnicode) {
+    // Sort by glyph index for sequential ranges
+    final sorted = glyphToUnicode.entries.toList()
+      ..sort((a, b) => a.value.compareTo(b.value));
+
+    // Group into bfrange entries (sequential glyph IDs)
+    final ranges = <String>[];
+    final chars = <String>[];
+    if (sorted.isNotEmpty) {
+      var startGlyph = sorted.first.value;
+      var startUnicode = sorted.first.key;
+      var prevGlyph = startGlyph;
+      var prevUnicode = startUnicode;
+
+      for (var i = 1; i < sorted.length; i++) {
+        final g = sorted[i].value;
+        final u = sorted[i].key;
+        if (g == prevGlyph + 1 && u == prevUnicode + 1) {
+          prevGlyph = g;
+          prevUnicode = u;
+        } else {
+          // Flush range
+          if (startGlyph == prevGlyph) {
+            chars.add('<${_h4(startGlyph)}> <${_h4(startUnicode)}>');
+          } else {
+            ranges.add('<${_h4(startGlyph)}> <${_h4(prevGlyph)}> <${_h4(startUnicode)}>');
+          }
+          startGlyph = g;
+          startUnicode = u;
+          prevGlyph = g;
+          prevUnicode = u;
+        }
+      }
+      // Flush last
+      if (startGlyph == prevGlyph) {
+        chars.add('<${_h4(startGlyph)}> <${_h4(startUnicode)}>');
+      } else {
+        ranges.add('<${_h4(startGlyph)}> <${_h4(prevGlyph)}> <${_h4(startUnicode)}>');
+      }
+    }
+
+    final buf = StringBuffer()
+      ..write('/CIDInit /ProcSet findresource begin\n')
+      ..write('1 dict begin\n')
+      ..write('begincmap\n')
+      ..write('/CIDSystemInfo <<\n/Registry (Adobe)\n/Ordering (UCS)\n/Supplement 0\n>> def\n')
+      ..write('/CMapName /Adobe-Identity-UCS def\n')
+      ..write('/CMapType 2 def\n')
+      ..write('1 begincodespacerange\n')
+      ..write('<0000> <FFFF>\n')
+      ..write('endcodespacerange\n');
+
+    // bfchar entries (max 100 per block)
+    final charChunks = <List<String>>[];
+    for (var i = 0; i < chars.length; i += 100) {
+      charChunks.add(chars.sublist(
+          i, i + 100 < chars.length ? i + 100 : chars.length));
+    }
+    for (final chunk in charChunks) {
+      buf.write('${chunk.length} beginbfchar\n');
+      for (final c in chunk) {
+        buf.write('$c\n');
+      }
+      buf.write('endbfchar\n');
+    }
+
+    // bfrange entries (max 100 per block)
+    final rangeChunks = <List<String>>[];
+    for (var i = 0; i < ranges.length; i += 100) {
+      rangeChunks.add(ranges.sublist(
+          i, i + 100 < ranges.length ? i + 100 : ranges.length));
+    }
+    for (final chunk in rangeChunks) {
+      buf.write('${chunk.length} beginbfrange\n');
+      for (final r in chunk) {
+        buf.write('$r\n');
+      }
+      buf.write('endbfrange\n');
+    }
+
+    buf.write('endcmap\n')
+      ..write('CMapName currentdict /CMap defineresource pop\n')
+      ..write('end\n')
+      ..write('end\n');
+
+    return utf8.encode(buf.toString());
+  }
+
+  static String _h4(int v) => v.toRadixString(16).padLeft(4, '0');
 
   static String _escapePdfString(String s) {
     return s
