@@ -72,9 +72,12 @@ class Book {
     this.description,
     this.sourceKey,
     this.maxPage,
-    this.language,
-  )   : favoriteId = null,
+    this.language, {
+    this.updateTime,
+  })   : favoriteId = null,
         stars = null;
+
+  final String? updateTime;
 
   Map<String, dynamic> toJson() {
     return {
@@ -87,6 +90,7 @@ class Book {
       "sourceKey": sourceKey,
       "maxPage": maxPage,
       "language": language,
+      "updateTime": updateTime,
       "favoriteId": favoriteId,
     };
   }
@@ -100,6 +104,7 @@ class Book {
         description = json["description"] ?? "",
         maxPage = json["maxPage"],
         language = json["language"],
+        updateTime = json["updateTime"],
         favoriteId = json["favoriteId"],
         stars = (json["stars"] as num?)?.toDouble();
 
@@ -560,9 +565,14 @@ class PageJumpTarget {
   }
 }
 
-/// Extract update time from tags like "更新:2026-07-25"
+/// Extract update time from Book.updateTime or tags like "更新:2026-07-25"
 extension BookUpdateTime on Book {
   String? findUpdateTime() {
+    // Prefer the dedicated updateTime field
+    if (updateTime != null && updateTime!.isNotEmpty) {
+      return _validateTime(updateTime!);
+    }
+    // Fallback: search tags for "更新:xxx" format
     const acceptedKeys = [
       "更新",
       "最後更新",
@@ -574,17 +584,22 @@ extension BookUpdateTime on Book {
       var parts = tag.split(":");
       if (parts.length >= 2 &&
           acceptedKeys.contains(parts[0].toLowerCase())) {
-        var time = parts.sublist(1).join(":").split(" ").first;
-        var segments = time.split("-");
-        if (segments.length == 3) {
-          var y = int.tryParse(segments[0]);
-          var m = int.tryParse(segments[1]);
-          var d = int.tryParse(segments[2]);
-          if (y != null && m != null && d != null &&
-              y >= 2000 && y <= 3000 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
-            return "$y-$m-$d";
-          }
-        }
+        return _validateTime(parts.sublist(1).join(":"));
+      }
+    }
+    return null;
+  }
+
+  static String? _validateTime(String time) {
+    time = time.split(" ").first;
+    var segments = time.split("-");
+    if (segments.length == 3) {
+      var y = int.tryParse(segments[0]);
+      var m = int.tryParse(segments[1]);
+      var d = int.tryParse(segments[2]);
+      if (y != null && m != null && d != null &&
+          y >= 2000 && y <= 3000 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+        return "$y-$m-$d";
       }
     }
     return null;
