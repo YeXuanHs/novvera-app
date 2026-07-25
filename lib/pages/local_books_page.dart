@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:archive/archive.dart';
+import 'package:archive/archive.dart' as archive_lib;
 import 'package:flutter/material.dart';
 import 'package:novvera/components/components.dart';
 import 'package:novvera/foundation/app.dart';
@@ -726,12 +726,12 @@ class _LocalBooksPageState extends State<LocalBooksPage> {
 
       if (!canceled) {
         // Create ZIP file
-        final archive = ZipEncoder();
-        final zipBytes = archive.encodeBytes(
+        final encoder = archive_lib.ZipEncoder();
+        final zipBytes = encoder.encodeBytes(
           _archiveDirectory(tempDir, tempDir.path),
         );
         final timestamp = DateTime.now().millisecondsSinceEpoch;
-        final zipPath = FilePath.join(dest.path, 'books_$timestamp.zip');
+        final zipPath = FilePath.join(dest, 'books_$timestamp.zip');
         await File(zipPath).writeAsBytes(zipBytes!);
         context.showMessage(
             message: "${"Exported".tl} $zipPath");
@@ -745,15 +745,15 @@ class _LocalBooksPageState extends State<LocalBooksPage> {
   }
 
   /// Recursively add a directory to an Archive.
-  Archive _archiveDirectory(Directory dir, String basePath) {
-    final archive = Archive();
+  archive_lib.Archive _archiveDirectory(Directory dir, String basePath) {
+    final result = archive_lib.Archive();
     for (final entity in dir.listSync(recursive: true)) {
       if (entity is File) {
         final relPath = entity.path.substring(basePath.length + 1);
-        archive.addFile(ArchiveFile.bytes(relPath, entity.readAsBytesSync()));
+        result.addFile(archive_lib.ArchiveFile.bytes(relPath, entity.readAsBytesSync()));
       }
     }
-    return archive;
+    return result;
   }
 
   /// Export a single chapter to EPUB or PDF.
