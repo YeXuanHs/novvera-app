@@ -684,9 +684,9 @@ class _BookDescription extends StatelessWidget {
             padding: const EdgeInsets.only(top: 4),
             child: Text(
               updateTime!,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 12.0,
-                  color: Colors.white),
+                  color: context.colorScheme.onSurface),
               maxLines: 1,
               softWrap: true,
               overflow: TextOverflow.ellipsis,
