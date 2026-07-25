@@ -297,10 +297,7 @@ class _LocalBooksPageState extends State<LocalBooksPage> {
               actions: multiSelectMode ? selectActions : null,
             ),
           SliverGridBooks(
-            books: books.map((b) {
-              b.tags = null;
-              return b;
-            }).toList(),
+            books: books,
             selections: selectedBooks,
             onLongPressed: (c, heroID) {
               setState(() {
