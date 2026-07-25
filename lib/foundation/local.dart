@@ -88,6 +88,9 @@ class LocalBook with HistoryMixin implements Book {
   String get description => "";
 
   @override
+  String? get updateTime => null;
+
+  @override
   String get sourceKey =>
       bookType == BookType.local ? "local" : bookType.sourceKey;
 

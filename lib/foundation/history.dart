@@ -178,6 +178,9 @@ class History implements Book {
   List<String>? get tags => null;
 
   @override
+  String? get updateTime => null;
+
+  @override
   Map<String, dynamic> toJson() {
     throw UnimplementedError();
   }

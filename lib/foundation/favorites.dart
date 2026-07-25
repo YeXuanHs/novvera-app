@@ -107,6 +107,9 @@ class FavoriteItem implements Book {
   String get title => name;
 
   @override
+  String? get updateTime => null;
+
+  @override
   Map<String, dynamic> toJson() {
     return {
       "name": name,
