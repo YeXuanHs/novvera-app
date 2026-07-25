@@ -33,6 +33,7 @@ class BookTile extends StatelessWidget {
     this.onTap,
     this.onLongPressed,
     this.heroID,
+    this.showUpdateTime = false,
   });
 
   final Book comic;
@@ -48,6 +49,8 @@ class BookTile extends StatelessWidget {
   final VoidCallback? onLongPressed;
 
   final int? heroID;
+
+  final bool showUpdateTime;
 
   void _onTap() {
     if (onTap != null) {
@@ -279,6 +282,7 @@ class BookTile extends StatelessWidget {
                       BookSource.find(comic.sourceKey)?.enableTagsTranslate ??
                           false,
                   rating: comic.stars,
+                  updateTime: showUpdateTime ? comic.findUpdateTime() : null,
                 ),
               ),
             ],
@@ -541,6 +545,7 @@ class _BookDescription extends StatelessWidget {
     this.maxLines = 2,
     this.tags,
     this.rating,
+    this.updateTime,
   });
 
   final String title;
@@ -551,6 +556,7 @@ class _BookDescription extends StatelessWidget {
   final int maxLines;
   final bool enableTranslate;
   final double? rating;
+  final String? updateTime;
 
   @override
   Widget build(BuildContext context) {
@@ -584,6 +590,19 @@ class _BookDescription extends StatelessWidget {
             maxLines: 1,
             softWrap: true,
             overflow: TextOverflow.ellipsis,
+          ),
+        if (updateTime != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              updateTime!,
+              style: TextStyle(
+                  fontSize: 10.0,
+                  color: context.colorScheme.onSurface),
+              maxLines: 1,
+              softWrap: true,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         const SizedBox(height: 4),
         if (tags != null && tags!.isNotEmpty)
@@ -763,7 +782,8 @@ class SliverGridBooks extends StatefulWidget {
       this.menuBuilder,
       this.onTap,
       this.onLongPressed,
-      this.selections});
+      this.selections,
+      this.showUpdateTime = false});
 
   final List<Book> books;
 
@@ -778,6 +798,8 @@ class SliverGridBooks extends StatefulWidget {
   final void Function(Book, int heroID)? onTap;
 
   final void Function(Book, int heroID)? onLongPressed;
+
+  final bool showUpdateTime;
 
   @override
   State<SliverGridBooks> createState() => _SliverGridBooksState();
@@ -850,6 +872,7 @@ class _SliverGridBooksState extends State<SliverGridBooks> {
       menuBuilder: widget.menuBuilder,
       onTap: widget.onTap,
       onLongPressed: widget.onLongPressed,
+      showUpdateTime: widget.showUpdateTime,
     );
   }
 }
@@ -864,6 +887,7 @@ class _SliverGridBooks extends StatelessWidget {
     this.onTap,
     this.onLongPressed,
     this.selection,
+    this.showUpdateTime = false,
   });
 
   final List<Book> books;
@@ -881,6 +905,8 @@ class _SliverGridBooks extends StatelessWidget {
   final void Function(Book, int heroID)? onTap;
 
   final void Function(Book, int heroID)? onLongPressed;
+
+  final bool showUpdateTime;
 
   @override
   Widget build(BuildContext context) {
@@ -904,6 +930,7 @@ class _SliverGridBooks extends StatelessWidget {
               ? () => onLongPressed!(books[index], heroIDs[index])
               : null,
           heroID: heroIDs[index],
+          showUpdateTime: showUpdateTime,
         );
         if (selection == null) {
           return comic;
@@ -967,6 +994,7 @@ class BookList extends StatefulWidget {
     this.controller,
     this.refreshHandlerCallback,
     this.enablePageStorage = false,
+    this.showUpdateTime = false,
   });
 
   final Future<Res<List<Book>>> Function(int page)? loadPage;
@@ -986,6 +1014,8 @@ class BookList extends StatefulWidget {
   final void Function(VoidCallback c)? refreshHandlerCallback;
 
   final bool enablePageStorage;
+
+  final bool showUpdateTime;
 
   @override
   State<BookList> createState() => BookListState();
@@ -1275,6 +1305,7 @@ class BookListState extends State<BookList> {
         SliverGridBooks(
           books: _data[_page] ?? const [],
           menuBuilder: widget.menuBuilder,
+          showUpdateTime: widget.showUpdateTime,
         ),
         if (_data[_page]!.length > 6 && _maxPage != 1)
           _buildSliverPageSelector(),
@@ -1324,6 +1355,7 @@ class BookListState extends State<BookList> {
         SliverGridBooks(
           books: _data.values.expand((element) => element).toList(),
           menuBuilder: widget.menuBuilder,
+          showUpdateTime: widget.showUpdateTime,
           onLastItemBuild: () {
             if (_error == null && (_maxPage == null || _data.length < _maxPage!)) {
               _loadPage(_data.length + 1);

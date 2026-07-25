@@ -131,6 +131,7 @@ class _CategoryBooksPageState extends State<CategoryBooksPage> {
         leadingSliver: buildOptions().paddingTop(topPadding).toSliver(),
         loadPage: (i) =>
             data.load(widget.category, widget.param, optionsValue, i),
+        showUpdateTime: true,
       );
     }
 

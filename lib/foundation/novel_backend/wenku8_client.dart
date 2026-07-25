@@ -403,6 +403,7 @@ class Wenku8Client {
           ? _xmlDataValue(block, 'BookStatus')
           : _xmlDataAttr(block, 'BookStatus', 'value');
       final tags = _xmlDataAttr(block, 'Tags', 'value');
+      final updateTime = _xmlDataValue(block, 'LastUpdate');
       items.add({
         'aid': aid,
         'name': name,
@@ -410,6 +411,7 @@ class Wenku8Client {
         'author_raw': author,
         'status': status,
         'tags': tags.isEmpty ? null : tags,
+        'update_time': updateTime.isEmpty ? null : updateTime,
         'cover': wenku8CoverUrl(aid),
       });
     }

@@ -322,13 +322,18 @@ Book _itemToBook(Map<String, dynamic> item, String sourceKey) {
   }
   author = author.replaceFirst(RegExp(r'^作者[:：]\s*'), '').trim();
 
-  // List / search cards: title + author + cover only (no tag chips).
+  // List / search cards: title + author + cover + optional update_time tag.
+  final List<String> bookTags = [];
+  final updateTime = '${item['update_time'] ?? ''}'.trim();
+  if (updateTime.isNotEmpty) {
+    bookTags.add('更新:$updateTime');
+  }
   return Book(
     title,
     cover,
     aid,
     author,
-    null,
+    bookTags.isEmpty ? null : bookTags,
     '',
     sourceKey,
     null,

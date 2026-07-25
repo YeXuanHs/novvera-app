@@ -668,9 +668,7 @@ class LinovelibClient {
 
   /// Fill name/author/cover/intro from `/novel/{aid}.html` only ([bookDetail]).
   /// Hollow / error detail pages are dropped (e.g. empty shells in search hits).
-  /// Single-threaded to avoid CF Error 1015 rate-limit bursts on linovelib.
-  /// (huanmeng / wenku8 keep uncapped [Future.wait].)
-  static const _enrichConcurrency = 1;
+  static const _enrichConcurrency = 2;
 
   Future<List<Map<String, dynamic>>> _enrichAids(List<String> aids) async {
     if (aids.isEmpty) return [];
@@ -696,6 +694,7 @@ class LinovelibClient {
             'author_raw': author,
             'cover': cover.isNotEmpty ? cover : linovelibCoverUrl(aid),
             'status': '${info['status'] ?? ''}',
+            'update_time': '${info['update_time'] ?? ''}',
             'intro': '${info['intro'] ?? ''}',
           };
         } catch (e) {

@@ -232,6 +232,7 @@ class HuanmengClient {
               : huanmengCoverUrl(aid),
           'status': '${info['status'] ?? ''}',
           'intro': '${info['intro'] ?? ''}',
+          'update_time': '${info['update_time'] ?? ''}',
         };
       } catch (e) {
         Log.warning('Huanmeng', 'enrich aid=$aid: $e');
