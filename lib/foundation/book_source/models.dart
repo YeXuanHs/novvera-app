@@ -599,7 +599,7 @@ extension BookUpdateTime on Book {
       var d = int.tryParse(segments[2]);
       if (y != null && m != null && d != null &&
           y >= 2000 && y <= 3000 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
-        return "$y-$m-$d";
+        return "$y-${m.toString().padLeft(2, '0')}-${d.toString().padLeft(2, '0')}";
       }
     }
     return null;
