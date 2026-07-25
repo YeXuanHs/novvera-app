@@ -403,7 +403,24 @@ class Wenku8Client {
           ? _xmlDataValue(block, 'BookStatus')
           : _xmlDataAttr(block, 'BookStatus', 'value');
       final tags = _xmlDataAttr(block, 'Tags', 'value');
-      final updateTime = _xmlDataValue(block, 'LastUpdate');
+      final updateTime = _xmlDataAttr(block, 'LastUpdate', 'value');
+      if (updateTime.isEmpty) {
+        // Fallback: some endpoints use text content instead of attribute
+        final tv = _xmlDataValue(block, 'LastUpdate');
+        if (tv.isNotEmpty) {
+          items.add({
+            'aid': aid,
+            'name': name,
+            'author': author,
+            'author_raw': author,
+            'status': status,
+            'tags': tags.isEmpty ? null : tags,
+            'update_time': tv,
+            'cover': wenku8CoverUrl(aid),
+          });
+          continue;
+        }
+      }
       items.add({
         'aid': aid,
         'name': name,
