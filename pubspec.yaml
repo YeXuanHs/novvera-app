@@ -111,7 +111,7 @@ flutter:
     - assets/tags.json
     - assets/tags_tw.json
     - assets/opencc.txt
-# fonts:
+    - assets/simhei.ttf
 
 flutter_to_arch:
   name: Novvera

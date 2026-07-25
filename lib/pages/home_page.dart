@@ -509,24 +509,20 @@ class _ImportBooksWidgetState extends State<_ImportBooksWidget> {
   @override
   Widget build(BuildContext context) {
     String info = [
-      "Select a directory which contains the book files.".tl,
-      "Select a directory which contains the book directories.".tl,
-      "Select an EPUB file.".tl,
-      "Select a directory which contains multiple EPUB files.".tl,
-      "Scan the current local path and restore the local database.".tl,
-      "Select a ZIP/CBZ file containing a book folder.".tl,
-      "Select a PDF file.".tl,
-      "Select a directory which contains multiple PDF files.".tl,
+      "选择包含小说文件的目录（支持PDF和EPUB，自动识别层级结构）".tl,
+      "选择一个EPUB文件（支持单章节和多章节合并）".tl,
+      "选择一个PDF文件（支持纯文字、纯图片和混合内容）".tl,
+      "选择一个ZIP/CBZ压缩包".tl,
+      "选择包含多个ZIP/CBZ压缩包的目录".tl,
+      "扫描本地路径并恢复下载记录".tl,
     ][type];
     List<String> importMethods = [
-      "Single Book".tl,
-      "Multiple Books".tl,
-      "An EPUB file".tl,
-      "Multiple EPUB files".tl,
-      "Restore local downloads".tl,
-      "A ZIP file".tl,
-      "A PDF file".tl,
-      "Multiple PDF files".tl,
+      "文件夹导入".tl,
+      "EPUB导入".tl,
+      "PDF导入".tl,
+      "单个归档文件".tl,
+      "多个归档文件".tl,
+      "恢复本地下载".tl,
     ];
 
     return ContentDialog(
@@ -545,7 +541,7 @@ class _ImportBooksWidgetState extends State<_ImportBooksWidget> {
               onChanged: (value) {
                 setState(() {
                   type = value ?? type;
-                  if (type == 4) {
+                  if (type == 5) {
                     selectedFolder = null;
                   }
                 });
@@ -561,7 +557,7 @@ class _ImportBooksWidgetState extends State<_ImportBooksWidget> {
                       value: index,
                     );
                   }),
-                  if (type != 4)
+                  if (type != 5)
                     ListTile(
                       title: Text("Add to favorites".tl),
                       trailing: Select(
@@ -577,9 +573,9 @@ class _ImportBooksWidgetState extends State<_ImportBooksWidget> {
                     ).paddingHorizontal(8),
                   if (!App.isIOS &&
                       !App.isMacOS &&
+                      type != 1 &&
                       type != 2 &&
-                      type != 3 &&
-                      type != 4)
+                      type != 5)
                     CheckboxListTile(
                         enabled: true,
                         title: Text("Copy to app local path".tl),
@@ -614,13 +610,11 @@ class _ImportBooksWidgetState extends State<_ImportBooksWidget> {
         selectedFolder: selectedFolder, copyToLocal: copyToLocalFolder);
     var result = switch (type) {
       0 => await importer.directory(true),
-      1 => await importer.directory(false),
-      2 => await importer.epub(),
-      3 => await importer.multipleEpub(),
-      4 => await importer.localDownloads(),
-      5 => await importer.zip(),
-      6 => await importer.pdf(),
-      7 => await importer.multiplePdf(),
+      1 => await importer.epub(),
+      2 => await importer.pdf(),
+      3 => await importer.zip(),
+      4 => await importer.multipleZip(),
+      5 => await importer.localDownloads(),
       _ => false,
     };
     if (result) {

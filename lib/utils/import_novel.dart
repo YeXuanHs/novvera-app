@@ -112,6 +112,64 @@ class ImportNovel {
     }
   }
 
+  /// Pick a directory of `.zip`/`.cbz` files.
+  Future<bool> multipleZip() async {
+    final picker = DirectoryPicker();
+    final dir = await picker.pickDirectory(directAccess: true);
+    if (dir == null) return false;
+    final files = (await dir.list().toList())
+        .whereType<File>()
+        .where((e) =>
+            e.extension == 'zip' || e.extension == 'cbz')
+        .toList();
+    if (files.isEmpty) {
+      App.rootContext.showMessage(message: "No valid archives found".tl);
+      return false;
+    }
+    final controller = showLoadingDialog(App.rootContext, allowCancel: false);
+    final books = <LocalBook>[];
+    for (final file in files) {
+      try {
+        final bytes = await file.readAsBytes();
+        final archive = ZipDecoder().decodeBytes(bytes);
+        final tempDir = Directory(FilePath.join(
+          App.cachePath,
+          'novel_import_multi_zip_${files.indexOf(file)}',
+        ));
+        if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
+        tempDir.createSync(recursive: true);
+
+        for (final entry in archive) {
+          if (!entry.isFile) continue;
+          final outPath = FilePath.join(tempDir.path, entry.name);
+          Directory(File(outPath).parent.path).createSync(recursive: true);
+          await File(outPath).writeAsBytes(entry.content as List<int>);
+        }
+
+        final rootResult = await _checkSingleNovel(tempDir);
+        if (rootResult != null) {
+          books.add(rootResult);
+        } else {
+          await for (final entry in tempDir.list()) {
+            if (entry is Directory) {
+              final result = await _checkSingleNovel(entry);
+              if (result != null) books.add(result);
+            }
+          }
+        }
+        try { tempDir.deleteSync(recursive: true); } catch (_) {}
+      } catch (e, s) {
+        Log.error("Import Novel", "multipleZip: $e", s);
+      }
+    }
+    controller.close();
+    if (books.isEmpty) {
+      App.rootContext.showMessage(message: "No valid books found".tl);
+      return false;
+    }
+    return registerBooks({selectedFolder: books}, false);
+  }
+
   /// Pick a single `.epub` file.
   Future<bool> epub() async {
     final file = await selectFile(ext: ['epub']);

@@ -1051,8 +1051,11 @@ class NovelDownloadTask extends DownloadTask with _TransferSpeedMixin {
       _message = "Downloading cover...";
       notifyListeners();
       try {
+        var lastCoverBytes = 0;
         await for (final progress
             in ImageDownloader.loadThumbnail(book!.cover, source.key)) {
+          onData(progress.currentBytes - lastCoverBytes);
+          lastCoverBytes = progress.currentBytes;
           if (progress.imageBytes != null) {
             var ext = detectFileType(progress.imageBytes!).ext;
             if (ext.startsWith('.')) ext = ext.substring(1);
@@ -1117,12 +1120,15 @@ class NovelDownloadTask extends DownloadTask with _TransferSpeedMixin {
         if (!normalized.startsWith('http')) return null;
         if (urlToLocal.containsKey(normalized)) return urlToLocal[normalized];
         try {
+          var lastImgBytes = 0;
           await for (final p in ImageDownloader.loadBookImage(
             normalized,
             source.key,
             bookId,
             chapId,
           )) {
+            onData(p.currentBytes - lastImgBytes);
+            lastImgBytes = p.currentBytes;
             if (p.imageBytes != null) {
               var ext = detectFileType(p.imageBytes!).ext;
               if (ext.startsWith('.')) ext = ext.substring(1);

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:isolate';
+import 'package:flutter/services.dart';
 import 'package:flutter_saf/flutter_saf.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/local.dart';
@@ -504,6 +505,32 @@ class NovelPdfGenerator {
     _newPage();
   }
 
+  /// Read a Chinese TTF font. Tries bundled asset first, then system fonts.
+  Future<Uint8List> _findAndReadChineseFont() async {
+    // 1. Try bundled asset
+    try {
+      final assetData = await rootBundle.load('assets/simhei.ttf');
+      return assetData.buffer.asUint8List();
+    } catch (_) {}
+
+    // 2. Try system fonts (Windows)
+    final systemFonts = [
+      'C:\\Windows\\Fonts\\simhei.ttf',
+      'C:\\Windows\\Fonts\\simsun.ttc',
+      'C:\\Windows\\Fonts\\msyh.ttc',
+      'C:\\Windows\\Fonts\\STSONG.TTF',
+    ];
+    for (final path in systemFonts) {
+      final f = File(path);
+      if (f.existsSync()) {
+        return f.readAsBytes();
+      }
+    }
+
+    // 3. Empty — PDF will use fallback rendering
+    return Uint8List(0);
+  }
+
   void _newPage() {
     _currentPage = _PdfPage();
     _pages.add(_currentPage!);
@@ -684,7 +711,7 @@ class NovelPdfGenerator {
     // Pages
     _objectOffsets[++_objectId] = _totalLength;
     _write('$_objectId 0 obj\n<<\n/Type /Pages\n/Kids [');
-    var nextObjId = _objectId + 1 + 4; // +4 for shared CIDFont objects below
+    var nextObjId = _objectId + 1 + 5; // +5 for FontFile2 + CIDFont objects below
     for (var i = 0; i < _pages.length; i++) {
       final page = _pages[i];
       final imgCount = page.elements.whereType<_PdfImageElement>().length;
@@ -694,22 +721,34 @@ class NovelPdfGenerator {
     _write(']\n/Count ${_pages.length}\n>>\nendobj\n\n');
     final pagesId = _objectId;
 
-    // Shared CIDFont objects (STSong-Light for CJK)
+    // Embed a real system Chinese TTF font
+    final fontFileBytes = await _findAndReadChineseFont();
+    final fontFileId = ++_objectId; // FontFile2 stream (compressed TTF)
     final fontType0Id = ++_objectId;
     final fontCidId = ++_objectId;
     final fontDescId = ++_objectId;
     final cMapId = ++_objectId;
 
+    // Write FontFile2 (embedded TTF, FlateDecode compressed)
+    _objectOffsets[fontFileId] = _totalLength;
+    final compressedFont = fontFileBytes.isNotEmpty
+        ? tdeflCompressData(fontFileBytes, true, true, 9)
+        : fontFileBytes;
+    _write('$fontFileId 0 obj\n<<\n/Length ${compressedFont.length}\n'
+        '/Filter /FlateDecode\n/Length1 ${fontFileBytes.length}\n>>\nstream\n');
+    _writeBytes(compressedFont);
+    _write('\nendstream\nendobj\n\n');
+
     // Type0 font
     _objectOffsets[fontType0Id] = _totalLength;
     _write('$fontType0Id 0 obj\n<<\n/Type /Font\n/Subtype /Type0\n'
-        '/BaseFont /STSong-Light\n/Encoding /UniGB-UCS2-H\n'
+        '/BaseFont /SimHei\n/Encoding /UniGB-UCS2-H\n'
         '/DescendantFonts [$fontCidId 0 R]\n/ToUnicode $cMapId 0 R\n>>\nendobj\n\n');
 
     // CIDFont descendant
     _objectOffsets[fontCidId] = _totalLength;
     _write('$fontCidId 0 obj\n<<\n/Type /Font\n/Subtype /CIDFontType2\n'
-        '/BaseFont /STSong-Light\n'
+        '/BaseFont /SimHei\n'
         '/CIDSystemInfo <<\n/Registry (Adobe)\n/Ordering (GB1)\n/Supplement 2\n>>\n'
         '/FontDescriptor $fontDescId 0 R\n/Widths ['
         ' 250 333 408 500 500 833 778 333 333 333 500 570 250 333 250 278'
@@ -727,13 +766,13 @@ class NovelPdfGenerator {
         ' 500 500 500 500 500 500 500 570 500 500 500 500 500 500 500 500'
         ']\n>>\nendobj\n\n');
 
-    // Font descriptor
+    // Font descriptor (with /FontFile2 reference)
     _objectOffsets[fontDescId] = _totalLength;
-    _write('$fontDescId 0 obj\n<<\n/Type /FontDescriptor\n/FontName /STSong-Light\n'
-        '/Flags 34\n/FontBBox [-171 -249 1073 1054]\n/ItalicAngle 0\n'
+    _write('$fontDescId 0 obj\n<<\n/Type /FontDescriptor\n/FontName /SimHei\n'
+        '/Flags 32\n/FontBBox [-171 -249 1073 1054]\n/ItalicAngle 0\n'
         '/Ascent 859\n/Descent -141\n/CapHeight 700\n/StemV 58\n'
         '/AvgWidth 500\n/MaxWidth 1000\n/Leading 0\n'
-        '>>\nendobj\n\n');
+        '/FontFile2 $fontFileId 0 R\n>>\nendobj\n\n');
 
     // ToUnicode CMap
     final cMapContent = StringBuffer()
