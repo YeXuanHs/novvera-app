@@ -1,6 +1,6 @@
 {
-  "version": "1.4.3",
-  "desc": "Novvera 一款开源的双端轻小说阅读器\n1.4.2版本\n\n1. 修复了PDF导出中文显示为方块的问题（修正TTF cmap表解析的offset table读取错误）\n2. 修复了PDF压缩函数缺失的问题（替换为archive包的ZLibEncoder）\n3. 修复了文件夹导入不支持EPUB子目录格式的问题\n\n历史版本:",
+  "version": "1.4.4",
+  "desc": "Novvera 一款开源的双端轻小说阅读器\n1.4.4版本\n\n1. 修复了Dio拦截器NoSuchMethodError崩溃（MyLogInterceptor、NetworkCacheManager）\n\n历史版本:",
   "history": [
     {
       "version": "1.4.1",
