@@ -1,6 +1,6 @@
 {
-  "version": "1.4.4",
-  "desc": "Novvera 一款开源的双端轻小说阅读器\n1.4.4版本\n\n1. 修复了Dio拦截器NoSuchMethodError崩溃（MyLogInterceptor、NetworkCacheManager）\n\n历史版本:",
+  "version": "1.4.5",
+  "desc": "Novvera 一款开源的双端轻小说阅读器\n1.4.5版本\n\n1. 修复了Android层级导出EPUB/PDF的SAF路径问题\n2. 修复了ZIP导出改为弹出保存对话框\n\n历史版本:",
   "history": [
     {
       "version": "1.4.1",
