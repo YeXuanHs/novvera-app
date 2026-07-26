@@ -490,9 +490,11 @@ class _LocalBooksPageState extends State<LocalBooksPage> {
                   title: Text("Merge into single file".tl),
                   subtitle: Text(merged
                       ? "Single file".tl
-                      : format == 0
-                          ? "书名/卷名/章节名.epub"
-                          : "书名/卷名/章节名.pdf"),
+                      : format == 2
+                          ? "书名/卷名/章节名.epub → ZIP"
+                          : format == 0
+                              ? "书名/卷名/章节名.epub"
+                              : "书名/卷名/章节名.pdf"),
                   value: merged,
                   onChanged: format == 2
                       ? null
@@ -596,57 +598,59 @@ class _LocalBooksPageState extends State<LocalBooksPage> {
       onCancel: () => canceled = true,
     );
     try {
-      for (final book in books) {
-        if (canceled) break;
-        final bookName = sanitizeFileName(book.title, maxLength: 100);
-        final bookDir = Directory(FilePath.join(dest.path, bookName));
-        if (!bookDir.existsSync()) bookDir.createSync(recursive: true);
+      await overrideIO(() async {
+        for (final book in books) {
+          if (canceled) break;
+          final bookName = sanitizeFileName(book.title, maxLength: 100);
+          final bookDir = Directory(FilePath.join(dest.path, bookName));
+          if (!bookDir.existsSync()) bookDir.createSync(recursive: true);
 
-        // Copy cover
-        try {
-          final coverFile = book.coverFile;
-          if (coverFile.existsSync()) {
-            await coverFile.copy(FilePath.join(bookDir.path, book.cover));
-          }
-        } catch (_) {}
+          // Copy cover
+          try {
+            final coverFile = book.coverFile;
+            if (coverFile.existsSync()) {
+              await coverFile.copy(FilePath.join(bookDir.path, book.cover));
+            }
+          } catch (_) {}
 
-        if (book.chapters != null && book.chapters!.isGrouped) {
-          // Grouped: 书名/卷名/章节.ext — only export volumes with downloaded chapters
-          for (final groupName in book.chapters!.groups) {
-            final chapMap = book.chapters!.getGroup(groupName);
-            // Filter to only downloaded chapters in this group
-            final downloadedInGroup = chapMap.entries
-                .where((e) => book.downloadedChapters.contains(e.key))
-                .toList();
-            if (downloadedInGroup.isEmpty) continue;
-            final groupDir =
-                Directory(FilePath.join(bookDir.path, sanitizeFileName(groupName)));
-            if (!groupDir.existsSync()) groupDir.createSync(recursive: true);
-            for (final entry in downloadedInGroup) {
+          if (book.chapters != null && book.chapters!.isGrouped) {
+            // Grouped: 书名/卷名/章节.ext — only export volumes with downloaded chapters
+            for (final groupName in book.chapters!.groups) {
+              final chapMap = book.chapters!.getGroup(groupName);
+              // Filter to only downloaded chapters in this group
+              final downloadedInGroup = chapMap.entries
+                  .where((e) => book.downloadedChapters.contains(e.key))
+                  .toList();
+              if (downloadedInGroup.isEmpty) continue;
+              final groupDir =
+                  Directory(FilePath.join(bookDir.path, sanitizeFileName(groupName)));
+              if (!groupDir.existsSync()) groupDir.createSync(recursive: true);
+              for (final entry in downloadedInGroup) {
+                if (canceled) break;
+                final chapName = sanitizeFileName(entry.value, maxLength: 80);
+                final outPath = FilePath.join(groupDir.path, '$chapName$ext');
+                await _exportChapter(book, entry.key, outPath, format);
+              }
+            }
+          } else {
+            // Flat: 书名/章节.ext — only export downloaded chapters
+            final chapMap = book.chapters?.allChapters ?? {};
+            for (final entry in chapMap.entries) {
+              if (!book.downloadedChapters.contains(entry.key)) continue;
               if (canceled) break;
               final chapName = sanitizeFileName(entry.value, maxLength: 80);
-              final outPath = FilePath.join(groupDir.path, '$chapName$ext');
+              final outPath = FilePath.join(bookDir.path, '$chapName$ext');
               await _exportChapter(book, entry.key, outPath, format);
             }
           }
-        } else {
-          // Flat: 书名/章节.ext — only export downloaded chapters
-          final chapMap = book.chapters?.allChapters ?? {};
-          for (final entry in chapMap.entries) {
-            if (!book.downloadedChapters.contains(entry.key)) continue;
-            if (canceled) break;
-            final chapName = sanitizeFileName(entry.value, maxLength: 80);
-            final outPath = FilePath.join(bookDir.path, '$chapName$ext');
-            await _exportChapter(book, entry.key, outPath, format);
+          current++;
+          if (books.length > 1) {
+            loadingController
+                .setMessage("${"Exporting".tl} $current/${books.length}");
+            loadingController.setProgress(current / books.length);
           }
         }
-        current++;
-        if (books.length > 1) {
-          loadingController
-              .setMessage("${"Exporting".tl} $current/${books.length}");
-          loadingController.setProgress(current / books.length);
-        }
-      }
+      });
     } catch (e, s) {
       Log.error("Export", e, s);
       context.showMessage(message: e.toString());
@@ -656,9 +660,6 @@ class _LocalBooksPageState extends State<LocalBooksPage> {
 
   /// Export books as a ZIP archive containing folder hierarchy.
   void _exportZip(List<LocalBook> books) async {
-    final dest = await selectDirectory();
-    if (dest == null) return;
-
     var current = 0;
     bool canceled = false;
     final loadingController = showLoadingDialog(
@@ -726,15 +727,18 @@ class _LocalBooksPageState extends State<LocalBooksPage> {
 
       if (!canceled) {
         // Create ZIP file
+        loadingController.setProgress(null);
+        loadingController.setMessage("Compressing".tl);
         final encoder = archive_lib.ZipEncoder();
         final zipBytes = encoder.encodeBytes(
           _archiveDirectory(tempDir, tempDir.path),
         );
         final timestamp = DateTime.now().millisecondsSinceEpoch;
-        final zipPath = FilePath.join(dest, 'books_$timestamp.zip');
+        final zipName = 'books_$timestamp.zip';
+        final zipPath = FilePath.join(App.cachePath, zipName);
         await File(zipPath).writeAsBytes(zipBytes!);
-        context.showMessage(
-            message: "${"Exported".tl} $zipPath");
+        await saveFile(file: File(zipPath), filename: zipName);
+        File(zipPath).deleteIgnoreError();
       }
     } catch (e, s) {
       Log.error("Export ZIP", e, s);
