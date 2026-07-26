@@ -492,9 +492,11 @@ class _LocalBooksPageState extends State<LocalBooksPage> {
                       ? "Single file".tl
                       : format == 2
                           ? "书名/卷名/章节名.epub → ZIP"
-                          : format == 0
-                              ? "书名/卷名/章节名.epub"
-                              : "书名/卷名/章节名.pdf"),
+                          : App.isAndroid
+                              ? "书名/卷名/章节名${format == 0 ? '.epub' : '.pdf'} → ZIP"
+                              : format == 0
+                                  ? "书名/卷名/章节名.epub"
+                                  : "书名/卷名/章节名.pdf"),
                   value: merged,
                   onChanged: format == 2
                       ? null
@@ -565,11 +567,12 @@ class _LocalBooksPageState extends State<LocalBooksPage> {
       if (books.length == 1) {
         await saveFile(file: File(fileName), filename: File(fileName).name);
       } else {
-        var outFile = FilePath.join(App.cachePath, 'books_export.zip');
+        var zipName = 'books_${DateTime.now().millisecondsSinceEpoch}.zip';
+        var outFile = FilePath.join(App.cachePath, zipName);
         loadingController.setProgress(null);
         loadingController.setMessage("Compressing".tl);
         await ZipFile.compressFolderAsync(cacheDir, outFile);
-        await saveFile(file: File(outFile), filename: "books_export.zip");
+        await saveFile(file: File(outFile), filename: zipName);
         File(outFile).deleteIgnoreError();
       }
     } catch (e, s) {
@@ -584,6 +587,13 @@ class _LocalBooksPageState extends State<LocalBooksPage> {
   /// Folder hierarchy export: 书名/卷名/章节.ext
   void _exportHierarchy(
       List<LocalBook> books, String ext, String format) async {
+    if (App.isAndroid) {
+      // Android SAF doesn't support direct folder writes.
+      // Build hierarchy in cache, ZIP it, then save via dialog.
+      _exportHierarchyAsZip(books, ext, format);
+      return;
+    }
+
     final picker = DirectoryPicker();
     final dest = await picker.pickDirectory();
     if (dest == null) return;
@@ -598,64 +608,151 @@ class _LocalBooksPageState extends State<LocalBooksPage> {
       onCancel: () => canceled = true,
     );
     try {
-      await overrideIO(() async {
-        for (final book in books) {
-          if (canceled) break;
-          final bookName = sanitizeFileName(book.title, maxLength: 100);
-          final bookDir = Directory(FilePath.join(dest.path, bookName));
-          if (!bookDir.existsSync()) bookDir.createSync(recursive: true);
+      for (final book in books) {
+        if (canceled) break;
+        final bookName = sanitizeFileName(book.title, maxLength: 100);
+        final bookDir = Directory(FilePath.join(dest.path, bookName));
+        if (!bookDir.existsSync()) bookDir.createSync(recursive: true);
 
-          // Copy cover
-          try {
-            final coverFile = book.coverFile;
-            if (coverFile.existsSync()) {
-              await coverFile.copy(FilePath.join(bookDir.path, book.cover));
-            }
-          } catch (_) {}
+        // Copy cover
+        try {
+          final coverFile = book.coverFile;
+          if (coverFile.existsSync()) {
+            await coverFile.copy(FilePath.join(bookDir.path, book.cover));
+          }
+        } catch (_) {}
 
-          if (book.chapters != null && book.chapters!.isGrouped) {
-            // Grouped: 书名/卷名/章节.ext — only export volumes with downloaded chapters
-            for (final groupName in book.chapters!.groups) {
-              final chapMap = book.chapters!.getGroup(groupName);
-              // Filter to only downloaded chapters in this group
-              final downloadedInGroup = chapMap.entries
-                  .where((e) => book.downloadedChapters.contains(e.key))
-                  .toList();
-              if (downloadedInGroup.isEmpty) continue;
-              final groupDir =
-                  Directory(FilePath.join(bookDir.path, sanitizeFileName(groupName)));
-              if (!groupDir.existsSync()) groupDir.createSync(recursive: true);
-              for (final entry in downloadedInGroup) {
-                if (canceled) break;
-                final chapName = sanitizeFileName(entry.value, maxLength: 80);
-                final outPath = FilePath.join(groupDir.path, '$chapName$ext');
-                await _exportChapter(book, entry.key, outPath, format);
-              }
-            }
-          } else {
-            // Flat: 书名/章节.ext — only export downloaded chapters
-            final chapMap = book.chapters?.allChapters ?? {};
-            for (final entry in chapMap.entries) {
-              if (!book.downloadedChapters.contains(entry.key)) continue;
+        if (book.chapters != null && book.chapters!.isGrouped) {
+          // Grouped: 书名/卷名/章节.ext — only export volumes with downloaded chapters
+          for (final groupName in book.chapters!.groups) {
+            final chapMap = book.chapters!.getGroup(groupName);
+            // Filter to only downloaded chapters in this group
+            final downloadedInGroup = chapMap.entries
+                .where((e) => book.downloadedChapters.contains(e.key))
+                .toList();
+            if (downloadedInGroup.isEmpty) continue;
+            final groupDir =
+                Directory(FilePath.join(bookDir.path, sanitizeFileName(groupName)));
+            if (!groupDir.existsSync()) groupDir.createSync(recursive: true);
+            for (final entry in downloadedInGroup) {
               if (canceled) break;
               final chapName = sanitizeFileName(entry.value, maxLength: 80);
-              final outPath = FilePath.join(bookDir.path, '$chapName$ext');
+              final outPath = FilePath.join(groupDir.path, '$chapName$ext');
               await _exportChapter(book, entry.key, outPath, format);
             }
           }
-          current++;
-          if (books.length > 1) {
-            loadingController
-                .setMessage("${"Exporting".tl} $current/${books.length}");
-            loadingController.setProgress(current / books.length);
+        } else {
+          // Flat: 书名/章节.ext — only export downloaded chapters
+          final chapMap = book.chapters?.allChapters ?? {};
+          for (final entry in chapMap.entries) {
+            if (!book.downloadedChapters.contains(entry.key)) continue;
+            if (canceled) break;
+            final chapName = sanitizeFileName(entry.value, maxLength: 80);
+            final outPath = FilePath.join(bookDir.path, '$chapName$ext');
+            await _exportChapter(book, entry.key, outPath, format);
           }
         }
-      });
+        current++;
+        if (books.length > 1) {
+          loadingController
+              .setMessage("${"Exporting".tl} $current/${books.length}");
+          loadingController.setProgress(current / books.length);
+        }
+      }
     } catch (e, s) {
       Log.error("Export", e, s);
       context.showMessage(message: e.toString());
     }
     loadingController.close();
+  }
+
+  /// Android fallback: build hierarchy in cache, ZIP, then save via dialog.
+  void _exportHierarchyAsZip(
+      List<LocalBook> books, String ext, String format) async {
+    var current = 0;
+    bool canceled = false;
+    final loadingController = showLoadingDialog(
+      context,
+      allowCancel: true,
+      message: "${"Exporting".tl} $current/${books.length}",
+      withProgress: books.length > 1,
+      onCancel: () => canceled = true,
+    );
+
+    final tempDir = Directory(FilePath.join(App.cachePath, 'books_export_hierarchy'));
+    if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
+    tempDir.createSync(recursive: true);
+
+    try {
+      for (final book in books) {
+        if (canceled) break;
+        final bookName = sanitizeFileName(book.title, maxLength: 100);
+        final bookDir = Directory(FilePath.join(tempDir.path, bookName));
+        if (!bookDir.existsSync()) bookDir.createSync(recursive: true);
+
+        try {
+          final coverFile = book.coverFile;
+          if (coverFile.existsSync()) {
+            await coverFile.copy(FilePath.join(bookDir.path, book.cover));
+          }
+        } catch (_) {}
+
+        if (book.chapters != null && book.chapters!.isGrouped) {
+          for (final groupName in book.chapters!.groups) {
+            final chapMap = book.chapters!.getGroup(groupName);
+            final downloadedInGroup = chapMap.entries
+                .where((e) => book.downloadedChapters.contains(e.key))
+                .toList();
+            if (downloadedInGroup.isEmpty) continue;
+            final groupDir = Directory(
+                FilePath.join(bookDir.path, sanitizeFileName(groupName)));
+            if (!groupDir.existsSync()) groupDir.createSync(recursive: true);
+            for (final entry in downloadedInGroup) {
+              if (canceled) break;
+              final chapName = sanitizeFileName(entry.value, maxLength: 80);
+              final outPath = FilePath.join(groupDir.path, '$chapName$ext');
+              await _exportChapter(book, entry.key, outPath, format);
+            }
+          }
+        } else {
+          final chapMap = book.chapters?.allChapters ?? {};
+          for (final entry in chapMap.entries) {
+            if (!book.downloadedChapters.contains(entry.key)) continue;
+            if (canceled) break;
+            final chapName = sanitizeFileName(entry.value, maxLength: 80);
+            final outPath = FilePath.join(bookDir.path, '$chapName$ext');
+            await _exportChapter(book, entry.key, outPath, format);
+          }
+        }
+        current++;
+        if (books.length > 1) {
+          loadingController
+              .setMessage("${"Exporting".tl} $current/${books.length}");
+          loadingController.setProgress(current / books.length);
+        }
+      }
+
+      if (!canceled) {
+        loadingController.setProgress(null);
+        loadingController.setMessage("Compressing".tl);
+        final encoder = archive_lib.ZipEncoder();
+        final zipBytes = encoder.encodeBytes(
+          _archiveDirectory(tempDir, tempDir.path),
+        );
+        final zipName = books.length == 1
+            ? '${sanitizeFileName(books.first.title, maxLength: 100)}.zip'
+            : 'books_${DateTime.now().millisecondsSinceEpoch}.zip';
+        final zipPath = FilePath.join(App.cachePath, zipName);
+        await File(zipPath).writeAsBytes(zipBytes!);
+        await saveFile(file: File(zipPath), filename: zipName);
+        File(zipPath).deleteIgnoreError();
+      }
+    } catch (e, s) {
+      Log.error("Export", e, s);
+      context.showMessage(message: e.toString());
+    }
+    loadingController.close();
+    try { tempDir.deleteSync(recursive: true); } catch (_) {}
   }
 
   /// Export books as a ZIP archive containing folder hierarchy.
@@ -733,8 +830,9 @@ class _LocalBooksPageState extends State<LocalBooksPage> {
         final zipBytes = encoder.encodeBytes(
           _archiveDirectory(tempDir, tempDir.path),
         );
-        final timestamp = DateTime.now().millisecondsSinceEpoch;
-        final zipName = 'books_$timestamp.zip';
+        final zipName = books.length == 1
+            ? '${sanitizeFileName(books.first.title, maxLength: 100)}.zip'
+            : 'books_${DateTime.now().millisecondsSinceEpoch}.zip';
         final zipPath = FilePath.join(App.cachePath, zipName);
         await File(zipPath).writeAsBytes(zipBytes!);
         await saveFile(file: File(zipPath), filename: zipName);
