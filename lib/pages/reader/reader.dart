@@ -335,6 +335,12 @@ class _ReaderState extends State<Reader>
       // page >= maxPage handles both last image page and chapter comments page
       if (isNovel) {
         // Resume position only — no total page count (gallery lays out lazily).
+        // Resume by top-of-screen text anchor, not by page: pagination is
+        // rebuilt on every layout pass (font size, orientation, mode), so a
+        // page number does not identify the same place twice.
+        final top = _imageViewController?.getTopCursor();
+        history!.lineBlock = top?.blockIndex;
+        history!.lineChar = top?.charIndex;
         history!.page = page.clamp(1, images?.length ?? 1);
         history!.maxPage = null;
       } else if (page >= maxPage) {
@@ -423,6 +429,11 @@ class _ReaderState extends State<Reader>
 
   /// Books use P (page); novels use L (line / text block).
   String get pageUnit => isNovel ? 'L' : 'P';
+
+  /// Set on chapter load from [History.lineBlock] so the active view can jump
+  /// to the saved top-of-screen line once it knows its own geometry.
+  /// Consumed (and cleared) by the view that handles it.
+  NovelPageCursor? pendingRestoreCursor;
 
   /// App-bar chapter line: include volume name when chapters are grouped.
   String? get chapterTitleWithVolume {
@@ -858,4 +869,11 @@ abstract interface class _ImageViewController {
   Future<Uint8List?> getImageByOffset(Offset offset);
 
   String? getImageKeyByOffset(Offset offset);
+
+  /// Novels: cursor (block index + char offset) of the block sitting at the
+  /// very top of the screen right now. This is the stable reading anchor.
+  NovelPageCursor? getTopCursor();
+
+  /// Novels: move so [cursor] ends up at the top of the screen.
+  void restoreTopCursor(NovelPageCursor cursor);
 }

@@ -63,6 +63,16 @@ class History implements Book {
   /// If [group] is not null, [ep] is the index of chapter in the group.
   int? group;
 
+  /// Novel reading anchor: index of the [NovelBlock] sitting at the very top
+  /// of the current screen, plus the char offset inside that block.
+  ///
+  /// Null for comics (which stay page-based). Novels record this instead of
+  /// [page] so the reading position survives gallery <-> continuous mode
+  /// switches, font-size changes and orientation changes, all of which
+  /// reshuffle pagination but leave the underlying text in place.
+  int? lineBlock;
+  int? lineChar;
+
   @override
   String id;
 
@@ -102,7 +112,9 @@ class History implements Book {
         readEpisode = Set<String>.from(
             (map["readEpisode"] as List<dynamic>?)?.toSet() ??
                 const <String>{}),
-        maxPage = map["max_page"];
+        maxPage = map["max_page"],
+        lineBlock = map["line_block"],
+        lineChar = map["line_char"];
 
   @override
   String toString() {
@@ -122,7 +134,9 @@ class History implements Book {
             .split(',')
             .where((element) => element != "")),
         maxPage = row["max_page"],
-        group = row["chapter_group"];
+        group = row["chapter_group"],
+        lineBlock = row["line_block"],
+        lineChar = row["line_char"];
 
   @override
   bool operator ==(Object other) {
@@ -224,13 +238,22 @@ class HistoryManager with ChangeNotifier {
           page int,
           readEpisode text,
           max_page int,
-          chapter_group int
+          chapter_group int,
+          line_block int,
+          line_char int
         );
       """);
 
     var columns = _db.select("PRAGMA table_info(history);");
     if (!columns.any((element) => element["name"] == "chapter_group")) {
       _db.execute("alter table history add column chapter_group int;");
+    }
+    // Novel top-line anchor (see History.lineBlock).
+    if (!columns.any((element) => element["name"] == "line_block")) {
+      _db.execute("alter table history add column line_block int;");
+    }
+    if (!columns.any((element) => element["name"] == "line_char")) {
+      _db.execute("alter table history add column line_char int;");
     }
 
     notifyListeners();
@@ -239,8 +262,8 @@ class HistoryManager with ChangeNotifier {
   }
 
   static const _insertHistorySql = """
-        insert or replace into history (id, title, subtitle, cover, time, type, ep, page, readEpisode, max_page, chapter_group)
-        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        insert or replace into history (id, title, subtitle, cover, time, type, ep, page, readEpisode, max_page, chapter_group, line_block, line_char)
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
       """;
 
   static Future<void> _addHistoryAsync(int dbAddr, History newItem) {
@@ -257,7 +280,9 @@ class HistoryManager with ChangeNotifier {
         newItem.page,
         newItem.readEpisode.join(','),
         newItem.maxPage,
-        newItem.group
+        newItem.group,
+        newItem.lineBlock,
+        newItem.lineChar
       ]);
     });
   }
@@ -300,7 +325,9 @@ class HistoryManager with ChangeNotifier {
       newItem.page,
       newItem.readEpisode.join(','),
       newItem.maxPage,
-      newItem.group
+      newItem.group,
+      newItem.lineBlock,
+      newItem.lineChar
     ]);
     if (_cachedHistoryIds == null) {
       updateCache();
@@ -486,6 +513,10 @@ void clearUnfavoritedHistory() {
           'id': history.id,
           'readEpisode': history.readEpisode.toList(),
           'max_page': history.maxPage,
+          // Keep the novel top-line anchor, else refreshing a book's info
+          // silently resets the reading position.
+          'line_block': history.lineBlock,
+          'line_char': history.lineChar,
         });
         updatedHistory.group = history.group;
 

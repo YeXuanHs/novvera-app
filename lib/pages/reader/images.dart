@@ -32,6 +32,18 @@ class _ReaderImagesState extends State<_ReaderImages> {
 
   /// Handle jumping to last page when _jumpToLastPageOnLoad is true
   void _handleJumpToLastPage() {
+    // Restore by saved top-line anchor when there is one; the active view
+    // consumes it once it knows its own geometry.
+    final h = reader.history;
+    // Only honour the anchor when it belongs to the chapter being opened:
+    // after a chapter switch `history.lineBlock` still holds the previous
+    // chapter's value until updateHistory overwrites it.
+    if (reader.isNovel && h?.lineBlock != null && h?.ep == reader.chapter) {
+      reader.pendingRestoreCursor = NovelPageCursor(
+        h!.lineBlock!,
+        h.lineChar ?? 0,
+      );
+    }
     if (reader._jumpToLastPageOnLoad) {
       if (reader.isNovel) {
         // Gallery mode finishes layout via NovelIncrementalPager.ensureAll;
@@ -428,13 +440,40 @@ class _GalleryModeState extends State<_GalleryMode>
           pager.ensureThrough(target);
         }
 
+        // A saved top-line anchor wins over any remembered page index.
+        int? anchorPage;
+        final anchor = reader.pendingRestoreCursor;
+        if (anchor != null) {
+          var best = 0;
+          var pi = 0;
+          while (!pager.isComplete && pi < 100000) {
+            pager.ensureThrough(pi);
+            final start = pager.startOf(pi);
+            if (start == null) break;
+            final atOrBefore = start.blockIndex < anchor.blockIndex ||
+                (start.blockIndex == anchor.blockIndex &&
+                    start.charIndex <= anchor.charIndex);
+            if (!atOrBefore) break;
+            best = pi;
+            pi++;
+          }
+          reader.pendingRestoreCursor = null;
+          anchorPage = best + 1;
+          target = math.max(target, best + 1 + _novelPreloadPages);
+          pager.ensureThrough(target);
+        }
+
         late final List<String> keys;
         late final int newPage;
 
         if (rebuild) {
           NovelPageCache.clearTexts();
           keys = _keysFromNovelPages(pager.pages);
-          if (reader._jumpToLastPageOnLoad) {
+          if (anchorPage != null) {
+            // Restoring from a saved top-line anchor; this must win over
+            // oldPage, otherwise the position snaps back to the old page.
+            newPage = anchorPage!.clamp(1, math.max(1, keys.length));
+          } else if (reader._jumpToLastPageOnLoad) {
             newPage = keys.length;
             reader._jumpToLastPageOnLoad = false;
           } else if (viewportChanged && !chapterChanged && oldLen > 1) {
@@ -483,6 +522,26 @@ class _GalleryModeState extends State<_GalleryMode>
         _novelPaging = false;
       }
     });
+  }
+
+  @override
+  NovelPageCursor? getTopCursor() {
+    if (!reader.isNovel) return null;
+    final pager = _novelPager;
+    if (pager == null || pager.pageCount == 0) return null;
+    return pager.startOf(
+      (reader.page - 1).clamp(0, pager.pageCount - 1),
+    );
+  }
+
+  @override
+  void restoreTopCursor(NovelPageCursor cursor) {
+    if (!reader.isNovel) return;
+    reader.pendingRestoreCursor = cursor;
+    _ensureNovelGalleryPages(
+      MediaQuery.sizeOf(context),
+      throughPage: reader.page,
+    );
   }
 
   /// Grow known gallery pages when the user nears the end of the laid-out set.
@@ -969,13 +1028,17 @@ class _ContinuousModeState extends State<_ContinuousMode>
   @override
   void dispose() {
     itemPositionsListener.itemPositions.removeListener(onPositionChanged);
-    _novelScrollController?.removeListener(_onNovelScroll);
-    _novelScrollController?.dispose();
     super.dispose();
   }
 
   void onPositionChanged() {
     if (itemPositionsListener.itemPositions.value.isEmpty) {
+      return;
+    }
+    // Novels: the item index is the block index, so reuse the top-line anchor
+    // and skip image caching — novel page keys (`noveltxt://`) are not images.
+    if (reader.isNovel) {
+      _syncNovelPositionFromItems();
       return;
     }
     var page = itemPositionsListener.itemPositions.value.first.index;
@@ -1350,19 +1413,33 @@ class _ContinuousModeState extends State<_ContinuousMode>
       }
     }
 
-    final controller = _novelScrollController ??= ScrollController(
-      initialScrollOffset: 0,
-    );
-    if (!_novelScrollAttached) {
-      _novelScrollAttached = true;
-      controller.addListener(_onNovelScroll);
+    // ScrollablePositionedList (not ListView) so the *real* top-visible
+    // block index is observable. The old code estimated it from the scroll
+    // ratio, which lands on a random line because paragraph and image heights
+    // differ wildly - that is what scrambled the reading position when
+    // switching between continuous and gallery.
+    final novelEpoch = NovelPageCache.chapterEpoch;
+    if (_novelRestoredEpoch != novelEpoch &&
+        reader.pendingRestoreCursor != null) {
+      final anchor = reader.pendingRestoreCursor!;
+      _novelRestoredEpoch = novelEpoch;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _jumpNovelScrollToPage(controller);
+        if (!mounted) return;
+        reader.pendingRestoreCursor = null;
+        final last = math.max(0, blocks.length - 1);
+        final idx = anchor.blockIndex.clamp(0, last).toInt();
+        itemScrollController.jumpTo(index: idx);
+        _syncNovelPositionFromItems();
       });
     }
 
-    Widget list = ListView.builder(
-      controller: controller,
+    Widget list = ScrollablePositionedList.builder(
+      itemScrollController: itemScrollController,
+      itemPositionsListener: itemPositionsListener,
+      scrollControllerCallback: (scrollController) {
+        // Position tracking goes through itemPositionsListener, so the raw
+        // scroll offset is not needed here (see _syncNovelPositionFromItems).
+      },
       padding: EdgeInsets.fromLTRB(
         pad,
         20,
@@ -1402,20 +1479,18 @@ class _ContinuousModeState extends State<_ContinuousMode>
       behavior: HitTestBehavior.translucent,
       onTapUp: (d) {
         final w = mq.width;
+        final total = blocks.length;
+        final cur = (reader.page - 1).clamp(0, math.max(0, total - 1)).toInt();
         if (d.localPosition.dx < w / 3) {
           // prev — scroll up a bit
-          final target = (controller.offset - mq.height * 0.85)
-              .clamp(0.0, controller.position.maxScrollExtent);
-          controller.animateTo(
-            target,
+          itemScrollController.scrollTo(
+            index: math.max(0, cur - 1).toInt(),
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOut,
           );
         } else if (d.localPosition.dx > w * 2 / 3) {
-          final target = (controller.offset + mq.height * 0.85)
-              .clamp(0.0, controller.position.maxScrollExtent);
-          controller.animateTo(
-            target,
+          itemScrollController.scrollTo(
+            index: math.min(total - 1, cur + 1).toInt(),
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOut,
           );
@@ -1432,35 +1507,52 @@ class _ContinuousModeState extends State<_ContinuousMode>
     );
   }
 
-  ScrollController? _novelScrollController;
-  bool _novelScrollAttached = false;
+  /// Chapter epoch the pending anchor was already applied for. Using the
+  /// chapter (not a plain bool) means switching chapters restores again.
+  int _novelRestoredEpoch = -1;
 
-  void _onNovelScroll() {
-    final c = _novelScrollController;
-    if (c == null || !c.hasClients) return;
-    final blocks = NovelPageCache.blocks;
-    if (blocks.isEmpty) return;
-    final max = c.position.maxScrollExtent;
-    if (max <= 0) {
-      reader.setPage(1);
-      return;
+  /// Index of the first block intersecting the viewport (the top visible line).
+  int _novelTopBlockIndex() {
+    final positions = itemPositionsListener.itemPositions.value;
+    for (final p in positions) {
+      // itemLeadingEdge < 0 < itemTrailingEdge => crosses the viewport top.
+      if (p.itemLeadingEdge < 0 && p.itemTrailingEdge > 0) return p.index;
+      if (p.itemLeadingEdge >= 0) return p.index;
     }
-    final ratio = (c.offset / max).clamp(0.0, 1.0);
-    final page = (ratio * (blocks.length - 1)).round() + 1;
-    if (page != reader.page) {
-      reader.setPage(page);
-      context.readerScaffold.update();
-    }
+    return 0;
   }
 
-  void _jumpNovelScrollToPage(ScrollController c) {
+  void _syncNovelPositionFromItems() {
+    if (!mounted) return;
     final blocks = NovelPageCache.blocks;
-    if (blocks.isEmpty || !c.hasClients) return;
-    final max = c.position.maxScrollExtent;
-    if (max <= 0) return;
-    final denom = (blocks.length - 1).clamp(1, 1 << 30);
-    final ratio = ((reader.page - 1) / denom).clamp(0.0, 1.0);
-    c.jumpTo(ratio * max);
+    if (blocks.isEmpty) return;
+    final top = _novelTopBlockIndex().clamp(0, blocks.length - 1);
+    reader.setPage(top + 1);
+    context.readerScaffold.update();
+  }
+
+  @override
+  NovelPageCursor? getTopCursor() {
+    if (!reader.isNovel) return null;
+    final blocks = NovelPageCache.blocks;
+    if (blocks.isEmpty) return null;
+    return NovelPageCursor(
+      _novelTopBlockIndex().clamp(0, blocks.length - 1),
+      0,
+    );
+  }
+
+  @override
+  void restoreTopCursor(NovelPageCursor cursor) {
+    if (!reader.isNovel) return;
+    final blocks = NovelPageCache.blocks;
+    if (blocks.isEmpty) return;
+    final idx = cursor.blockIndex.clamp(0, blocks.length - 1);
+    itemScrollController.scrollTo(
+      index: idx,
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.ease,
+    );
   }
 
   Widget buildBackground(BuildContext context) {
@@ -1485,16 +1577,12 @@ class _ContinuousModeState extends State<_ContinuousMode>
 
   @override
   Future<void> animateToPage(int page) {
-    if (reader.isNovel && _novelScrollController != null) {
-      final c = _novelScrollController!;
-      if (!c.hasClients) return Future.value();
+    if (reader.isNovel) {
       final blocks = NovelPageCache.blocks;
-      final max = c.position.maxScrollExtent;
-      if (blocks.isEmpty || max <= 0) return Future.value();
-      final denom = (blocks.length - 1).clamp(1, 1 << 30);
-      final ratio = ((page - 1) / denom).clamp(0.0, 1.0);
-      return c.animateTo(
-        ratio * max,
+      if (blocks.isEmpty) return Future.value();
+      final idx = (page - 1).clamp(0, blocks.length - 1);
+      return itemScrollController.scrollTo(
+        index: idx,
         duration: const Duration(milliseconds: 200),
         curve: Curves.ease,
       );
