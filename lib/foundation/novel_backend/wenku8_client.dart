@@ -49,6 +49,22 @@ const _watermark = [
 
 const _imageEntry = '<!--image-->';
 
+/// Markdown-form inline illustration, e.g.
+/// `![图片](  https://host/x.png<!--image-->   ?w=580&h=836)`.
+///
+/// Wenku8 serves two shapes for the same thing. The paired-marker form
+/// `<!--image-->url<!--image-->` is handled by the scan below; this one carries
+/// a **single** marker, so that scan hits its "no closing marker" branch and
+/// pushes the whole line in as body text — the URL is lost and the Markdown
+/// syntax leaks into the chapter.
+///
+/// Captured here first; the match is then removed from the line so the paired
+/// scan never sees it.
+final _markdownImageRe = RegExp(
+  r'!\[[^\]]*\]\(\s*(https?://[^\s)]+?)\s*<!--image-->\s*[^)]*\)',
+  caseSensitive: false,
+);
+
 /// Port of MewX [OldNovelContentParser.parseNovelContent].
 ///
 /// Official reader (Wenku8 Android 1.29):
@@ -56,12 +72,21 @@ const _imageEntry = '<!--image-->';
 /// - skips lines that are empty or ASCII-spaces only
 /// - each remaining line → one TEXT element (`trim`), or IMAGE from
 ///   `<!--image-->url<!--image-->` (multiple per line allowed)
+/// - Markdown-form `![…](  url<!--image-->   ?w=…)` is lifted out first
 /// - [WenkuReaderPaginator] later skips elements whose text length is 0
 ///
 /// Returns ordered segments: text paragraphs and image URLs (http…).
 List<String> parseWenku8NovelContent(String raw) {
   final result = <String>[];
-  for (final line in raw.split('\r\n')) {
+  void addText(String text) {
+    final t = text.trim();
+    if (t.isEmpty) return; // paginator would skip length-0 anyway
+    if (_watermark.any(t.contains)) return;
+    result.add(t);
+  }
+
+  for (final rawLine in raw.split('\r\n')) {
+    var line = rawLine;
     // Same emptiness check as Java: only ASCII space counts as empty padding.
     var onlySpaces = true;
     for (var i = 0; i < line.length; i++) {
@@ -72,12 +97,30 @@ List<String> parseWenku8NovelContent(String raw) {
     }
     if (onlySpaces) continue;
 
+    // Markdown-form illustrations first: emit the URL where it sits and keep
+    // only the leftover prose, so the paired-marker scan below only ever sees
+    // well-formed pairs. Emitting in place preserves reading order on lines
+    // that mix prose and an illustration.
+    if (_markdownImageRe.hasMatch(line)) {
+      final kept = StringBuffer();
+      var last = 0;
+      for (final m in _markdownImageRe.allMatches(line)) {
+        addText(line.substring(last, m.start));
+        final url = normalizeNovelImageUrl(
+          preferHttps((m.group(1) ?? '').trim()),
+        );
+        if (url.startsWith('http')) result.add(url);
+        last = m.end;
+      }
+      kept.write(line.substring(last));
+      line = kept.toString();
+      // A line that was nothing but an illustration keeps no prose.
+      if (line.trim().isEmpty) continue;
+    }
+
     final imgAt = line.indexOf(_imageEntry);
     if (imgAt < 0) {
-      final text = line.trim();
-      if (text.isEmpty) continue; // paginator would skip length-0 anyway
-      if (_watermark.any(text.contains)) continue;
-      result.add(text);
+      addText(line);
       continue;
     }
 
@@ -89,10 +132,7 @@ List<String> parseWenku8NovelContent(String raw) {
       final innerStart = temp + _imageEntry.length;
       final end = line.indexOf(_imageEntry, innerStart);
       if (end < 0) {
-        final text = line.trim();
-        if (text.isNotEmpty && !_watermark.any(text.contains)) {
-          result.add(text);
-        }
+        addText(line);
         break;
       }
       final url = normalizeNovelImageUrl(
