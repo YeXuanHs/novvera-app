@@ -72,7 +72,10 @@ dependencies:
     git: 
       url: https://github.com/venera-app/flutter_saf
       ref: fe182cdf40e5fa6230f451bc1d643b860f610d13
-  dynamic_color: ^1.8.1
+  # Exact pin: 1.9.0 ships a build.gradle.kts using the KGP 2.x
+  # `kotlin { compilerOptions { jvmTarget } }` DSL, which fails to compile
+  # with the AGP/Kotlin setup used by this project (CI Android build failure).
+  dynamic_color: 1.8.1
   shimmer_animation: ^2.1.0
   flutter_memory_info: ^0.0.3
   syntax_highlight: ^0.4.0
