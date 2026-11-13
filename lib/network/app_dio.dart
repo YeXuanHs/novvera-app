@@ -226,9 +226,17 @@ class RHttpAdapter implements HttpClientAdapter {
     if (options.headers['User-Agent'] == null &&
         options.headers['user-agent'] == null) {
       final ua = appdata.implicitData['ua'];
-      // Browser UA — `novvera/v*` is hard-blocked by wenku8 Cloudflare.
-      options.headers['User-Agent'] =
-          (ua is String && ua.isNotEmpty) ? ua : webUA;
+      // 哔哩轻小说有独立手机站：UA 一旦是移动的就会被 302 到 m.linovelib.com，
+      // 之后拿电脑站的 DOM 规则去解析全错。按域名兜底成桌面 UA + client hints。
+      if (options.uri.host.endsWith('linovelib.com')) {
+        options.headers['User-Agent'] = webUA;
+        options.headers['Sec-CH-UA-Mobile'] = '?0';
+        options.headers['Sec-CH-UA-Platform'] = '"Windows"';
+      } else {
+        // Browser UA — `novvera/v*` is hard-blocked by wenku8 Cloudflare.
+        options.headers['User-Agent'] =
+            (ua is String && ua.isNotEmpty) ? ua : webUA;
+      }
     }
 
     var res = await rhttp.Rhttp.request(
