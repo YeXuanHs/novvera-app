@@ -5,7 +5,7 @@ part of 'reader.dart';
 /// 展示从 [startBlock] 开始的连续原文，用户用系统选择手势划出一段，
 /// 再点「摘录选中」保存。之所以不复用阅读器里的文字控件，是因为画廊模式
 /// 的文字页被 PhotoView 包着，长按/拖动手势会被缩放层吃掉，选不中。
-Future<void> showExcerptPicker(
+Future<void> _showExcerptPicker(
   BuildContext context, {
   required _ReaderState reader,
   int? startBlock,

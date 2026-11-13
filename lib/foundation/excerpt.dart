@@ -101,7 +101,7 @@ class Excerpt {
   int get hashCode => Object.hash(key, time);
 
   @override
-  String toString() => 'Excerpt($bookTitle EP$ep @$blockIndex:${charStart}-$charEnd)';
+  String toString() => 'Excerpt($bookTitle EP$ep @$blockIndex:$charStart-$charEnd)';
 }
 
 /// 摘录库：SQLite 表 `excerpts`，一本书一条记录对应一段摘录。

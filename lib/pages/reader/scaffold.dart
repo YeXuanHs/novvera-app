@@ -242,7 +242,7 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
   void openExcerptPicker() {
     final reader = context.reader;
     final cursor = reader._imageViewController?.getTopCursor();
-    showExcerptPicker(
+    _showExcerptPicker(
       context,
       reader: reader,
       startBlock: cursor?.blockIndex ?? 0,

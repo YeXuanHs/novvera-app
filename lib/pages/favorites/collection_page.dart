@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:novvera/foundation/app.dart';
-import 'package:novvera/foundation/context.dart';
 import 'package:novvera/foundation/history.dart';
 import 'package:novvera/foundation/novel_source/novel_paginator.dart';
 import 'package:novvera/pages/image_favorites_page/image_favorites_page.dart';
