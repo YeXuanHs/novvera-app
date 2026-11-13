@@ -525,7 +525,7 @@ class _GalleryModeState extends State<_GalleryMode>
           if (anchorPage != null) {
             // Restoring from a saved top-line anchor; this must win over
             // oldPage, otherwise the position snaps back to the old page.
-            newPage = anchorPage!.clamp(1, math.max(1, keys.length));
+            newPage = anchorPage.clamp(1, math.max(1, keys.length));
           } else if (reader._jumpToLastPageOnLoad) {
             newPage = keys.length;
             reader._jumpToLastPageOnLoad = false;
