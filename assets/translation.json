@@ -595,7 +595,9 @@
     "Go to text": "跳到原文",
     "More": "更多",
     "No image on this page": "这页没有图片",
-    "Favorite Num Compare Book Pages": "收藏率（收藏数/总页数）"
+    "Favorite Num Compare Book Pages": "收藏率（收藏数/总页数）",
+    "Chapter": "章节",
+    "Text Length Greater Than": "字数大于"
   },
   "zh_TW": {
     "Home": "首頁",
@@ -1193,6 +1195,8 @@
     "Go to text": "跳到原文",
     "More": "更多",
     "No image on this page": "這頁沒有圖片",
-    "Favorite Num Compare Book Pages": "收藏率（收藏數/總頁數）"
+    "Favorite Num Compare Book Pages": "收藏率（收藏數/總頁數）",
+    "Chapter": "章節",
+    "Text Length Greater Than": "字數大於"
   }
 }

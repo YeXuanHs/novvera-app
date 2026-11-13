@@ -446,6 +446,20 @@ class _ReaderState extends State<Reader>
   /// Books use P (page); novels use L (line / text block).
   String get pageUnit => isNovel ? 'L' : 'P';
 
+  /// 本章是否含文字（整章维度，不随滚动/翻页变化）。
+  bool get chapterHasText {
+    final blocks = NovelPageCache.blocks;
+    // 章节还没加载时先按"有文字"处理，避免按钮先闪掉再出现。
+    if (blocks.isEmpty) return true;
+    return blocks.any((b) => b is NovelTextBlock && b.text.trim().isNotEmpty);
+  }
+
+  /// 本章是否含插图。
+  bool get chapterHasImage {
+    final blocks = NovelPageCache.blocks;
+    return blocks.any((b) => b is NovelImageBlock);
+  }
+
   /// 1-based index of the line (text block) sitting at the very top of the
   /// screen. This is the reading position that both gallery and continuous
   /// mode agree on, so it doubles as the progress value for novels.
@@ -901,10 +915,4 @@ abstract interface class _ImageViewController {
 
   /// Novels: move so [cursor] ends up at the top of the screen.
   void restoreTopCursor(NovelPageCursor cursor);
-
-  /// 当前屏幕里是否有文字（用来决定底部要不要显示「摘录」）。
-  bool get hasVisibleText;
-
-  /// 当前屏幕里是否有插图（用来决定底部要不要显示「收藏图片」）。
-  bool get hasVisibleImage;
 }

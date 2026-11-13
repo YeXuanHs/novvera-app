@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:novvera/components/components.dart';
 import 'package:novvera/foundation/app.dart';
+import 'package:novvera/foundation/appdata.dart';
 import 'package:novvera/foundation/history.dart';
 import 'package:novvera/foundation/novel_source/novel_paginator.dart';
 import 'package:novvera/pages/image_favorites_page/image_favorites_page.dart';
+import 'package:novvera/pages/image_favorites_page/type.dart';
 import 'package:novvera/pages/reader/reader.dart';
 import 'package:novvera/utils/translations.dart';
 
@@ -66,7 +69,23 @@ class _CollectionPageState extends State<CollectionPage>
   }
 }
 
-enum _ExcerptSort { timeDesc, timeAsc, title }
+enum _ExcerptSort {
+  timeDesc("Time Desc"),
+  timeAsc("Time Asc"),
+  title("Title"),
+  chapter("Chapter");
+
+  final String label;
+
+  const _ExcerptSort(this.label);
+
+  static _ExcerptSort fromValue(String? value) {
+    for (final e in values) {
+      if (e.name == value) return e;
+    }
+    return timeDesc;
+  }
+}
 
 class _ExcerptTab extends StatefulWidget {
   const _ExcerptTab();
@@ -86,11 +105,20 @@ class _ExcerptTabState extends State<_ExcerptTab> {
 
   _ExcerptSort _sort = _ExcerptSort.timeDesc;
 
+  TimeRange _timeFilter = TimeRange.all;
+
+  int _minLength = 0;
+
   final Set<String> _selected = {};
 
   @override
   void initState() {
     super.initState();
+    _sort = _ExcerptSort.fromValue(appdata.implicitData["excerpt_sort"]);
+    _timeFilter = TimeRange.fromString(
+      appdata.implicitData["excerpt_time_filter"],
+    );
+    _minLength = appdata.implicitData["excerpt_length_filter"] ?? 0;
     _load();
     ExcerptManager().addListener(_load);
   }
@@ -105,7 +133,12 @@ class _ExcerptTabState extends State<_ExcerptTab> {
   void _load() {
     if (!mounted) return;
     setState(() {
-      items = _sorted(ExcerptManager().getAll(keyword: _search.text));
+      final matched = ExcerptManager()
+          .getAll(keyword: _search.text)
+          .where((e) =>
+              _timeFilter.contains(e.time) && e.text.length >= _minLength)
+          .toList();
+      items = _sorted(matched);
       final keys = items.map((e) => e.key).toSet();
       _selected.removeWhere((k) => !keys.contains(k));
     });
@@ -116,7 +149,32 @@ class _ExcerptTabState extends State<_ExcerptTab> {
         _ExcerptSort.timeAsc => list.reversed.toList(),
         _ExcerptSort.title =>
           list..sort((a, b) => a.bookTitle.compareTo(b.bookTitle)),
+        _ExcerptSort.chapter => list..sort((a, b) {
+            final byBook = a.bookTitle.compareTo(b.bookTitle);
+            if (byBook != 0) return byBook;
+            if (a.ep != b.ep) return a.ep.compareTo(b.ep);
+            return a.blockIndex.compareTo(b.blockIndex);
+          }),
       };
+
+  void _openOptions() {
+    showDialog(
+      context: context,
+      builder: (_) => _ExcerptOptionsDialog(
+        initSort: _sort,
+        initTimeFilter: _timeFilter,
+        initMinLength: _minLength,
+        updateConfig: (sort, timeRange, minLength) {
+          setState(() {
+            _sort = sort;
+            _timeFilter = timeRange;
+            _minLength = minLength;
+          });
+          _load();
+        },
+      ),
+    );
+  }
 
   void _open(Excerpt e) {
     App.rootContext.to(
@@ -243,28 +301,12 @@ class _ExcerptTabState extends State<_ExcerptTab> {
               tooltip: "Search".tl,
               onPressed: () => setState(() => _searching = true),
             ),
-            PopupMenuButton<_ExcerptSort>(
+            IconButton(
+              isSelected:
+                  _timeFilter != TimeRange.all || _minLength > 0,
               tooltip: "Sort".tl,
               icon: const Icon(Icons.sort_rounded),
-              initialValue: _sort,
-              onSelected: (v) {
-                setState(() => _sort = v);
-                _load();
-              },
-              itemBuilder: (_) => [
-                PopupMenuItem(
-                  value: _ExcerptSort.timeDesc,
-                  child: Text("Time Desc".tl),
-                ),
-                PopupMenuItem(
-                  value: _ExcerptSort.timeAsc,
-                  child: Text("Time Asc".tl),
-                ),
-                PopupMenuItem(
-                  value: _ExcerptSort.title,
-                  child: Text("Title".tl),
-                ),
-              ],
+              onPressed: _openOptions,
             ),
             IconButton(
               icon: const Icon(Icons.checklist),
@@ -416,6 +458,210 @@ class _ExcerptTabState extends State<_ExcerptTab> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 摘录的排序 / 筛选弹窗——与图片收藏那个保持同一套结构与控件，只换文案。
+class _ExcerptOptionsDialog extends StatefulWidget {
+  const _ExcerptOptionsDialog({
+    required this.initSort,
+    required this.initTimeFilter,
+    required this.initMinLength,
+    required this.updateConfig,
+  });
+
+  final _ExcerptSort initSort;
+  final TimeRange initTimeFilter;
+  final int initMinLength;
+  final void Function(_ExcerptSort sort, TimeRange timeRange, int minLength)
+      updateConfig;
+
+  @override
+  State<_ExcerptOptionsDialog> createState() => _ExcerptOptionsDialogState();
+}
+
+class _ExcerptOptionsDialogState extends State<_ExcerptOptionsDialog> {
+  static const lengthOptions = [0, 10, 20, 50, 100, 200, 500];
+
+  final List<String> optionTypes = ['Sort', 'Filter'];
+
+  late _ExcerptSort sort = widget.initSort;
+
+  late int minLength = widget.initMinLength;
+
+  late TimeRangeType timeRangeType;
+
+  DateTime? start;
+
+  DateTime? end;
+
+  @override
+  void initState() {
+    super.initState();
+    timeRangeType = switch (widget.initTimeFilter) {
+      TimeRange.all => TimeRangeType.all,
+      TimeRange.lastWeek => TimeRangeType.lastWeek,
+      TimeRange.lastMonth => TimeRangeType.lastMonth,
+      TimeRange.lastHalfYear => TimeRangeType.lastHalfYear,
+      TimeRange.lastYear => TimeRangeType.lastYear,
+      _ => TimeRangeType.custom,
+    };
+    if (timeRangeType == TimeRangeType.custom) {
+      end = widget.initTimeFilter.end;
+      start = end!.subtract(widget.initTimeFilter.duration);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tabBar = Material(
+      borderRadius: BorderRadius.circular(8),
+      child: AppTabBar(
+        key: PageStorageKey(optionTypes),
+        tabs: optionTypes.map((e) => Tab(text: e.tl, key: Key(e))).toList(),
+      ),
+    ).paddingTop(context.padding.top);
+
+    return ContentDialog(
+      content: DefaultTabController(
+        length: 2,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            tabBar,
+            TabViewBody(
+              children: [
+                RadioGroup<_ExcerptSort>(
+                  groupValue: sort,
+                  onChanged: (v) {
+                    setState(() => sort = v ?? sort);
+                  },
+                  child: Column(
+                    children: _ExcerptSort.values
+                        .map(
+                          (e) => RadioListTile<_ExcerptSort>(
+                            title: Text(e.label.tl),
+                            value: e,
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+                Column(
+                  children: [
+                    ListTile(
+                      title: Text("Time Filter".tl),
+                      trailing: Select(
+                        current: timeRangeType.value.tl,
+                        values: TimeRangeType.values
+                            .map((e) => e.value.tl)
+                            .toList(),
+                        minWidth: 64,
+                        onTap: (index) {
+                          setState(() {
+                            timeRangeType = TimeRangeType.values[index];
+                          });
+                        },
+                      ),
+                    ),
+                    if (timeRangeType == TimeRangeType.custom)
+                      Column(
+                        children: [
+                          ListTile(
+                            title: Text("Start Time".tl),
+                            trailing: TextButton(
+                              onPressed: () async {
+                                final date = await showDatePicker(
+                                  context: context,
+                                  initialDate: start ?? DateTime.now(),
+                                  firstDate: DateTime(2000),
+                                  lastDate: end ?? DateTime.now(),
+                                );
+                                if (date != null) {
+                                  setState(() => start = date);
+                                }
+                              },
+                              child: Text(
+                                start == null
+                                    ? "Select Date".tl
+                                    : DateFormat("yyyy-MM-dd").format(start!),
+                              ),
+                            ),
+                          ),
+                          ListTile(
+                            title: Text("End Time".tl),
+                            trailing: TextButton(
+                              onPressed: () async {
+                                final date = await showDatePicker(
+                                  context: context,
+                                  initialDate: end ?? DateTime.now(),
+                                  firstDate: start ?? DateTime(2000),
+                                  lastDate: DateTime.now(),
+                                );
+                                if (date != null) {
+                                  setState(() => end = date);
+                                }
+                              },
+                              child: Text(
+                                end == null
+                                    ? "Select Date".tl
+                                    : DateFormat("yyyy-MM-dd").format(end!),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ListTile(
+                      title: Text("Text Length Greater Than".tl),
+                      trailing: Select(
+                        current: minLength.toString(),
+                        values:
+                            lengthOptions.map((e) => e.toString()).toList(),
+                        minWidth: 64,
+                        onTap: (index) {
+                          setState(() => minLength = lengthOptions[index]);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        FilledButton(
+          onPressed: () {
+            appdata.implicitData["excerpt_sort"] = sort.name;
+            TimeRange timeRange;
+            if (timeRangeType == TimeRangeType.custom) {
+              timeRange = TimeRange(
+                end: end,
+                duration: end!.difference(start!),
+              );
+            } else {
+              timeRange = switch (timeRangeType) {
+                TimeRangeType.all => TimeRange.all,
+                TimeRangeType.lastWeek => TimeRange.lastWeek,
+                TimeRangeType.lastMonth => TimeRange.lastMonth,
+                TimeRangeType.lastHalfYear => TimeRange.lastHalfYear,
+                TimeRangeType.lastYear => TimeRange.lastYear,
+                _ => TimeRange.all,
+              };
+            }
+            appdata.implicitData["excerpt_time_filter"] = timeRange.toString();
+            appdata.implicitData["excerpt_length_filter"] = minLength;
+            appdata.writeImplicitData();
+            if (mounted) {
+              Navigator.pop(context);
+              widget.updateConfig(sort, timeRange, minLength);
+            }
+          },
+          child: Text("Confirm".tl),
+        ),
+      ],
     );
   }
 }

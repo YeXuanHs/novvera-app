@@ -416,12 +416,11 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
           : "E${context.reader.chapter} : $unit$displayPage";
     }
 
-    // 按当前屏幕实际内容决定给哪些按钮：同屏有文有图就两个都给，
-    // 只有文字只给「摘录」，只有插图只给「收藏图片」。
-    final controller = context.reader._imageViewController;
+    // 按本章内容决定给哪些按钮：章里既有文字又有插图就两个都给，纯文字只给
+    // 「摘录」，纯插图只给「收藏图片」。与当前滚动到哪里无关。
     final isNovel = context.reader.isNovel;
-    final showExcerpt = isNovel && (controller?.hasVisibleText ?? true);
-    final showCollect = isNovel ? (controller?.hasVisibleImage ?? false) : true;
+    final showExcerpt = isNovel && context.reader.chapterHasText;
+    final showCollect = isNovel ? context.reader.chapterHasImage : true;
 
     final buttons = [
       if (showExcerpt)
