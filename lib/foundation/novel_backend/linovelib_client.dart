@@ -2,10 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:html/dom.dart';
-import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/appdata.dart';
 import 'package:novvera/foundation/consts.dart';
 import 'package:novvera/foundation/log.dart';
@@ -14,6 +12,7 @@ import 'package:novvera/foundation/novel_backend/novel_http.dart';
 import 'package:novvera/network/app_dio.dart';
 import 'package:novvera/network/cloudflare.dart';
 import 'package:novvera/network/cookie_jar.dart';
+import 'package:novvera/pages/linovelib_captcha_page.dart';
 import 'package:novvera/pages/webview.dart';
 
 const _base = 'https://www.linovelib.com';
@@ -542,65 +541,20 @@ class LinovelibClient {
 
   /// 打开可见 WebView 让用户手动过一次「搜索验证」（4 位图片验证码）。
   ///
-  /// 图片验证码没法可靠地自动识别，只能过一次；站点对该 IP 30 分钟内免验证，
-  /// 通过后把 WebView 的 cookie 回写到 Dio 的 jar，后续爬取就不必再验证。
-  Future<bool> _passSearchCaptcha() async {
-    final done = Completer<bool>();
-    try {
-      final ctx = App.rootContext;
-      await Navigator.of(ctx).push(
-        MaterialPageRoute<void>(
-          builder: (pageCtx) => Scaffold(
-            appBar: AppBar(
-              title: const Text('完成搜索验证'),
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () {
-                    if (!done.isCompleted) done.complete(false);
-                    Navigator.of(pageCtx).pop();
-                  },
-                ),
-              ],
-            ),
-            body: AppWebview(
-              initialUrl: '$_base/S6/',
-              userAgent: _ua,
-              onLoadStop: (controller) async {
-                if (done.isCompleted) return;
-                final url = (await controller.getUrl())?.toString() ?? '';
-                final html = await controller.evaluateJavascript(
-                  source: 'document.documentElement.outerHTML',
-                );
-                if (html is! String || html.length < 200) return;
-                // 还在验证页，等用户输入验证码后提交。
-                if (_isSearchCaptcha(html)) return;
-                final isResult = url.contains('/S6') ||
-                    _aidRe.hasMatch(url) ||
-                    html.contains('se-result') ||
-                    html.contains('search-result') ||
-                    html.contains('搜索结果') ||
-                    html.contains('没有搜索到');
-                if (!isResult) return;
-                final cookies = await controller.getCookies('$_base/');
-                if (cookies != null && cookies.isNotEmpty) {
-                  SingleInstanceCookieJar.instance
-                      ?.saveFromResponse(Uri.parse('$_base/'), cookies);
-                }
-                appdata.implicitData['ua'] = _ua;
-                appdata.writeImplicitData();
-                if (!done.isCompleted) done.complete(true);
-                if (pageCtx.mounted) Navigator.of(pageCtx).pop();
-              },
-            ),
-          ),
-        ),
-      );
-    } catch (e, s) {
-      Log.warning('Linovelib', 'captcha webview failed: $e\n$s');
-    }
-    if (!done.isCompleted) done.complete(false);
-    return done.future;
+  /// 实际 UI 在 [passLinovelibSearchCaptcha]（那边才能用 material 组件）。
+  Future<bool> _passSearchCaptcha() {
+    return passLinovelibSearchCaptcha(
+      base: _base,
+      userAgent: _ua,
+      isCaptcha: _isSearchCaptcha,
+      isResult: (url, html) =>
+          url.contains('/S6') ||
+          _aidRe.hasMatch(url) ||
+          html.contains('se-result') ||
+          html.contains('search-result') ||
+          html.contains('搜索结果') ||
+          html.contains('没有搜索到'),
+    );
   }
 
   /// Run search_guard + form POST inside WebView (browser TLS + cookies).
