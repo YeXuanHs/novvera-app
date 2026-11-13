@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:novvera/components/components.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/appdata.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
 import 'package:novvera/foundation/history.dart';
 import 'package:novvera/foundation/novel_source/novel_paginator.dart';
 import 'package:novvera/pages/image_favorites_page/image_favorites_page.dart';
@@ -191,12 +192,7 @@ class _ExcerptTabState extends State<_ExcerptTab> {
 
   void _copy(Excerpt e) {
     Clipboard.setData(ClipboardData(text: e.text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("Excerpt copied".tl),
-        duration: const Duration(seconds: 1),
-      ),
-    );
+    App.rootContext.showMessage(message: "Excerpt copied".tl);
   }
 
   void _delete(Excerpt e) {
@@ -357,10 +353,9 @@ class _ExcerptTabState extends State<_ExcerptTab> {
                     ],
                   ),
                 )
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+              : ListView.builder(
+                  padding: const EdgeInsets.only(top: 8, bottom: 24),
                   itemCount: items.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (context, index) =>
                       _buildItem(context, items[index]),
                 ),
@@ -369,17 +364,55 @@ class _ExcerptTabState extends State<_ExcerptTab> {
     );
   }
 
+  void _showMenu(BuildContext context, Excerpt e, Offset position) {
+    showMenuX(context, position, [
+      MenuEntry(
+        icon: Icons.chrome_reader_mode_outlined,
+        text: "Go to text".tl,
+        onClick: () => _open(e),
+      ),
+      MenuEntry(
+        icon: Icons.copy,
+        text: "Copy".tl,
+        onClick: () => _copy(e),
+      ),
+      MenuEntry(
+        icon: Icons.delete_outline,
+        text: "Delete".tl,
+        onClick: () => _delete(e),
+      ),
+    ]);
+  }
+
+  void _showMenuAtCenter(BuildContext context, Excerpt e) {
+    final renderBox = context.findRenderObject() as RenderBox;
+    final size = renderBox.size;
+    _showMenu(
+      context,
+      e,
+      renderBox.localToGlobal(
+        Offset((size.width - 242) / 2, size.height / 2),
+      ),
+    );
+  }
+
+  /// 卡片结构与图片收藏保持一致：标题行 + 内容块 + 底部信息行。
   Widget _buildItem(BuildContext context, Excerpt e) {
     final theme = Theme.of(context);
-    final date = DateFormat('yyyy-MM-dd HH:mm').format(e.time);
-    final source =
-        [e.bookTitle, if (e.epName.isNotEmpty) e.epName].join(' · ');
     final checked = _selected.contains(e.key);
 
-    return Card(
-      margin: EdgeInsets.zero,
-      clipBehavior: Clip.antiAlias,
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      decoration: BoxDecoration(
+        color: checked ? theme.colorScheme.primaryContainer : null,
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant,
+          width: 0.6,
+        ),
+        borderRadius: BorderRadius.circular(8),
+      ),
       child: InkWell(
+        borderRadius: BorderRadius.circular(8),
         onTap: () {
           if (_multiSelect) {
             _toggle(e);
@@ -387,76 +420,108 @@ class _ExcerptTabState extends State<_ExcerptTab> {
             _open(e);
           }
         },
-        onLongPress: _multiSelect
-            ? null
-            : () => setState(() {
-                  _multiSelect = true;
-                  _selected.add(e.key);
-                }),
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(_multiSelect ? 4 : 16, 14, 8, 12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (_multiSelect)
-                // 交给外层 InkWell 统一切换，避免 Checkbox 与 onTap 各触发一次。
-                IgnorePointer(
-                  child: Checkbox(
-                    value: checked,
-                    onChanged: (_) {},
-                  ),
-                ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      e.text,
-                      maxLines: 4,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium?.copyWith(height: 1.6),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      source,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      date,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.outline,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (!_multiSelect)
-                PopupMenuButton<String>(
-                  tooltip: "More".tl,
-                  onSelected: (v) {
-                    switch (v) {
-                      case 'open':
-                        _open(e);
-                      case 'copy':
-                        _copy(e);
-                      case 'delete':
-                        _delete(e);
-                    }
-                  },
-                  itemBuilder: (_) => [
-                    PopupMenuItem(value: 'open', child: Text("Go to text".tl)),
-                    PopupMenuItem(value: 'copy', child: Text("Copy".tl)),
-                    PopupMenuItem(value: 'delete', child: Text("Delete".tl)),
-                  ],
-                ),
-            ],
-          ),
+        onLongPress: () {
+          if (_multiSelect) {
+            _toggle(e);
+          } else {
+            _showMenuAtCenter(context, e);
+          }
+        },
+        onSecondaryTapDown: (details) {
+          _showMenu(context, e, details.globalPosition);
+        },
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildTop(context, e, checked),
+            _buildBody(context, e),
+            _buildBottom(context, e),
+          ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildTop(BuildContext context, Excerpt e, bool checked) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          if (_multiSelect)
+            IgnorePointer(
+              child: Checkbox(
+                value: checked,
+                onChanged: (_) {},
+              ),
+            ),
+          Expanded(
+            child: Text(
+              e.bookTitle,
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+                fontSize: 16.0,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              softWrap: true,
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.secondaryContainer,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text("L${e.blockIndex + 1}", style: const TextStyle(fontSize: 12.0)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBody(BuildContext context, Excerpt e) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.secondaryContainer,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          e.text,
+          maxLines: 4,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 14.0, height: 1.6),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottom(BuildContext context, Excerpt e) {
+    final date = DateFormat('yyyy-MM-dd').format(e.time);
+    final sourceName = BookSource.find(e.sourceKey)?.name ?? "Unknown";
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+      child: Row(
+        children: [
+          Text(
+            "$date | $sourceName",
+            textAlign: TextAlign.left,
+            style: const TextStyle(fontSize: 12.0),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              e.epName,
+              textAlign: TextAlign.right,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12.0),
+            ),
+          ),
+        ],
       ),
     );
   }
