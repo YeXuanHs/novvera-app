@@ -7,6 +7,7 @@ class ReaderWithLoading extends StatefulWidget {
     required this.sourceKey,
     this.initialEp,
     this.initialPage,
+    this.initialCursor,
   });
 
   final String id;
@@ -16,6 +17,9 @@ class ReaderWithLoading extends StatefulWidget {
   final int? initialEp;
 
   final int? initialPage;
+
+  /// 小说摘录跳转：进入后定位到这一行。
+  final NovelPageCursor? initialCursor;
 
   @override
   State<ReaderWithLoading> createState() => _ReaderWithLoadingState();
@@ -34,6 +38,7 @@ class _ReaderWithLoadingState
       initialChapter: widget.initialEp ?? data.history.ep,
       initialPage: widget.initialPage ?? data.history.page,
       initialChapterGroup: data.history.group,
+      initialCursor: widget.initialCursor,
       author: data.author,
       tags: data.tags,
     );

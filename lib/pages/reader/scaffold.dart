@@ -239,6 +239,16 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
     );
   }
 
+  void openExcerptPicker() {
+    final reader = context.reader;
+    final cursor = reader._imageViewController?.getTopCursor();
+    showExcerptPicker(
+      context,
+      reader: reader,
+      startBlock: cursor?.blockIndex ?? 0,
+    );
+  }
+
   void addImageFavorite() async {
     try {
       if (context.reader.images![0].contains('file://')) {
@@ -394,13 +404,23 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
     }
 
     final buttons = [
-      Tooltip(
-        message: "Collect the image".tl,
-        child: IconButton(
-          icon: Icon(isLiked() ? Icons.favorite : Icons.favorite_border),
-          onPressed: addImageFavorite,
+      if (context.reader.isNovel && !context.reader.isOnNovelImage)
+        // 文字页不再走"图片收藏"：那段文字没有页码，收藏了也没法定位。
+        Tooltip(
+          message: "Excerpt".tl,
+          child: IconButton(
+            icon: const Icon(Icons.format_quote),
+            onPressed: openExcerptPicker,
+          ),
+        )
+      else
+        Tooltip(
+          message: "Collect the image".tl,
+          child: IconButton(
+            icon: Icon(isLiked() ? Icons.favorite : Icons.favorite_border),
+            onPressed: addImageFavorite,
+          ),
         ),
-      ),
       if (App.isDesktop)
         Tooltip(
           message: "${"Full Screen".tl}(F12)",

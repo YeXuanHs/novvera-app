@@ -23,6 +23,8 @@ import 'consts.dart';
 
 part "image_favorites.dart";
 
+part "excerpt.dart";
+
 typedef HistoryType = BookType;
 
 abstract mixin class HistoryMixin {
@@ -258,6 +260,7 @@ class HistoryManager with ChangeNotifier {
 
     notifyListeners();
     ImageFavoriteManager().init();
+    ExcerptManager().init();
     isInitialized = true;
   }
 

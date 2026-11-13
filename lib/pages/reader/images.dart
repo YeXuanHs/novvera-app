@@ -40,10 +40,16 @@ class _ReaderImagesState extends State<_ReaderImages> {
     // Restore by saved top-line anchor when there is one; the active view
     // consumes it once it knows its own geometry.
     final h = reader.history;
-    // Only honour the anchor when it belongs to the chapter being opened:
-    // after a chapter switch `history.lineBlock` still holds the previous
-    // chapter's value until updateHistory overwrites it.
-    if (reader.isNovel && h?.lineBlock != null && h?.ep == reader.chapter) {
+    // Explicit anchor (jumping here from an excerpt) beats saved progress.
+    final explicit = reader.widget.initialCursor;
+    if (reader.isNovel && explicit != null) {
+      reader.pendingRestoreCursor = explicit;
+    } else if (reader.isNovel &&
+        h?.lineBlock != null &&
+        h?.ep == reader.chapter) {
+      // Only honour the anchor when it belongs to the chapter being opened:
+      // after a chapter switch `history.lineBlock` still holds the previous
+      // chapter's value until updateHistory overwrites it.
       reader.pendingRestoreCursor = NovelPageCursor(
         h!.lineBlock!,
         h.lineChar ?? 0,
@@ -286,7 +292,11 @@ class _GalleryModeState extends State<_GalleryMode>
   @override
   void initState() {
     reader = context.reader;
-    controller = PageController(initialPage: reader.page);
+    // 有待恢复的顶行锚点时先停在第一页：旧页码属于另一套分页，可能越界，
+    // 等懒分页器算出锚点所在页再跳过去。
+    controller = PageController(
+      initialPage: reader.pendingRestoreCursor != null ? 1 : reader.page,
+    );
     reader._imageViewController = this;
     Future.microtask(() {
       context.readerScaffold.setFloatingButton(0);

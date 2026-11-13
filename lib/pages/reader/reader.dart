@@ -61,6 +61,8 @@ part 'chapters.dart';
 
 part 'chapter_comments.dart';
 
+part 'excerpt_picker.dart';
+
 extension _ReaderContext on BuildContext {
   _ReaderState get reader => findAncestorStateOfType<_ReaderState>()!;
 
@@ -79,6 +81,7 @@ class Reader extends StatefulWidget {
     this.initialPage,
     this.initialChapter,
     this.initialChapterGroup,
+    this.initialCursor,
     required this.author,
     required this.tags,
   });
@@ -103,6 +106,9 @@ class Reader extends StatefulWidget {
 
   /// Starts from 1, invalid values equal to 1
   final int? initialChapterGroup;
+
+  /// 小说专用：打开后直接定位到这一行（摘录跳转用），优先于历史进度。
+  final NovelPageCursor? initialCursor;
 
   final History history;
 
@@ -437,6 +443,19 @@ class _ReaderState extends State<Reader>
 
   /// Books use P (page); novels use L (line / text block).
   String get pageUnit => isNovel ? 'L' : 'P';
+
+  /// 小说：屏幕顶端当前是不是一张插图（插图独占一页/一段）。
+  /// 用来决定底部按钮是「收藏图片」还是「摘录」。
+  bool get isOnNovelImage {
+    if (!isNovel) return false;
+    final blocks = NovelPageCache.blocks;
+    final cursor = _imageViewController?.getTopCursor();
+    if (cursor == null) return false;
+    if (cursor.blockIndex < 0 || cursor.blockIndex >= blocks.length) {
+      return false;
+    }
+    return blocks[cursor.blockIndex] is NovelImageBlock;
+  }
 
   /// 1-based index of the line (text block) sitting at the very top of the
   /// screen. This is the reading position that both gallery and continuous
