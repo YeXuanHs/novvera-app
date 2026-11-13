@@ -254,20 +254,20 @@ class _ExcerptPickerDialogState extends State<_ExcerptPickerDialog> {
                   const Spacer(),
                   TextButton(
                     onPressed: _copy,
-                    child: const Text("Copy".tl),
+                    child: Text("Copy".tl),
                   ),
                   const SizedBox(width: 4),
                   TextButton(
                     onPressed: joined.isEmpty
                         ? null
                         : () => _save(wholeBlock: true),
-                    child: const Text("Excerpt this paragraph".tl),
+                    child: Text("Excerpt this paragraph".tl),
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
                     onPressed:
                         _hasSelection ? () => _save(wholeBlock: false) : null,
-                    child: const Text("Excerpt selection".tl),
+                    child: Text("Excerpt selection".tl),
                   ),
                 ],
               ),
