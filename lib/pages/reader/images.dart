@@ -17,9 +17,14 @@ class _ReaderImagesState extends State<_ReaderImages> {
 
   late _ReaderState reader;
 
+  /// Mode key of the last built child view. A change means the current view is
+  /// about to be thrown away, so its reading position must be carried over.
+  String? _lastModeKey;
+
   @override
   void initState() {
     reader = context.reader;
+    _lastModeKey = reader.mode.key;
     reader.isLoading = true;
     super.initState();
   }
@@ -57,6 +62,51 @@ class _ReaderImagesState extends State<_ReaderImages> {
       reader._page = reader.maxPage;
       reader._jumpToLastPageOnLoad = false;
     }
+  }
+
+  /// Novel: one key per block. This is the page unit of continuous mode and
+  /// the raw material the gallery pager re-splits, so it must be restored when
+  /// leaving gallery mode (gallery replaces [reader.images] with page keys).
+  void _syncNovelBlockKeys() {
+    final blocks = NovelPageCache.blocks;
+    if (blocks.isEmpty) return;
+    final current = reader.images;
+    if (current != null && current.length == blocks.length) return;
+    final keys = <String>[];
+    for (final b in blocks) {
+      if (b is NovelImageBlock) {
+        keys.add(b.url);
+      } else if (b is NovelTextBlock) {
+        keys.add(NovelPageCache.put(b.text));
+      }
+    }
+    if (keys.isNotEmpty) reader.images = keys;
+  }
+
+  /// Runs on every build, before the child view is (re)created.
+  ///
+  /// Page numbers are owned by whichever pagination produced them: gallery
+  /// pages are one screen of re-flowed text, continuous "pages" are text
+  /// blocks. Handing a raw page number from one to the other is what used to
+  /// scramble the progress on every mode switch. Instead we read the line at
+  /// the top of the screen from the current view and let the new view resolve
+  /// that anchor against its own pagination.
+  void _handleModeSwitch() {
+    final key = reader.mode.key;
+    final previous = _lastModeKey;
+    _lastModeKey = key;
+    if (previous == null || previous == key) return;
+    if (reader.isLoading) return;
+
+    final cursor = reader._imageViewController?.getTopCursor();
+    if (cursor == null) return;
+
+    reader.pendingRestoreCursor = cursor;
+    // The old page number is meaningless in the new pagination; park it on the
+    // first page so nothing clamps/jumps against a stale value before the
+    // anchor is resolved (the anchor then sets the real page).
+    reader._page = 1;
+    if (!reader.mode.isGallery) _syncNovelBlockKeys();
   }
 
   void load() async {
@@ -120,6 +170,8 @@ class _ReaderImagesState extends State<_ReaderImages> {
 
   @override
   Widget build(BuildContext context) {
+    // Must run before the child view below is (re)created.
+    _handleModeSwitch();
     if (reader.isLoading) {
       load();
       return const Center(child: CircularProgressIndicator());
@@ -380,6 +432,7 @@ class _GalleryModeState extends State<_GalleryMode>
     );
 
     if (!rebuild &&
+        reader.pendingRestoreCursor == null &&
         (_novelPager!.isComplete || _novelPager!.pageCount > wantThrough)) {
       return;
     }
@@ -496,7 +549,11 @@ class _GalleryModeState extends State<_GalleryMode>
             }
           }
           keys = existing..addAll(added);
-          if (fromSentinel && added.isNotEmpty) {
+          if (anchorPage != null) {
+            // Appending while an anchor is pending (e.g. a jump inside the
+            // same pager): the anchor still decides where we land.
+            newPage = anchorPage.clamp(1, math.max(1, keys.length));
+          } else if (fromSentinel && added.isNotEmpty) {
             newPage = prevCount + 1;
           } else {
             newPage = oldPage.clamp(1, keys.length);
@@ -1376,6 +1433,9 @@ class _ContinuousModeState extends State<_ContinuousMode>
 
   Widget _buildNovelContinuous(BuildContext context) {
     final blocks = NovelPageCache.blocks;
+    if (blocks.isEmpty) {
+      return const Center(child: Text('（本章无内容）'));
+    }
     final mq = MediaQuery.sizeOf(context);
     final bottomSafe = MediaQuery.paddingOf(context).bottom;
     final pad = mq.width > 720 ? (mq.width - 720) / 2 + 24.0 : 24.0;
@@ -1419,21 +1479,33 @@ class _ContinuousModeState extends State<_ContinuousMode>
     // differ wildly - that is what scrambled the reading position when
     // switching between continuous and gallery.
     final novelEpoch = NovelPageCache.chapterEpoch;
-    if (_novelRestoredEpoch != novelEpoch &&
-        reader.pendingRestoreCursor != null) {
-      final anchor = reader.pendingRestoreCursor!;
+    final anchor = reader.pendingRestoreCursor;
+    if (anchor != null && _novelRestoredEpoch != novelEpoch) {
+      // Consume the anchor once: as the list's initial index (no flash of the
+      // chapter start) and as a jump for the case where an index was already
+      // laid out.
       _novelRestoredEpoch = novelEpoch;
+      _novelRestoreIndex = anchor.blockIndex
+          .clamp(0, math.max(0, blocks.length - 1))
+          .toInt();
+      reader.pendingRestoreCursor = null;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        reader.pendingRestoreCursor = null;
-        final last = math.max(0, blocks.length - 1);
-        final idx = anchor.blockIndex.clamp(0, last).toInt();
-        itemScrollController.jumpTo(index: idx);
+        final idx = _novelRestoreIndex;
+        if (idx != null) {
+          itemScrollController.jumpTo(index: idx);
+          _novelRestoreIndex = null;
+        }
         _syncNovelPositionFromItems();
       });
     }
 
+    final initialIndex = (_novelRestoreIndex ?? (reader.page - 1))
+        .clamp(0, math.max(0, blocks.length - 1))
+        .toInt();
+
     Widget list = ScrollablePositionedList.builder(
+      initialScrollIndex: initialIndex,
       itemScrollController: itemScrollController,
       itemPositionsListener: itemPositionsListener,
       scrollControllerCallback: (scrollController) {
@@ -1511,15 +1583,21 @@ class _ContinuousModeState extends State<_ContinuousMode>
   /// chapter (not a plain bool) means switching chapters restores again.
   int _novelRestoredEpoch = -1;
 
+  /// Index the list should start at when an anchor is being restored.
+  int? _novelRestoreIndex;
+
   /// Index of the first block intersecting the viewport (the top visible line).
   int _novelTopBlockIndex() {
     final positions = itemPositionsListener.itemPositions.value;
-    for (final p in positions) {
-      // itemLeadingEdge < 0 < itemTrailingEdge => crosses the viewport top.
-      if (p.itemLeadingEdge < 0 && p.itemTrailingEdge > 0) return p.index;
-      if (p.itemLeadingEdge >= 0) return p.index;
+    if (positions.isEmpty) return 0;
+    // `itemPositions` is a Set — never assume iteration order.
+    final sorted = positions.toList()..sort((a, b) => a.index.compareTo(b.index));
+    for (final p in sorted) {
+      // Fully above the viewport top → not visible any more.
+      if (p.itemTrailingEdge <= 0) continue;
+      return p.index;
     }
-    return 0;
+    return sorted.last.index;
   }
 
   void _syncNovelPositionFromItems() {
@@ -1547,12 +1625,19 @@ class _ContinuousModeState extends State<_ContinuousMode>
     if (!reader.isNovel) return;
     final blocks = NovelPageCache.blocks;
     if (blocks.isEmpty) return;
-    final idx = cursor.blockIndex.clamp(0, blocks.length - 1);
-    itemScrollController.scrollTo(
-      index: idx,
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.ease,
-    );
+    final idx = cursor.blockIndex.clamp(0, blocks.length - 1).toInt();
+    try {
+      itemScrollController.scrollTo(
+        index: idx,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.ease,
+      );
+    } catch (_) {
+      // List not laid out yet — let the next build consume the anchor.
+      reader.pendingRestoreCursor = cursor;
+      _novelRestoredEpoch = -1;
+      setState(() {});
+    }
   }
 
   Widget buildBackground(BuildContext context) {
@@ -1649,7 +1734,13 @@ class _ContinuousModeState extends State<_ContinuousMode>
 
   @override
   void toPage(int page) {
-    itemScrollController.jumpTo(index: page);
+    var index = page;
+    if (reader.isNovel) {
+      // Novels have no leading sentinel item, and `page` is 1-based.
+      final total = NovelPageCache.blocks.length;
+      index = (page - 1).clamp(0, math.max(0, total - 1)).toInt();
+    }
+    itemScrollController.jumpTo(index: index);
     _futurePosition = null;
   }
 

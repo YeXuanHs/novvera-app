@@ -550,11 +550,12 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
     if (epName.length > 8) {
       epName = "${epName.substring(0, 8)}...";
     }
-    // Novels: chapter name only — no page/total (incremental pages have no
-    // stable total). Books keep page/maxPage.
+    // Novels: chapter name + the line at the top of the screen. That line is
+    // the saved reading position, so it means the same thing in gallery and
+    // continuous mode (a page number does not). Books keep page/maxPage.
     final String text;
     if (context.reader.isNovel) {
-      text = epName;
+      text = "$epName : ${context.reader.pageUnit}${context.reader.topLineNumber}";
     } else {
       final pageText = "${context.reader.page}/${context.reader.maxPage}";
       text = context.reader.widget.chapters != null

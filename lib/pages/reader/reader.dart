@@ -341,7 +341,15 @@ class _ReaderState extends State<Reader>
         final top = _imageViewController?.getTopCursor();
         history!.lineBlock = top?.blockIndex;
         history!.lineChar = top?.charIndex;
-        history!.page = page.clamp(1, images?.length ?? 1);
+        // `page` is reported as the line at the very top of the screen
+        // (1-based block index) — the same unit in both gallery and
+        // continuous mode, so "progress" never depends on how the chapter
+        // happens to be split into pages right now.
+        final lineCount = NovelPageCache.blocks.length;
+        history!.page = ((top?.blockIndex ?? (page - 1)) + 1).clamp(
+          1,
+          lineCount > 0 ? lineCount : 1,
+        );
         history!.maxPage = null;
       } else if (page >= maxPage) {
         /// Record the last image of chapter
@@ -429,6 +437,15 @@ class _ReaderState extends State<Reader>
 
   /// Books use P (page); novels use L (line / text block).
   String get pageUnit => isNovel ? 'L' : 'P';
+
+  /// 1-based index of the line (text block) sitting at the very top of the
+  /// screen. This is the reading position that both gallery and continuous
+  /// mode agree on, so it doubles as the progress value for novels.
+  int get topLineNumber {
+    final cursor = _imageViewController?.getTopCursor();
+    if (cursor != null) return cursor.blockIndex + 1;
+    return page;
+  }
 
   /// Set on chapter load from [History.lineBlock] so the active view can jump
   /// to the saved top-of-screen line once it knows its own geometry.
