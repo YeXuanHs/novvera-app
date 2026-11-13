@@ -289,14 +289,25 @@ class _GalleryModeState extends State<_GalleryMode>
 
   int fingers = 0;
 
+  /// 首帧是否在等"恢复阅读位置"的分页结果。
+  ///
+  /// 打开书 / 从摘录跳转时，reader.images 还是上一套（甚至每段一页）的
+  /// 旧分页，先渲染它会让用户看到"只有第一行"，再等一次 jumpToPage 才
+  /// 回到正确位置。干脆在锚点解析完成前显示 loading。
+  bool _awaitingRestore = false;
+
+  /// 分页结果要跳到的页；创建时 controller 可能还没 attach，先存下来。
+  int? _pendingJumpPage;
+
   @override
   void initState() {
     reader = context.reader;
+    _awaitingRestore = reader.isNovel &&
+        reader.pendingRestoreCursor != null &&
+        NovelPageCache.blocks.isNotEmpty;
     // 有待恢复的顶行锚点时先停在第一页：旧页码属于另一套分页，可能越界，
     // 等懒分页器算出锚点所在页再跳过去。
-    controller = PageController(
-      initialPage: reader.pendingRestoreCursor != null ? 1 : reader.page,
-    );
+    controller = PageController(initialPage: _awaitingRestore ? 1 : reader.page);
     reader._imageViewController = this;
     Future.microtask(() {
       context.readerScaffold.setFloatingButton(0);
@@ -409,6 +420,7 @@ class _GalleryModeState extends State<_GalleryMode>
   void _applyNovelGalleryKeys(List<String> keys, {int? preferPage}) {
     if (keys.isEmpty) return;
     final page = (preferPage ?? reader.page).clamp(1, keys.length);
+    _awaitingRestore = false;
     reader.images = keys;
     reader.setPage(page);
     if (controller.hasClients) {
@@ -416,6 +428,9 @@ class _GalleryModeState extends State<_GalleryMode>
       if (cur != page) {
         controller.jumpToPage(page);
       }
+    } else {
+      // PageView 还没 attach，记下来等 build 首帧再跳，否则会停在第一页。
+      _pendingJumpPage = page;
     }
     context.readerScaffold.update();
   }
@@ -572,6 +587,9 @@ class _GalleryModeState extends State<_GalleryMode>
 
         if (keys.isEmpty) {
           _novelPaging = false;
+          if (mounted && _awaitingRestore) {
+            setState(() => _awaitingRestore = false);
+          }
           return;
         }
 
@@ -587,6 +605,9 @@ class _GalleryModeState extends State<_GalleryMode>
       } catch (e, s) {
         Log.error('Reader', 'novel gallery paginate failed\n$e\n$s');
         _novelPaging = false;
+        if (mounted && _awaitingRestore) {
+          setState(() => _awaitingRestore = false);
+        }
       }
     });
   }
@@ -628,6 +649,26 @@ class _GalleryModeState extends State<_GalleryMode>
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     _ensureNovelGalleryPages(size);
+
+    if (_pendingJumpPage != null && controller.hasClients) {
+      final target = _pendingJumpPage!;
+      _pendingJumpPage = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && controller.hasClients) controller.jumpToPage(target);
+      });
+    }
+
+    if (_awaitingRestore) {
+      if (NovelPageCache.blocks.isEmpty) {
+        _awaitingRestore = false;
+      } else {
+        // 分页还没算出锚点所在页，先不要渲染旧分页（否则会闪一屏错位内容）。
+        return ColoredBox(
+          color: context.colorScheme.surface,
+          child: const Center(child: CircularProgressIndicator()),
+        );
+      }
+    }
 
     return Listener(
       onPointerDown: (event) {

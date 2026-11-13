@@ -206,9 +206,11 @@ class _ReaderState extends State<Reader>
     if (chapter < 1) {
       chapter = 1;
     }
-    if (widget.initialChapterGroup != null) {
-      for (int i = 0; i < (widget.initialChapterGroup! - 1); i++) {
-        chapter += widget.chapters!.getGroupByIndex(i).length;
+    final chapters = widget.chapters;
+    final group = widget.initialChapterGroup;
+    if (group != null && chapters != null) {
+      for (int i = 0; i < (group - 1) && i < chapters.groups.length; i++) {
+        chapter += chapters.getGroupByIndex(i).length;
       }
     }
     if (widget.initialPage != null) {
@@ -443,19 +445,6 @@ class _ReaderState extends State<Reader>
 
   /// Books use P (page); novels use L (line / text block).
   String get pageUnit => isNovel ? 'L' : 'P';
-
-  /// 小说：屏幕顶端当前是不是一张插图（插图独占一页/一段）。
-  /// 用来决定底部按钮是「收藏图片」还是「摘录」。
-  bool get isOnNovelImage {
-    if (!isNovel) return false;
-    final blocks = NovelPageCache.blocks;
-    final cursor = _imageViewController?.getTopCursor();
-    if (cursor == null) return false;
-    if (cursor.blockIndex < 0 || cursor.blockIndex >= blocks.length) {
-      return false;
-    }
-    return blocks[cursor.blockIndex] is NovelImageBlock;
-  }
 
   /// 1-based index of the line (text block) sitting at the very top of the
   /// screen. This is the reading position that both gallery and continuous

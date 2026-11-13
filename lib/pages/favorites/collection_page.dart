@@ -6,6 +6,7 @@ import 'package:novvera/foundation/history.dart';
 import 'package:novvera/foundation/novel_source/novel_paginator.dart';
 import 'package:novvera/pages/image_favorites_page/image_favorites_page.dart';
 import 'package:novvera/pages/reader/reader.dart';
+import 'package:novvera/utils/translations.dart';
 
 /// 收藏页：把「摘录」（划选的文字）和「图片」放在一起，两个 tab。
 class CollectionPage extends StatefulWidget {
@@ -42,12 +43,12 @@ class _CollectionPageState extends State<CollectionPage>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('收藏'),
+        title: Text("Favorites".tl),
         bottom: TabBar(
           controller: _tabController,
-          tabs: const [
-            Tab(text: '摘录'),
-            Tab(text: '图片'),
+          tabs: [
+            Tab(text: "Excerpts".tl),
+            Tab(text: "Images".tl),
           ],
         ),
       ),
@@ -104,6 +105,8 @@ class _ExcerptTabState extends State<_ExcerptTab> {
         id: e.bookId,
         sourceKey: e.sourceKey,
         initialEp: e.ep,
+        // 具体位置由 initialCursor 决定；这里给 1 免得沿用别的章节的页码。
+        initialPage: 1,
         initialCursor: NovelPageCursor(e.blockIndex, e.charStart),
       ),
     );
@@ -112,7 +115,7 @@ class _ExcerptTabState extends State<_ExcerptTab> {
   void _copy(Excerpt e) {
     Clipboard.setData(ClipboardData(text: e.text));
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已复制摘录'), duration: Duration(seconds: 1)),
+      SnackBar(content: Text("Excerpt copied".tl), duration: const Duration(seconds: 1)),
     );
   }
 
@@ -132,7 +135,7 @@ class _ExcerptTabState extends State<_ExcerptTab> {
             onChanged: (_) => _load(),
             decoration: InputDecoration(
               isDense: true,
-              hintText: '搜索摘录、书名、章节',
+              hintText: "Search excerpts, book title, chapter".tl,
               prefixIcon: const Icon(Icons.search, size: 20),
               suffixIcon: _search.text.isEmpty
                   ? null
@@ -162,14 +165,14 @@ class _ExcerptTabState extends State<_ExcerptTab> {
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        '还没有摘录',
+                        "No excerpts yet".tl,
                         style: theme.textTheme.titleMedium?.copyWith(
                           color: theme.colorScheme.outline,
                         ),
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        '阅读时点左下角的「摘录」，划选一段文字即可保存',
+                        "Tap the quote button while reading, then select the text you want to keep".tl,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.outline,
                         ),
@@ -237,7 +240,7 @@ class _ExcerptTabState extends State<_ExcerptTab> {
                 ),
               ),
               PopupMenuButton<String>(
-                tooltip: '更多',
+                tooltip: "More".tl,
                 onSelected: (v) {
                   switch (v) {
                     case 'open':
@@ -248,10 +251,10 @@ class _ExcerptTabState extends State<_ExcerptTab> {
                       _delete(e);
                   }
                 },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'open', child: Text('跳到原文')),
-                  PopupMenuItem(value: 'copy', child: Text('复制')),
-                  PopupMenuItem(value: 'delete', child: Text('删除')),
+                itemBuilder: (_) => [
+                  PopupMenuItem(value: 'open', child: Text("Go to text".tl)),
+                  PopupMenuItem(value: 'copy', child: Text("Copy".tl)),
+                  PopupMenuItem(value: 'delete', child: Text("Delete".tl)),
                 ],
               ),
             ],

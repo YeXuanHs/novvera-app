@@ -251,11 +251,15 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
 
   void addImageFavorite() async {
     try {
-      if (context.reader.images![0].contains('file://')) {
-          showToast(
-            message: "Local book collection is not supported at present".tl,
-            context: context,
-          );
+      // 本地漫画的图片收藏链路需要本地图库，暂不开放（保持原行为）；
+      // 小说不在此列——小说的图片/文字各有自己的入口。
+      if (!context.reader.isNovel &&
+          (context.reader.images?.isNotEmpty ?? false) &&
+          context.reader.images![0].contains('file://')) {
+        showToast(
+          message: "Local book collection is not supported at present".tl,
+          context: context,
+        );
         return;
       }
       String id = context.reader.cid;
@@ -269,6 +273,15 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
       page += 1;
       String sourceKey = context.reader.type.sourceKey;
       String imageKey = context.reader.images![page - 1];
+      // 小说里文字块也用 images 承载（noveltxt:// 开头的 key）。这种"图"收藏
+      // 了既没有缩略图也没法定位，快捷手势误触时更明显——直接拦掉。
+      if (NovelPageCache.isTextKey(imageKey)) {
+        showToast(
+          message: "No image on this page".tl,
+          context: context,
+        );
+        return;
+      }
       List<String> tags = context.reader.widget.tags;
       String author = context.reader.widget.author;
 
@@ -404,23 +417,22 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
     }
 
     final buttons = [
-      if (context.reader.isNovel && !context.reader.isOnNovelImage)
-        // 文字页不再走"图片收藏"：那段文字没有页码，收藏了也没法定位。
+      // 小说可能同时有文字和插图，两个入口都常驻。
+      if (context.reader.isNovel)
         Tooltip(
           message: "Excerpt".tl,
           child: IconButton(
             icon: const Icon(Icons.format_quote),
             onPressed: openExcerptPicker,
           ),
-        )
-      else
-        Tooltip(
-          message: "Collect the image".tl,
-          child: IconButton(
-            icon: Icon(isLiked() ? Icons.favorite : Icons.favorite_border),
-            onPressed: addImageFavorite,
-          ),
         ),
+      Tooltip(
+        message: "Collect the image".tl,
+        child: IconButton(
+          icon: Icon(isLiked() ? Icons.favorite : Icons.favorite_border),
+          onPressed: addImageFavorite,
+        ),
+      ),
       if (App.isDesktop)
         Tooltip(
           message: "${"Full Screen".tl}(F12)",

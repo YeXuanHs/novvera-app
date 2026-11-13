@@ -122,7 +122,7 @@ class _ExcerptPickerDialogState extends State<_ExcerptPickerDialog> {
       end = idx + 1 < segStart.length ? segStart[idx + 1] : joined.length;
     } else {
       if (!_hasSelection) {
-        context.showMessage(message: '请先划选要摘录的文字');
+        context.showMessage(message: "Please select the text to excerpt".tl);
         return;
       }
       start = selection.start;
@@ -139,7 +139,7 @@ class _ExcerptPickerDialogState extends State<_ExcerptPickerDialog> {
     final lead = raw.length - raw.trimLeft().length;
     final text = raw.trim();
     if (text.isEmpty) {
-      context.showMessage(message: '请先划选要摘录的文字');
+      context.showMessage(message: "Please select the text to excerpt".tl);
       return;
     }
     start += lead;
@@ -164,8 +164,12 @@ class _ExcerptPickerDialogState extends State<_ExcerptPickerDialog> {
       text: text,
     );
     ExcerptManager().add(excerpt);
+    // 先提示再关窗：pop 之后这个 context 已失效，toast 会挂不上。
+    App.rootContext.showMessage(
+      message: "Excerpt saved (@count chars)"
+          .tlParams({"count": text.length}),
+    );
     Navigator.pop(context);
-    context.showMessage(message: '已摘录 ${text.length} 字');
   }
 
   void _copy() {
@@ -174,7 +178,7 @@ class _ExcerptPickerDialogState extends State<_ExcerptPickerDialog> {
         : joined;
     if (text.isEmpty) return;
     Clipboard.setData(ClipboardData(text: text));
-    context.showMessage(message: 'Copied');
+    context.showMessage(message: "Copied".tl);
   }
 
   @override
@@ -198,7 +202,7 @@ class _ExcerptPickerDialogState extends State<_ExcerptPickerDialog> {
                 children: [
                   Icon(Icons.format_quote, color: theme.colorScheme.primary),
                   const SizedBox(width: 8),
-                  Text('摘录', style: theme.textTheme.titleMedium),
+                  Text("Excerpt".tl, style: theme.textTheme.titleMedium),
                   const Spacer(),
                   IconButton(
                     icon: const Icon(Icons.close),
@@ -210,7 +214,7 @@ class _ExcerptPickerDialogState extends State<_ExcerptPickerDialog> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Text(
-                joined.isEmpty ? '本节没有可摘录的文字' : '划选要保存的文字，再点「摘录选中」',
+                joined.isEmpty ? "No text to excerpt in this chapter".tl : "Select the text you want to keep, then tap Excerpt selection".tl,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -244,26 +248,26 @@ class _ExcerptPickerDialogState extends State<_ExcerptPickerDialog> {
               child: Row(
                 children: [
                   Text(
-                    _hasSelection ? '已选 $_selectedLength 字' : '未选中',
+                    _hasSelection ? "@count chars selected".tlParams({"count": _selectedLength}) : "Nothing selected".tl,
                     style: theme.textTheme.bodySmall,
                   ),
                   const Spacer(),
                   TextButton(
                     onPressed: _copy,
-                    child: const Text('复制'),
+                    child: const Text("Copy".tl),
                   ),
                   const SizedBox(width: 4),
                   TextButton(
                     onPressed: joined.isEmpty
                         ? null
                         : () => _save(wholeBlock: true),
-                    child: const Text('摘录本段'),
+                    child: const Text("Excerpt this paragraph".tl),
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
                     onPressed:
                         _hasSelection ? () => _save(wholeBlock: false) : null,
-                    child: const Text('摘录选中'),
+                    child: const Text("Excerpt selection".tl),
                   ),
                 ],
               ),
