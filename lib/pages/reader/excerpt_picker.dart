@@ -67,7 +67,9 @@ class _ExcerptPickerDialogState extends State<_ExcerptPickerDialog> {
     final all = NovelPageCache.blocks;
     if (all.isEmpty) return;
     final sb = StringBuffer();
-    final start = widget.startBlock.clamp(0, math.max(0, all.length - 1));
+    final start = widget.startBlock
+        .clamp(0, math.max(0, all.length - 1))
+        .toInt();
     for (var i = start; i < all.length; i++) {
       final b = all[i];
       if (b is! NovelTextBlock || b.text.trim().isEmpty) continue;
@@ -144,7 +146,7 @@ class _ExcerptPickerDialogState extends State<_ExcerptPickerDialog> {
 
     final segIdx = _segIndexAt(start);
     final blockIndex = segBlock[segIdx];
-    final inBlock = (start - segStart[segIdx]).clamp(0, 1 << 30);
+    final inBlock = (start - segStart[segIdx]).clamp(0, 1 << 30).toInt();
     final reader = widget.reader;
 
     final excerpt = Excerpt(
