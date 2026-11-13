@@ -594,7 +594,8 @@
     "Tap the quote button while reading, then select the text you want to keep": "阅读时点左下角「摘录」，划选一段文字即可保存",
     "Go to text": "跳到原文",
     "More": "更多",
-    "No image on this page": "这页没有图片"
+    "No image on this page": "这页没有图片",
+    "Favorite Num Compare Book Pages": "收藏率（收藏数/总页数）"
   },
   "zh_TW": {
     "Home": "首頁",
@@ -1191,6 +1192,7 @@
     "Tap the quote button while reading, then select the text you want to keep": "閱讀時點左下角「摘錄」，劃選一段文字即可保存",
     "Go to text": "跳到原文",
     "More": "更多",
-    "No image on this page": "這頁沒有圖片"
+    "No image on this page": "這頁沒有圖片",
+    "Favorite Num Compare Book Pages": "收藏率（收藏數/總頁數）"
   }
 }

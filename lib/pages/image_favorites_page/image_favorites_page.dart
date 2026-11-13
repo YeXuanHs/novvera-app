@@ -201,6 +201,8 @@ class _ImageFavoritesPageState extends State<ImageFavoritesPage> {
       slivers: [
         if (!searchMode && !multiSelectMode)
           SliverAppbar(
+            // 嵌在「收藏」页里时，返回按钮由外层 AppBar 提供，这里不要重复画。
+            leading: widget.embedded ? const SizedBox.shrink() : null,
             title: widget.embedded
                 ? const SizedBox.shrink()
                 : Text("Image Favorites".tl),

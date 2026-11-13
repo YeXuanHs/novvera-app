@@ -66,6 +66,8 @@ class _CollectionPageState extends State<CollectionPage>
   }
 }
 
+enum _ExcerptSort { timeDesc, timeAsc, title }
+
 class _ExcerptTab extends StatefulWidget {
   const _ExcerptTab();
 
@@ -77,6 +79,14 @@ class _ExcerptTabState extends State<_ExcerptTab> {
   final _search = TextEditingController();
 
   List<Excerpt> items = [];
+
+  bool _searching = false;
+
+  bool _multiSelect = false;
+
+  _ExcerptSort _sort = _ExcerptSort.timeDesc;
+
+  final Set<String> _selected = {};
 
   @override
   void initState() {
@@ -95,9 +105,18 @@ class _ExcerptTabState extends State<_ExcerptTab> {
   void _load() {
     if (!mounted) return;
     setState(() {
-      items = ExcerptManager().getAll(keyword: _search.text);
+      items = _sorted(ExcerptManager().getAll(keyword: _search.text));
+      final keys = items.map((e) => e.key).toSet();
+      _selected.removeWhere((k) => !keys.contains(k));
     });
   }
+
+  List<Excerpt> _sorted(List<Excerpt> list) => switch (_sort) {
+        _ExcerptSort.timeDesc => list, // getAll 本身就是按时间倒序
+        _ExcerptSort.timeAsc => list.reversed.toList(),
+        _ExcerptSort.title =>
+          list..sort((a, b) => a.bookTitle.compareTo(b.bookTitle)),
+      };
 
   void _open(Excerpt e) {
     App.rootContext.to(
@@ -115,7 +134,10 @@ class _ExcerptTabState extends State<_ExcerptTab> {
   void _copy(Excerpt e) {
     Clipboard.setData(ClipboardData(text: e.text));
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Excerpt copied".tl), duration: const Duration(seconds: 1)),
+      SnackBar(
+        content: Text("Excerpt copied".tl),
+        duration: const Duration(seconds: 1),
+      ),
     );
   }
 
@@ -123,35 +145,146 @@ class _ExcerptTabState extends State<_ExcerptTab> {
     ExcerptManager().remove(e);
   }
 
+  void _toggle(Excerpt e) {
+    setState(() {
+      if (!_selected.remove(e.key)) _selected.add(e.key);
+    });
+  }
+
+  void _deleteSelected() {
+    final targets = items.where((e) => _selected.contains(e.key)).toList();
+    if (targets.isEmpty) return;
+    ExcerptManager().removeAll(targets);
+    setState(() {
+      _selected.clear();
+      _multiSelect = false;
+    });
+  }
+
+  Widget _buildToolbar(BuildContext context) {
+    final theme = Theme.of(context);
+    const height = 52.0;
+
+    if (_multiSelect) {
+      return SizedBox(
+        height: height,
+        child: Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.close),
+              tooltip: "Cancel".tl,
+              onPressed: () => setState(() {
+                _multiSelect = false;
+                _selected.clear();
+              }),
+            ),
+            Text('${_selected.length}', style: theme.textTheme.titleMedium),
+            const Spacer(),
+            IconButton(
+              icon: const Icon(Icons.select_all),
+              tooltip: "Select All".tl,
+              onPressed: () => setState(() {
+                _selected
+                  ..clear()
+                  ..addAll(items.map((e) => e.key));
+              }),
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              tooltip: "Delete".tl,
+              onPressed: _selected.isEmpty ? null : _deleteSelected,
+            ),
+            const SizedBox(width: 8),
+          ],
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: height,
+      child: Row(
+        children: [
+          const SizedBox(width: 16),
+          if (_searching)
+            Expanded(
+              child: TextField(
+                controller: _search,
+                autofocus: true,
+                onChanged: (_) => _load(),
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: "Search excerpts, book title, chapter".tl,
+                  border: InputBorder.none,
+                ),
+              ),
+            )
+          else
+            Expanded(
+              child: Text(
+                "Excerpts".tl,
+                style: theme.textTheme.titleMedium,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          if (_searching)
+            IconButton(
+              icon: const Icon(Icons.close, size: 20),
+              tooltip: "Cancel".tl,
+              onPressed: () {
+                _search.clear();
+                setState(() => _searching = false);
+                _load();
+              },
+            )
+          else ...[
+            IconButton(
+              icon: const Icon(Icons.search),
+              tooltip: "Search".tl,
+              onPressed: () => setState(() => _searching = true),
+            ),
+            PopupMenuButton<_ExcerptSort>(
+              tooltip: "Sort".tl,
+              icon: const Icon(Icons.sort_rounded),
+              initialValue: _sort,
+              onSelected: (v) {
+                setState(() => _sort = v);
+                _load();
+              },
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: _ExcerptSort.timeDesc,
+                  child: Text("Time Desc".tl),
+                ),
+                PopupMenuItem(
+                  value: _ExcerptSort.timeAsc,
+                  child: Text("Time Asc".tl),
+                ),
+                PopupMenuItem(
+                  value: _ExcerptSort.title,
+                  child: Text("Title".tl),
+                ),
+              ],
+            ),
+            IconButton(
+              icon: const Icon(Icons.checklist),
+              tooltip: "Multi-Select".tl,
+              onPressed: () => setState(() => _multiSelect = true),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-          child: TextField(
-            controller: _search,
-            onChanged: (_) => _load(),
-            decoration: InputDecoration(
-              isDense: true,
-              hintText: "Search excerpts, book title, chapter".tl,
-              prefixIcon: const Icon(Icons.search, size: 20),
-              suffixIcon: _search.text.isEmpty
-                  ? null
-                  : IconButton(
-                      icon: const Icon(Icons.close, size: 18),
-                      onPressed: () {
-                        _search.clear();
-                        _load();
-                      },
-                    ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          ),
-        ),
+        _buildToolbar(context),
+        const Divider(height: 1),
         Expanded(
           child: items.isEmpty
               ? Center(
@@ -172,7 +305,9 @@ class _ExcerptTabState extends State<_ExcerptTab> {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        "Tap the quote button while reading, then select the text you want to keep".tl,
+                        "Tap the quote button while reading, then select the text you want to keep"
+                            .tl,
+                        textAlign: TextAlign.center,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.outline,
                         ),
@@ -181,7 +316,7 @@ class _ExcerptTabState extends State<_ExcerptTab> {
                   ),
                 )
               : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
                   itemCount: items.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (context, index) =>
@@ -195,21 +330,40 @@ class _ExcerptTabState extends State<_ExcerptTab> {
   Widget _buildItem(BuildContext context, Excerpt e) {
     final theme = Theme.of(context);
     final date = DateFormat('yyyy-MM-dd HH:mm').format(e.time);
-    final source = [
-      e.bookTitle,
-      if (e.epName.isNotEmpty) e.epName,
-    ].where((s) => s.isNotEmpty).join(' · ');
+    final source =
+        [e.bookTitle, if (e.epName.isNotEmpty) e.epName].join(' · ');
+    final checked = _selected.contains(e.key);
 
     return Card(
       margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => _open(e),
+        onTap: () {
+          if (_multiSelect) {
+            _toggle(e);
+          } else {
+            _open(e);
+          }
+        },
+        onLongPress: _multiSelect
+            ? null
+            : () => setState(() {
+                  _multiSelect = true;
+                  _selected.add(e.key);
+                }),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 8, 12),
+          padding: EdgeInsets.fromLTRB(_multiSelect ? 4 : 16, 14, 8, 12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (_multiSelect)
+                // 交给外层 InkWell 统一切换，避免 Checkbox 与 onTap 各触发一次。
+                IgnorePointer(
+                  child: Checkbox(
+                    value: checked,
+                    onChanged: (_) {},
+                  ),
+                ),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -239,24 +393,25 @@ class _ExcerptTabState extends State<_ExcerptTab> {
                   ],
                 ),
               ),
-              PopupMenuButton<String>(
-                tooltip: "More".tl,
-                onSelected: (v) {
-                  switch (v) {
-                    case 'open':
-                      _open(e);
-                    case 'copy':
-                      _copy(e);
-                    case 'delete':
-                      _delete(e);
-                  }
-                },
-                itemBuilder: (_) => [
-                  PopupMenuItem(value: 'open', child: Text("Go to text".tl)),
-                  PopupMenuItem(value: 'copy', child: Text("Copy".tl)),
-                  PopupMenuItem(value: 'delete', child: Text("Delete".tl)),
-                ],
-              ),
+              if (!_multiSelect)
+                PopupMenuButton<String>(
+                  tooltip: "More".tl,
+                  onSelected: (v) {
+                    switch (v) {
+                      case 'open':
+                        _open(e);
+                      case 'copy':
+                        _copy(e);
+                      case 'delete':
+                        _delete(e);
+                    }
+                  },
+                  itemBuilder: (_) => [
+                    PopupMenuItem(value: 'open', child: Text("Go to text".tl)),
+                    PopupMenuItem(value: 'copy', child: Text("Copy".tl)),
+                    PopupMenuItem(value: 'delete', child: Text("Delete".tl)),
+                  ],
+                ),
             ],
           ),
         ),

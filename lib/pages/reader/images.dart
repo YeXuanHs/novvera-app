@@ -633,6 +633,28 @@ class _GalleryModeState extends State<_GalleryMode>
     );
   }
 
+  /// 当前页对应的分页结果（插图独占一页，所以文字页里不会有图）。
+  NovelGalleryPage? get _currentPage {
+    if (!reader.isNovel) return null;
+    final pager = _novelPager;
+    if (pager == null || pager.pageCount == 0) return null;
+    return pager.pageAt((reader.page - 1).clamp(0, pager.pageCount - 1));
+  }
+
+  @override
+  bool get hasVisibleText {
+    if (!reader.isNovel) return false;
+    final page = _currentPage;
+    // 分页还没就绪时按有文字处理，避免按钮先闪掉再出现。
+    return page == null || page is NovelGalleryTextPage;
+  }
+
+  @override
+  bool get hasVisibleImage {
+    if (!reader.isNovel) return false;
+    return _currentPage is NovelGalleryImagePage;
+  }
+
   @override
   void restoreTopCursor(NovelPageCursor cursor) {
     if (!reader.isNovel) return;
@@ -1672,6 +1694,43 @@ class _ContinuousModeState extends State<_ContinuousMode>
       _novelTopBlockIndex().clamp(0, blocks.length - 1),
       0,
     );
+  }
+
+  /// 当前视口里出现了哪些类型的内容（一段文字和一张图可以同屏）。
+  ({bool text, bool image}) get _visibleKinds {
+    final blocks = NovelPageCache.blocks;
+    if (blocks.isEmpty) return (text: false, image: false);
+    final positions = itemPositionsListener.itemPositions.value;
+    if (positions.isEmpty) {
+      // 首帧还没有布局信息，退化成"顶部这一块"。
+      final b = blocks[(reader.page - 1).clamp(0, blocks.length - 1)];
+      return (text: b is! NovelImageBlock, image: b is NovelImageBlock);
+    }
+    var text = false;
+    var image = false;
+    for (final p in positions) {
+      // 与视口有交集：底部在视口上边界之下，顶部在视口下边界之上。
+      if (p.itemTrailingEdge <= 0 || p.itemLeadingEdge >= 1) continue;
+      if (p.index < 0 || p.index >= blocks.length) continue;
+      if (blocks[p.index] is NovelImageBlock) {
+        image = true;
+      } else {
+        text = true;
+      }
+    }
+    return (text: text, image: image);
+  }
+
+  @override
+  bool get hasVisibleText {
+    if (!reader.isNovel) return false;
+    return _visibleKinds.text;
+  }
+
+  @override
+  bool get hasVisibleImage {
+    if (!reader.isNovel) return false;
+    return _visibleKinds.image;
   }
 
   @override

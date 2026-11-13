@@ -901,4 +901,10 @@ abstract interface class _ImageViewController {
 
   /// Novels: move so [cursor] ends up at the top of the screen.
   void restoreTopCursor(NovelPageCursor cursor);
+
+  /// 当前屏幕里是否有文字（用来决定底部要不要显示「摘录」）。
+  bool get hasVisibleText;
+
+  /// 当前屏幕里是否有插图（用来决定底部要不要显示「收藏图片」）。
+  bool get hasVisibleImage;
 }

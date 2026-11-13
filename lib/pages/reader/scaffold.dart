@@ -416,9 +416,15 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
           : "E${context.reader.chapter} : $unit$displayPage";
     }
 
+    // 按当前屏幕实际内容决定给哪些按钮：同屏有文有图就两个都给，
+    // 只有文字只给「摘录」，只有插图只给「收藏图片」。
+    final controller = context.reader._imageViewController;
+    final isNovel = context.reader.isNovel;
+    final showExcerpt = isNovel && (controller?.hasVisibleText ?? true);
+    final showCollect = isNovel ? (controller?.hasVisibleImage ?? false) : true;
+
     final buttons = [
-      // 小说可能同时有文字和插图，两个入口都常驻。
-      if (context.reader.isNovel)
+      if (showExcerpt)
         Tooltip(
           message: "Excerpt".tl,
           child: IconButton(
@@ -426,13 +432,14 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
             onPressed: openExcerptPicker,
           ),
         ),
-      Tooltip(
-        message: "Collect the image".tl,
-        child: IconButton(
-          icon: Icon(isLiked() ? Icons.favorite : Icons.favorite_border),
-          onPressed: addImageFavorite,
+      if (showCollect)
+        Tooltip(
+          message: "Collect the image".tl,
+          child: IconButton(
+            icon: Icon(isLiked() ? Icons.favorite : Icons.favorite_border),
+            onPressed: addImageFavorite,
+          ),
         ),
-      ),
       if (App.isDesktop)
         Tooltip(
           message: "${"Full Screen".tl}(F12)",
