@@ -422,8 +422,9 @@ class ImagesDownloadTask extends DownloadTask with _TransferSpeedMixin {
 
   @override
   void onNextSecond(Timer t) {
-    notifyListeners();
+    // 先算出这一秒的速度再通知，否则界面永远慢一秒、还会先闪回旧值。
     super.onNextSecond(t);
+    notifyListeners();
   }
 
   void _setError(String message) {
@@ -492,6 +493,7 @@ class ImagesDownloadTask extends DownloadTask with _TransferSpeedMixin {
 
   @override
   bool get isPaused => !_isRunning;
+
 
   @override
   LocalBook toLocalBook() {
@@ -630,19 +632,32 @@ abstract mixin class _TransferSpeedMixin {
 
   int get currentSpeed => _currentSpeed;
 
+  /// 最近几秒的采样，用来抹平"这一秒刚好在解析/写盘、下一帧就掉到 0"的抖动。
+  final List<int> _recentSamples = [];
+
+  static const _sampleWindow = 3;
+
   Timer? timer;
 
   void onData(int length) {
     if (timer == null) return;
-    if (length < 0) {
+    if (length <= 0) {
       return;
     }
     _bytesSinceLastSecond += length;
   }
 
   void onNextSecond(Timer t) {
-    _currentSpeed = _bytesSinceLastSecond;
+    _recentSamples.add(_bytesSinceLastSecond);
     _bytesSinceLastSecond = 0;
+    while (_recentSamples.length > _sampleWindow) {
+      _recentSamples.removeAt(0);
+    }
+    var sum = 0;
+    for (final v in _recentSamples) {
+      sum += v;
+    }
+    _currentSpeed = sum ~/ _recentSamples.length;
   }
 
   void runRecorder() {
@@ -650,6 +665,7 @@ abstract mixin class _TransferSpeedMixin {
       timer!.cancel();
     }
     _bytesSinceLastSecond = 0;
+    _recentSamples.clear();
     timer = Timer.periodic(const Duration(seconds: 1), onNextSecond);
   }
 
@@ -658,6 +674,7 @@ abstract mixin class _TransferSpeedMixin {
     timer = null;
     _currentSpeed = 0;
     _bytesSinceLastSecond = 0;
+    _recentSamples.clear();
   }
 }
 
@@ -1071,128 +1088,25 @@ class NovelDownloadTask extends DownloadTask with _TransferSpeedMixin {
       }
     }
 
-    while (_chapterIndex < toDownload.length) {
-      if (!_isRunning) return;
-      final chapId = toDownload[_chapterIndex];
-      final chapTitle = book!.chapters!.allChapters[chapId] ?? chapId;
-      _message = "Downloading ${_done + 1}/$_total · $chapTitle";
-      notifyListeners();
-
-      final chapDirName = LocalManager.getChapterDirectoryName(chapId);
-      final chapDir = Directory(FilePath.join(path!, chapDirName));
-      if (!chapDir.existsSync()) {
-        await chapDir.create(recursive: true);
+    // 章节并发下载：线程数取设置里的「Download Threads」。
+    final threads = _downloadThreads;
+    var nextIndex = _chapterIndex;
+    Future<void> worker() async {
+      while (_isRunning) {
+        final idx = nextIndex;
+        if (idx >= toDownload.length) return;
+        nextIndex++;
+        await _downloadChapter(toDownload, idx);
       }
-      final outFile = File(FilePath.join(chapDir.path, 'chapter.json'));
-      if (outFile.existsSync()) {
-        _done++;
-        _chapterIndex++;
-        await LocalManager().saveCurrentDownloadingTasks();
-        continue;
-      }
-
-      final res = await _runWithRetry<Map<String, dynamic>>(() async {
-        final r = await loadNovelChapter(source.key, bookId, chapId);
-        if (r.error) throw r.errorMessage ?? 'Failed to load chapter';
-        return r.data;
-      });
-      if (!_isRunning) return;
-      if (res.error) {
-        Log.warning("Download", "Chapter $chapId failed: ${res.errorMessage}");
-        _chapterIndex++;
-        _done++;
-        await LocalManager().saveCurrentDownloadingTasks();
-        continue;
-      }
-
-      final data = res.data;
-      var content = (data['content'] ?? '').toString();
-      final trailing = (data['images'] as List? ?? [])
-          .map((e) => e.toString())
-          .where((e) => e.startsWith('http'))
-          .toList();
-
-      final urlToLocal = <String, String>{};
-      var imgIndex = 0;
-
-      Future<String?> saveImage(String url) async {
-        final normalized = normalizeNovelImageUrl(url);
-        if (!normalized.startsWith('http')) return null;
-        if (urlToLocal.containsKey(normalized)) return urlToLocal[normalized];
-        try {
-          var lastImgBytes = 0;
-          await for (final p in ImageDownloader.loadBookImage(
-            normalized,
-            source.key,
-            bookId,
-            chapId,
-          )) {
-            onData(p.currentBytes - lastImgBytes);
-            lastImgBytes = p.currentBytes;
-            if (p.imageBytes != null) {
-              var ext = detectFileType(p.imageBytes!).ext;
-              if (ext.startsWith('.')) ext = ext.substring(1);
-              if (ext.isEmpty) {
-                final pathLower =
-                    Uri.tryParse(normalized)?.path.toLowerCase() ?? '';
-                ext = pathLower.contains('.png')
-                    ? 'png'
-                    : pathLower.contains('.webp')
-                        ? 'webp'
-                        : 'jpg';
-              }
-              final name = 'img$imgIndex.$ext';
-              imgIndex++;
-              await File(FilePath.join(chapDir.path, name))
-                  .writeAsBytes(p.imageBytes!);
-              urlToLocal[normalized] = name;
-              return name;
-            }
-          }
-        } catch (e) {
-          Log.warning("Download", "image $normalized: $e");
-        }
-        return null;
-      }
-
-      final allUrls = <String>{};
-      for (final line in content.split('\n')) {
-        final t = line.trim();
-        if (t.startsWith('http://') || t.startsWith('https://')) {
-          allUrls.add(normalizeNovelImageUrl(t));
-        }
-      }
-      for (final u in trailing) {
-        allUrls.add(normalizeNovelImageUrl(u));
-      }
-
-      for (final u in allUrls) {
-        if (!_isRunning) return;
-        await saveImage(u);
-      }
-
-      content = content.split('\n').map((line) {
-        final t = line.trim();
-        if (t.startsWith('http://') || t.startsWith('https://')) {
-          final local = urlToLocal[normalizeNovelImageUrl(t)];
-          return local ?? line;
-        }
-        return line;
-      }).join('\n');
-
-      final localImages = urlToLocal.values.toList();
-      await outFile.writeAsString(jsonEncode({
-        'content': content,
-        'images': localImages,
-        'title': chapTitle,
-      }));
-
-      _done++;
-      _chapterIndex++;
-      _message = "$_done/$_total";
-      notifyListeners();
-      await LocalManager().saveCurrentDownloadingTasks();
     }
+
+    final remaining = toDownload.length - _chapterIndex;
+    if (remaining > 0) {
+      final workerCount = threads < remaining ? threads : remaining;
+      await Future.wait(List.generate(workerCount, (_) => worker()));
+    }
+    if (!_isRunning) return;
+    _chapterIndex = toDownload.length;
 
     LocalManager().completeTask(this);
     stopRecorder();
@@ -1200,8 +1114,160 @@ class NovelDownloadTask extends DownloadTask with _TransferSpeedMixin {
 
   @override
   void onNextSecond(Timer t) {
-    notifyListeners();
+    // 先算出这一秒的速度再通知，否则界面永远慢一秒、还会先闪回旧值。
     super.onNextSecond(t);
+    notifyListeners();
+  }
+
+  int get _downloadThreads {
+    final v = (appdata.settings["downloadThreads"] as num?)?.toInt() ?? 1;
+    if (v < 1) return 1;
+    if (v > 16) return 16;
+    return v;
+  }
+
+  void _bumpProgress() {
+    _message = "$_done/$_total";
+    notifyListeners();
+    // 并发下载时不要每章都落盘，凑几章存一次，已存在的章节下次会自动跳过。
+    if (_done % 5 == 0 || _done == _total) {
+      unawaited(LocalManager().saveCurrentDownloadingTasks());
+    }
+  }
+
+  Future<void> _downloadChapter(List<String> toDownload, int idx) async {
+    if (!_isRunning) return;
+    final chapId = toDownload[idx];
+    final chapTitle = book!.chapters!.allChapters[chapId] ?? chapId;
+    _message = "Downloading ${_done + 1}/$_total · $chapTitle";
+    notifyListeners();
+
+    final chapDirName = LocalManager.getChapterDirectoryName(chapId);
+    final chapDir = Directory(FilePath.join(path!, chapDirName));
+    if (!chapDir.existsSync()) {
+      await chapDir.create(recursive: true);
+    }
+    final outFile = File(FilePath.join(chapDir.path, 'chapter.json'));
+    if (outFile.existsSync()) {
+      _done++;
+      _bumpProgress();
+      return;
+    }
+
+    final res = await _runWithRetry<Map<String, dynamic>>(() async {
+      final r = await loadNovelChapter(source.key, bookId, chapId);
+      if (r.error) throw r.errorMessage ?? 'Failed to load chapter';
+      return r.data;
+    });
+    if (!_isRunning) return;
+    if (res.error) {
+      Log.warning("Download", "Chapter $chapId failed: ${res.errorMessage}");
+      _done++;
+      _bumpProgress();
+      return;
+    }
+
+    final data = res.data;
+    var content = (data['content'] ?? '').toString();
+    // 正文体积也要计入速度，否则纯文字章节永远是 0 B/s。
+    onData(utf8.encode(content).length + 512);
+
+    final trailing = (data['images'] as List? ?? [])
+        .map((e) => e.toString())
+        .where((e) => e.startsWith('http'))
+        .toList();
+
+    final urlToLocal = <String, String>{};
+    var imgIndex = 0;
+
+    Future<String?> saveImage(String url) async {
+      final normalized = normalizeNovelImageUrl(url);
+      if (!normalized.startsWith('http')) return null;
+      if (urlToLocal.containsKey(normalized)) return urlToLocal[normalized];
+      try {
+        var lastImgBytes = 0;
+        await for (final p in ImageDownloader.loadBookImage(
+          normalized,
+          source.key,
+          bookId,
+          chapId,
+        )) {
+          onData(p.currentBytes - lastImgBytes);
+          lastImgBytes = p.currentBytes;
+          if (p.imageBytes != null) {
+            var ext = detectFileType(p.imageBytes!).ext;
+            if (ext.startsWith('.')) ext = ext.substring(1);
+            if (ext.isEmpty) {
+              final pathLower =
+                  Uri.tryParse(normalized)?.path.toLowerCase() ?? '';
+              ext = pathLower.contains('.png')
+                  ? 'png'
+                  : pathLower.contains('.webp')
+                      ? 'webp'
+                      : 'jpg';
+            }
+            final name = 'img$imgIndex.$ext';
+            imgIndex++;
+            await File(FilePath.join(chapDir.path, name))
+                .writeAsBytes(p.imageBytes!);
+            urlToLocal[normalized] = name;
+            return name;
+          }
+        }
+      } catch (e) {
+        Log.warning("Download", "image $normalized: $e");
+      }
+      return null;
+    }
+
+    final allUrls = <String>{};
+    for (final line in content.split('\n')) {
+      final t = line.trim();
+      if (t.startsWith('http://') || t.startsWith('https://')) {
+        allUrls.add(normalizeNovelImageUrl(t));
+      }
+    }
+    for (final u in trailing) {
+      allUrls.add(normalizeNovelImageUrl(u));
+    }
+
+    // 本章插图也按线程数并发拉取。
+    final urlList = allUrls.toList();
+    var nextImg = 0;
+    Future<void> imgWorker() async {
+      while (_isRunning) {
+        final i = nextImg;
+        if (i >= urlList.length) return;
+        nextImg++;
+        await saveImage(urlList[i]);
+      }
+    }
+
+    final threads = _downloadThreads;
+    final imgWorkers = urlList.isEmpty
+        ? 0
+        : (threads < urlList.length ? threads : urlList.length);
+    await Future.wait(List.generate(imgWorkers, (_) => imgWorker()));
+    if (!_isRunning) return;
+
+    content = content.split('\n').map((line) {
+      final t = line.trim();
+      if (t.startsWith('http://') || t.startsWith('https://')) {
+        final local = urlToLocal[normalizeNovelImageUrl(t)];
+        return local ?? line;
+      }
+      return line;
+    }).join('\n');
+
+    final localImages = urlToLocal.values.toList();
+    await outFile.writeAsString(jsonEncode({
+      'content': content,
+      'images': localImages,
+      'title': chapTitle,
+    }));
+
+    _done++;
+    _bumpProgress();
   }
 
   @override
