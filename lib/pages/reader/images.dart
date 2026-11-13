@@ -296,9 +296,6 @@ class _GalleryModeState extends State<_GalleryMode>
   /// 回到正确位置。干脆在锚点解析完成前显示 loading。
   bool _awaitingRestore = false;
 
-  /// 分页结果要跳到的页；创建时 controller 可能还没 attach，先存下来。
-  int? _pendingJumpPage;
-
   @override
   void initState() {
     reader = context.reader;
@@ -429,10 +426,24 @@ class _GalleryModeState extends State<_GalleryMode>
         controller.jumpToPage(page);
       }
     } else {
-      // PageView 还没 attach，记下来等 build 首帧再跳，否则会停在第一页。
-      _pendingJumpPage = page;
+      // PageView 这一帧还没挂载（首次渲染 / 刚从 loading 切回来），
+      // 等它 attach 之后再跳，否则会停在第一页。
+      _jumpWhenReady(page);
     }
     context.readerScaffold.update();
+  }
+
+  /// PageView 未挂载时，逐帧等它 attach 再跳页。
+  void _jumpWhenReady(int page, [int attempt = 0]) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (controller.hasClients) {
+        final cur = controller.page?.round() ?? page;
+        if (cur != page) controller.jumpToPage(page);
+        return;
+      }
+      if (attempt < 30) _jumpWhenReady(page, attempt + 1);
+    });
   }
 
   /// MewX-style: only layout pages as needed (never full-chapter upfront).
@@ -649,14 +660,6 @@ class _GalleryModeState extends State<_GalleryMode>
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     _ensureNovelGalleryPages(size);
-
-    if (_pendingJumpPage != null && controller.hasClients) {
-      final target = _pendingJumpPage!;
-      _pendingJumpPage = null;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && controller.hasClients) controller.jumpToPage(target);
-      });
-    }
 
     if (_awaitingRestore) {
       if (NovelPageCache.blocks.isEmpty) {
