@@ -1088,25 +1088,14 @@ class NovelDownloadTask extends DownloadTask with _TransferSpeedMixin {
       }
     }
 
-    // 章节并发下载：线程数取设置里的「Download Threads」。
-    final threads = _downloadThreads;
-    var nextIndex = _chapterIndex;
-    Future<void> worker() async {
-      while (_isRunning) {
-        final idx = nextIndex;
-        if (idx >= toDownload.length) return;
-        nextIndex++;
-        await _downloadChapter(toDownload, idx);
-      }
+    // 章节仍然逐章下载（这样底部能稳定显示"正在下哪一章"）；
+    // 多线程只用在单章内部（本章插图并发）。
+    while (_chapterIndex < toDownload.length) {
+      if (!_isRunning) return;
+      await _downloadChapter(toDownload, _chapterIndex);
+      if (!_isRunning) return;
+      _chapterIndex++;
     }
-
-    final remaining = toDownload.length - _chapterIndex;
-    if (remaining > 0) {
-      final workerCount = threads < remaining ? threads : remaining;
-      await Future.wait(List.generate(workerCount, (_) => worker()));
-    }
-    if (!_isRunning) return;
-    _chapterIndex = toDownload.length;
 
     LocalManager().completeTask(this);
     stopRecorder();
@@ -1126,13 +1115,10 @@ class NovelDownloadTask extends DownloadTask with _TransferSpeedMixin {
     return v;
   }
 
-  void _bumpProgress() {
-    _message = "$_done/$_total";
+  void _bumpProgress({String? chapter}) {
+    _message = chapter == null ? "$_done/$_total" : "$_done/$_total · $chapter";
     notifyListeners();
-    // 并发下载时不要每章都落盘，凑几章存一次，已存在的章节下次会自动跳过。
-    if (_done % 5 == 0 || _done == _total) {
-      unawaited(LocalManager().saveCurrentDownloadingTasks());
-    }
+    unawaited(LocalManager().saveCurrentDownloadingTasks());
   }
 
   Future<void> _downloadChapter(List<String> toDownload, int idx) async {
@@ -1150,7 +1136,7 @@ class NovelDownloadTask extends DownloadTask with _TransferSpeedMixin {
     final outFile = File(FilePath.join(chapDir.path, 'chapter.json'));
     if (outFile.existsSync()) {
       _done++;
-      _bumpProgress();
+      _bumpProgress(chapter: chapTitle);
       return;
     }
 
@@ -1163,7 +1149,7 @@ class NovelDownloadTask extends DownloadTask with _TransferSpeedMixin {
     if (res.error) {
       Log.warning("Download", "Chapter $chapId failed: ${res.errorMessage}");
       _done++;
-      _bumpProgress();
+      _bumpProgress(chapter: chapTitle);
       return;
     }
 
@@ -1267,7 +1253,7 @@ class NovelDownloadTask extends DownloadTask with _TransferSpeedMixin {
     }));
 
     _done++;
-    _bumpProgress();
+    _bumpProgress(chapter: chapTitle);
   }
 
   @override
