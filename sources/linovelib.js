@@ -30,7 +30,7 @@ class LinovelibSource extends BookSource {
     }
 
     async getDoc(url, referer) {
-        return new HTMLDocument(await this.getHtml(url, referer))
+        return new HtmlDocument(await this.getHtml(url, referer))
     }
 
     _abs(href) {
@@ -116,7 +116,7 @@ class LinovelibSource extends BookSource {
             if (html.includes("search_challenge") || html.includes("checkcode.php")) {
                 throw "哔哩轻小说搜索需要人机验证，请稍后重试"
             }
-            let doc = new HTMLDocument(html)
+            let doc = new HtmlDocument(html)
             let books = []
             for (let a of doc.querySelectorAll(".search-result-list a[href*='/novel/'], .se-result-book a[href*='/novel/']")) {
                 let href = a.attributes["href"] || ""
@@ -188,7 +188,7 @@ class LinovelibSource extends BookSource {
                 title: name || ("小说_" + id),
                 cover: cover,
                 description: intro,
-                tags: tags ? tags.split(/[ ,，]+/).filter((x) => x) : [],
+                tags: tags ? { "标签": tags.split(/[ ,，]+/).filter((x) => x) } : {},
                 chapters: null,
                 subId: null,
             }
@@ -205,7 +205,7 @@ class LinovelibSource extends BookSource {
                 guard++
                 seen[url] = true
                 let html = await this.getHtml(url)
-                let doc = new HTMLDocument(html)
+                let doc = new HtmlDocument(html)
                 if (!pageTitle) pageTitle = this._text(doc.querySelector("#mlfy_main_text h1"))
                 let tc = doc.querySelector("#TextContent")
                 if (tc) {

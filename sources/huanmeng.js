@@ -149,7 +149,7 @@ class HuanmengSource extends BookSource {
                 title: b.title,
                 cover: b.cover,
                 description: b.description,
-                tags: tags.length ? tags : b.tags,
+                tags: { "标签": tags.length ? tags : b.tags },
                 chapters: null,
                 subId: null,
             }

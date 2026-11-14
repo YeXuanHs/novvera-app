@@ -195,7 +195,7 @@ class Wenku8Source extends BookSource {
             if (page > 1) return { comics: [], maxPage: 1 }
             await this._refresh()
             let html = await this._getGbk(this.base + "/modules/article/bookcase.php")
-            let doc = new HTMLDocument(html)
+            let doc = new HtmlDocument(html)
             let comics = []
             for (let tr of doc.querySelectorAll("table.grid tr")) {
                 let a = tr.querySelector('a[href*="readbookcase.php?aid="]')
@@ -235,7 +235,7 @@ class Wenku8Source extends BookSource {
     // ---- 网页列表（搜索 / 排行）----
     async _parseList(url) {
         let html = await this._getGbk(url)
-        let doc = new HTMLDocument(html)
+        let doc = new HtmlDocument(html)
         let books = []
         for (let tr of doc.querySelectorAll("table.grid tr")) {
             let a = tr.querySelector('a[href*="/book/"]')
@@ -305,7 +305,7 @@ class Wenku8Source extends BookSource {
                 title: name || "未知书名",
                 cover: "https://img.wenku8.com/image/" + Math.floor(id / 1000) + "/" + id + "/" + id + "s.jpg",
                 description: intro,
-                tags: tags ? tags.split(/[ ,，]+/).filter((x) => x) : [],
+                tags: tags ? { "标签": tags.split(/[ ,，]+/).filter((x) => x) } : {},
                 chapters: null,
                 subId: null,
             }
