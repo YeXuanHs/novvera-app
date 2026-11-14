@@ -230,7 +230,17 @@ class JsEngine with _JSEngineApi, JsUiApi, Init {
       final url = err.substring("CloudflareChallenge:".length).trim();
       if (url.isNotEmpty) {
         try {
-          await passCloudflare(CloudflareException(url), () {});
+          // passCloudflare 是回调式（void），等它回调完成再重放
+          final done = Completer<void>();
+          passCloudflare(CloudflareException(url), () {
+            if (!done.isCompleted) done.complete();
+          });
+          await done.future.timeout(
+            const Duration(minutes: 3),
+            onTimeout: () {
+              Log.warning("Cloudflare", "js verify timeout: $url");
+            },
+          );
         } catch (e) {
           Log.warning("Cloudflare", "js verify failed: $e");
         }
