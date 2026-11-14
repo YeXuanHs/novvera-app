@@ -104,6 +104,20 @@ let Convert = {
     },
 
     /**
+     * utf8 字符串直接转 base64（等价 Dart base64.encode(utf8.encode(v)))
+     * @param {string} value
+     * @returns {string}
+     */
+    encodeBase64Utf8: (value) => {
+        return sendMessage({
+            method: "convert",
+            type: "base64-utf8",
+            value: value,
+            isEncode: true
+        });
+    },
+
+    /**
      * @param {ArrayBuffer} value
      * @returns {ArrayBuffer}
      */

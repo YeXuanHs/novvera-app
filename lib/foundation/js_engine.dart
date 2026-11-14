@@ -407,6 +407,10 @@ mixin class _JSEngineApi {
       switch (type) {
         case "utf8":
           return isEncode ? utf8.encode(value) : utf8.decode(value);
+        case "base64-utf8":
+          // 一步 utf8 -> base64：等价于 Dart 的 base64.encode(utf8.encode(v))。
+          // 分两步会依赖 JS 数组回传成 List<int> 还是 List<dynamic>，不稳。
+          return base64Encode(utf8.encode(value.toString()));
         case "gbk":
           final codec = const GbkCodec();
           return isEncode

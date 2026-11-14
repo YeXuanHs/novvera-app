@@ -46,7 +46,7 @@ class Wenku8Source extends BookSource {
 
     async _api(plain) {
         let body = "&appver=" + this._appver() +
-            "&request=" + Convert.encodeBase64(Convert.encodeUtf8(plain)) +
+            "&request=" + Convert.encodeBase64Utf8(plain) +
             "&timetoken=" + Date.now()
         let res = await Network.fetchBytes("POST", this.relay, {
             "User-Agent": this.apiUa,
