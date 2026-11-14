@@ -80,8 +80,8 @@ class Wenku8Patch extends BookSource {
     favorites = {
         title: "网络收藏",
         multiFolder: false,
-        loadBook: async (page, folder) => {
-            if (page > 1) return []
+        loadBooks: async (page, folder) => {
+            if (page > 1) return { comics: [], maxPage: 1 }
             await this.refresh()
             let html = await this.getGbk(this.base + "/modules/article/bookcase.php")
             let doc = new HTMLDocument(html)
@@ -104,7 +104,7 @@ class Wenku8Patch extends BookSource {
                     favoriteId: bid,
                 })
             }
-            return books
+            return { comics: books, maxPage: 1 }
         },
         addOrDelFavorite: async (bookId, folder, isAdding, favId) => {
             await this.refresh()
