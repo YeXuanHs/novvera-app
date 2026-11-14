@@ -3,7 +3,6 @@ import 'package:novvera/foundation/book_source/book_source.dart';
 import 'package:novvera/foundation/consts.dart';
 import 'package:novvera/foundation/novel_api/novel_api_client.dart';
 import 'package:novvera/foundation/novel_backend/novel_http.dart';
-import 'package:novvera/foundation/novel_backend/wenku8_client.dart';
 import 'package:novvera/foundation/novel_source/novel_page_cache.dart';
 import 'package:novvera/foundation/novel_source/novel_paginator.dart';
 import 'package:novvera/foundation/res.dart';
@@ -207,34 +206,13 @@ BookSource _buildSource({
   // Author-only search is only reached via detail-page author chip (options=author).
   final List<SearchOptions>? searchOptions = null;
 
-  // 文库8 的网络收藏（网页书架）。其它源暂无网络收藏。
-  final FavoriteData? favoriteData = key == 'wenku8'
-      ? FavoriteData(
-          key: 'wenku8',
-          title: '网络收藏',
-          multiFolder: false,
-          loadBook: (page, [folder]) async {
-            if (page > 1) return const Res(<Book>[]);
-            return Wenku8Client.instance.loadBookshelf();
-          },
-          loadNext: null,
-          addOrDelFavorite: (bookId, folderId, isAdding, favId) async {
-            final client = Wenku8Client.instance;
-            final r = isAdding
-                ? await client.addToBookshelf(bookId)
-                : await client.removeFromBookshelf(favId ?? '');
-            return Res(!r.error, errorMessage: r.errorMessage);
-          },
-        )
-      : null;
-
   return BookSource(
     name,
     key,
     null,
     categoryData,
     categoryBooksData,
-    favoriteData,
+    null,
     explorePages,
     SearchPageData(
       searchOptions,
