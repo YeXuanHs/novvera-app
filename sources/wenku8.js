@@ -6,7 +6,7 @@
 class Wenku8Source extends BookSource {
     name = "轻小说文库"
     key = "wenku8"
-    version = "1.6.0"
+    version = "1.6.1"
     minAppVersion = "1.0.0"
     url = "https://www.wenku8.net"
 
@@ -166,7 +166,8 @@ class Wenku8Source extends BookSource {
             let html = await Convert.decodeGbk(res.body)
             return html.includes("欢迎您") || html.includes("用户面板")
         } catch (e) {
-            // 登录接口有 Cloudflare，Dio 没有浏览器指纹：交给原生 WebView 过。
+            // 只有真的被 Cloudflare 拦住才走 WebView；普通网络错误/密码错误直接上抛。
+            if (!String(e).includes("Cloudflare")) throw e
             return await Network.loginWithWebview(
                 this.base + "/login.php",
                 ["欢迎您", "用户面板"],
@@ -361,12 +362,5 @@ class Wenku8Source extends BookSource {
             return { content: segs.join("\n"), images: images }
         },
         loadEp: async () => ({ images: [] }),
-        // 图片要带头，否则站点会拒绝（阅读器里表现为空白页）
-        onImageLoad: (url, bookId, epId) => ({
-            headers: {
-                "Referer": this.base + "/",
-                "User-Agent": this.webUa,
-            },
-        }),
     }
 }

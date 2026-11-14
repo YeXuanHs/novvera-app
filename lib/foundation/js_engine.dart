@@ -24,6 +24,7 @@ import 'package:pointycastle/block/modes/ofb.dart';
 import 'package:uuid/uuid.dart';
 import 'package:novvera/components/js_ui.dart';
 import 'package:novvera/pages/js_login_page.dart';
+import 'package:novvera/foundation/webview_fetch.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/js_pool.dart';
 import 'package:novvera/network/app_dio.dart';
@@ -270,6 +271,14 @@ class JsEngine with _JSEngineApi, JsUiApi, Init {
     dynamic body = response?.data;
     if (body is! Uint8List && body is List<int>) {
       body = Uint8List.fromList(body);
+    }
+    // Cloudflare 挑战页是 200 + HTML，不拦下来会被源当成正文解析成空白。
+    if (body is String &&
+        (body.contains('Just a moment') ||
+            body.contains('cf-chl') ||
+            body.contains('challenge-platform'))) {
+      error = 'CloudflareChallenge: ${req["url"]}';
+      body = '';
     }
 
     return {
