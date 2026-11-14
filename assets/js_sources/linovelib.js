@@ -86,7 +86,7 @@ class LinovelibSource extends BookSource {
     }
 
     search = {
-        load: async (keyword, page, options) => {
+        load: async (keyword, options, page) => {
             let body = "searchkey=" + encodeURIComponent(keyword) + "&searchtype=all"
             let res = await Network.post(
                 this.base + "/S6/",
@@ -135,7 +135,7 @@ class LinovelibSource extends BookSource {
 
     explore = [{
         title: "排行榜",
-        type: "multiPart",
+        type: "singlePageWithMultiPart",
         load: async () => {
             let types = {
                 "月点击榜": "monthvisit", "周点击榜": "weekvisit",
@@ -143,16 +143,15 @@ class LinovelibSource extends BookSource {
                 "最近更新": "lastupdate", "最新入库": "postdate",
                 "收藏榜": "goodnum", "新书榜": "newhot", "全本": "done",
             }
-            let parts = []
+            let parts = {}
             for (let title in types) {
                 let path = types[title] === "done"
                     ? "/topfull/allvisit/1.html"
                     : "/top/" + types[title] + "/1.html"
                 try {
-                    let books = await this._parseList(this.base + path)
-                    parts.push({ title: title, books: books })
+                    parts[title] = await this._parseList(this.base + path)
                 } catch (e) {
-                    parts.push({ title: title, books: [] })
+                    parts[title] = []
                 }
             }
             return parts
@@ -210,7 +209,7 @@ class LinovelibSource extends BookSource {
                 if (!pageTitle) pageTitle = this._text(doc.querySelector("#mlfy_main_text h1"))
                 let tc = doc.querySelector("#TextContent")
                 if (tc) {
-                    for (let child of tc.querySelectorAll("style, script, noscript")) child.remove()
+                    // HTMLDocument 没有 remove()，直接跳过这些标签即可
                     for (let p of tc.querySelectorAll("p")) {
                         let t = this._text(p)
                         if (t) lines.push(t)

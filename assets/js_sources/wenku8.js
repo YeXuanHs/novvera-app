@@ -256,7 +256,7 @@ class Wenku8Source extends BookSource {
     }
 
     search = {
-        load: async (keyword, page, options) => {
+        load: async (keyword, options, page) => {
             let gbk = Convert.encodeGbk(keyword)
             let bytes = new Uint8Array(gbk)
             let enc = ""
@@ -270,7 +270,7 @@ class Wenku8Source extends BookSource {
 
     explore = [{
         title: "排行榜",
-        type: "multiPart",
+        type: "singlePageWithMultiPart",
         load: async () => {
             let types = {
                 "总点击排行": "allvisit", "总推荐排行": "allvote",
@@ -278,11 +278,10 @@ class Wenku8Source extends BookSource {
                 "最新入库": "postdate", "最近更新": "lastupdate",
                 "总收藏量排行": "goodnum", "完结小说列表": "done",
             }
-            let parts = []
+            let parts = {}
             for (let title in types) {
-                let books = await this._parseList(
+                parts[title] = await this._parseList(
                     this.base + "/modules/article/toplist.php?sort=" + types[title] + "&page=1")
-                parts.push({ title: title, books: books })
             }
             return parts
         },

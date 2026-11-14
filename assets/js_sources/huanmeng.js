@@ -114,7 +114,7 @@ class HuanmengSource extends BookSource {
     }
 
     search = {
-        load: async (keyword, page, options) => {
+        load: async (keyword, options, page) => {
             let key = String(keyword || "").trim()
             if (!key) return { comics: [], maxPage: 1 }
             let json = await this.apiGet("/index.php/bookapi/search", {
