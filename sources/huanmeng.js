@@ -7,7 +7,7 @@
 class HuanmengSource extends BookSource {
     name = "幻梦轻小说"
     key = "huanmeng"
-    version = "1.6.1"
+    version = "1.7.1"
     minAppVersion = "1.0.0"
     url = "https://www.huanmengacg.com"
 
@@ -192,7 +192,11 @@ class HuanmengSource extends BookSource {
                 throw "章节已下架或不可用"
             }
             let parsed = this._parseContent(html)
-            return { content: parsed.lines.join("\n"), images: parsed.images }
+            let lines = parsed.lines
+            if (lines.join("").trim().length < 10) {
+                lines = String(html).replace(/<[^>]+>/g, "\n").split(/\r?\n/).map((x) => this._decode(x).trim()).filter((x) => x)
+            }
+            return { content: lines.join("\n"), images: parsed.images }
         },
         loadEp: async () => ({ images: [] }),
     }

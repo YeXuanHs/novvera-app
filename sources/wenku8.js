@@ -6,7 +6,7 @@
 class Wenku8Source extends BookSource {
     name = "轻小说文库"
     key = "wenku8"
-    version = "1.7.0"
+    version = "1.7.1"
     minAppVersion = "1.0.0"
     url = "https://www.wenku8.net"
 
@@ -358,6 +358,10 @@ class Wenku8Source extends BookSource {
             }
             if (!raw || raw.trim() === "null") throw "正文为空: " + epId
             let segs = this._parseContent(raw)
+            if (segs.join("").trim().length < 10) {
+                // 解析规则没命中（换行/标记差异）时，至少把原始文本按行交出去
+                segs = raw.split(/\r?\n/).map((x) => x.trim()).filter((x) => x)
+            }
             let images = segs.filter((x) => x.startsWith("http"))
             return { content: segs.join("\n"), images: images }
         },
