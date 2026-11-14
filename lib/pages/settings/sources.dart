@@ -57,14 +57,23 @@ class _BookSourcesViewState extends State<_BookSourcesView> {
   }
 
   Future<void> _install(Map<String, dynamic> entry) async {
-    final url = (entry['url'] ?? '').toString();
-    if (url.isEmpty) return;
+    // 与 venera 一致：优先 entry.url，否则用仓库目录 + fileName
+    var url = (entry['url'] ?? '').toString();
+    if (url.isEmpty) {
+      final file = (entry['fileName'] ?? '').toString();
+      if (file.isEmpty || _storeUrl.isEmpty) return;
+      final base = _storeUrl.substring(0, _storeUrl.lastIndexOf('/') + 1);
+      url = base + file;
+    }
     setState(() => _busy = true);
     try {
       final res = await Dio().get(url,
           options: Options(responseType: ResponseType.plain));
       final js = res.data.toString();
-      final key = (entry['key'] ?? entry['name'] ?? 'source').toString();
+      final key = (entry['key'] ??
+              (entry['fileName'] ?? entry['name'] ?? 'source'))
+          .toString()
+          .replaceAll('.js', '');
       final dir = Directory("${App.dataPath}/comic_source");
       if (!await dir.exists()) await dir.create(recursive: true);
       await File("${dir.path}/$key.js").writeAsString(js);
