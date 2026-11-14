@@ -1233,7 +1233,9 @@ class LocalFavoritesManager with ChangeNotifier {
 
   void markAsRead(String id, BookType type) {
     var folder = appdata.settings['followUpdatesFolder'];
-    if (!existsFolder(folder)) {
+    // followUpdatesFolder 默认为 null；existsFolder 只接受 String，
+    // 直接传 null 会抛 type 'Null' is not a subtype of type 'String'（打开阅读器即崩）。
+    if (folder is! String || folder.isEmpty || !existsFolder(folder)) {
       return;
     }
     _db.execute("""
