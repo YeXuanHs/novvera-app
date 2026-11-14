@@ -29,31 +29,31 @@ class Wenku8Source extends BookSource {
 
     async _getGbk(url, referer) {
         let res = await Network.fetchBytes("GET", url, this._headers(referer))
-        return Convert.decodeGbk(res.body)
+        return await Convert.decodeGbk(res.body)
     }
 
     // ---- App API（与 Dart _buildAppVer / _appApi 一致）----
-    _appver() {
+    async _appver() {
         let bucket = Math.floor(Date.now() / 1000 / 60)
         let msg = this.appVer + "|" + this.appCode + "|" + bucket
-        let digest = Convert.hmacString(
-            Convert.encodeUtf8(this.appCode),
-            Convert.encodeUtf8(msg),
+        let digest = await Convert.hmacString(
+            await Convert.encodeUtf8(this.appCode),
+            await Convert.encodeUtf8(msg),
             "sha256",
         )
-        return this.appVer + "-" + this.appCode + "-" + digest.substring(12, 20)
+        return this.appVer + "-" + this.appCode + "-" + String(digest).substring(12, 20)
     }
 
     async _api(plain) {
-        let body = "&appver=" + this._appver() +
-            "&request=" + Convert.encodeBase64Utf8(plain) +
+        let body = "&appver=" + (await this._appver()) +
+            "&request=" + (await Convert.encodeBase64Utf8(plain)) +
             "&timetoken=" + Date.now()
         let res = await Network.fetchBytes("POST", this.relay, {
             "User-Agent": this.apiUa,
             "Content-Type": "application/x-www-form-urlencoded",
             "Accept-Encoding": "gzip",
         }, body)
-        return Convert.decodeUtf8(res.body)
+        return await Convert.decodeUtf8(res.body)
     }
 
     _dataValue(block, name) {
@@ -154,7 +154,7 @@ class Wenku8Source extends BookSource {
         headers["Content-Type"] = "application/x-www-form-urlencoded"
         let res = await Network.fetchBytes(
             "POST", this.base + "/login.php?do=submit", headers, body)
-        let html = Convert.decodeGbk(res.body)
+        let html = await Convert.decodeGbk(res.body)
         return html.includes("欢迎您") || html.includes("用户面板")
     }
 
