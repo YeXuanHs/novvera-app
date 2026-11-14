@@ -28,9 +28,12 @@ class _NetworkSettingsState extends State<NetworkSettings> {
           min: 1,
           max: 16,
         ).toSliver(),
-        _PopupWindowSetting(
-          title: "书源".tl,
-          builder: () => const _BookSourcesView(),
+        ListTile(
+          leading: const Icon(Icons.tune),
+          title: Text("书源".tl),
+          subtitle: Text("添加 / 更新 / 删除 / 排序 / 登录".tl),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.to(() => const BookSourcePage()),
         ).toSliver(),
       ],
     );

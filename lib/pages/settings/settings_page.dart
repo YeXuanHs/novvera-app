@@ -16,6 +16,7 @@ import 'package:novvera/foundation/log.dart';
 import 'package:dio/dio.dart';
 import 'package:novvera/foundation/novel_backend/wenku8_client.dart';
 import 'package:novvera/network/app_dio.dart';
+import 'package:novvera/pages/book_source_page.dart';
 import 'package:novvera/foundation/consts.dart';
 import 'package:novvera/components/update_modal.dart';
 import 'package:novvera/utils/data.dart';
@@ -31,8 +32,6 @@ part 'local_favorites.dart';
 part 'app.dart';
 part 'about.dart';
 part 'network.dart';
-
-part 'sources.dart';
 part 'debug.dart';
 
 class SettingsPage extends StatefulWidget {
