@@ -6,7 +6,7 @@
 class Wenku8Source extends BookSource {
     name = "轻小说文库"
     key = "wenku8"
-    version = "1.0.0"
+    version = "1.1.0"
     minAppVersion = "1.0.0"
     url = "https://www.wenku8.net"
 
