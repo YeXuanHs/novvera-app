@@ -78,7 +78,7 @@ class BookSourceManager with ChangeNotifier, Init {
     }
   }
 
-  static const _bundledJsSources = ['wenku8.js', 'huanmeng.js'];
+  static const _bundledJsSources = ['wenku8.js', 'huanmeng.js', 'linovelib.js'];
 
   /// 首启把仓库里自带的 JS 补丁写到数据目录，之后用户可直接编辑。
   Future<void> _exportBundledJsSources() async {
