@@ -24,7 +24,6 @@ import 'package:pointycastle/block/modes/ofb.dart';
 import 'package:uuid/uuid.dart';
 import 'package:novvera/components/js_ui.dart';
 import 'package:novvera/pages/js_login_page.dart';
-import 'package:novvera/foundation/webview_fetch.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/js_pool.dart';
 import 'package:novvera/network/app_dio.dart';
