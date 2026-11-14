@@ -5,6 +5,7 @@ import 'package:novvera/foundation/novel_api/novel_api_client.dart';
 import 'package:novvera/foundation/novel_backend/novel_http.dart';
 import 'package:novvera/foundation/novel_source/novel_page_cache.dart';
 import 'package:novvera/foundation/novel_source/novel_paginator.dart';
+import 'package:novvera/foundation/log.dart';
 import 'package:novvera/foundation/res.dart';
 
 const kNovelSourceKeys = {'wenku8', 'linovelib', 'huanmeng'};
@@ -641,6 +642,11 @@ Future<Res<List<String>>> _loadChapterPages(
     final trailingImages = (data['images'] as List? ?? [])
         .map((e) => e.toString())
         .toList();
+    Log.info(
+      'Novel',
+      'chapter $source/$aid/$ep: ${text.length} chars, '
+          '${trailingImages.length} images',
+    );
     final pages = buildNovelReaderPages(
       content: text,
       trailingImages: trailingImages,
