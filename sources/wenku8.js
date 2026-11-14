@@ -6,7 +6,7 @@
 class Wenku8Source extends BookSource {
     name = "轻小说文库"
     key = "wenku8"
-    version = "1.1.0"
+    version = "1.2.0"
     minAppVersion = "1.0.0"
     url = "https://www.wenku8.net"
 
@@ -294,11 +294,14 @@ class Wenku8Source extends BookSource {
             let name = this._dataValue(metaXml, "Title")
             let tags = this._dataAttr(metaXml, "Tags", "value")
             let volumes = await this._catalog(id)
-            let chapters = []
+            // BookChapters 需要 {卷名: {章节id: 标题}}
+            let chapters = {}
             for (let v of volumes) {
+                let group = {}
                 for (let c of v.chapters) {
-                    chapters.push({ id: v.chapters.indexOf(c) + 1 + "-" + c.cid, title: c.title })
+                    group[c.cid] = c.title
                 }
+                chapters[v.name] = group
             }
             return {
                 id: String(id),
@@ -306,7 +309,7 @@ class Wenku8Source extends BookSource {
                 cover: "https://img.wenku8.com/image/" + Math.floor(id / 1000) + "/" + id + "/" + id + "s.jpg",
                 description: intro,
                 tags: tags ? { "标签": tags.split(/[ ,，]+/).filter((x) => x) } : {},
-                chapters: null,
+                chapters: chapters,
                 subId: null,
             }
         },

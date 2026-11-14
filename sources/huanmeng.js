@@ -7,7 +7,7 @@
 class HuanmengSource extends BookSource {
     name = "幻梦轻小说"
     key = "huanmeng"
-    version = "1.1.0"
+    version = "1.2.0"
     minAppVersion = "1.0.0"
     url = "https://www.huanmengacg.com"
 
@@ -144,13 +144,22 @@ class HuanmengSource extends BookSource {
                 if (t === "连载" || t === "完结") continue
                 tags.push(t)
             }
+            let chapters = {}
+            try {
+                let cat = await this.catalogData(String(id))
+                for (let vol of cat.order) {
+                    let group = {}
+                    for (let c of cat.map[vol]) group[c.cid] = c.title
+                    chapters[vol] = group
+                }
+            } catch (e) {}
             return {
                 id: b.id,
                 title: b.title,
                 cover: b.cover,
                 description: b.description,
                 tags: { "标签": tags.length ? tags : b.tags },
-                chapters: null,
+                chapters: chapters,
                 subId: null,
             }
         },

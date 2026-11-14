@@ -8,7 +8,7 @@
 class LinovelibSource extends BookSource {
     name = "哔哩轻小说"
     key = "linovelib"
-    version = "1.1.0"
+    version = "1.2.0"
     minAppVersion = "1.0.0"
     url = "https://www.linovelib.com"
 
@@ -183,13 +183,30 @@ class LinovelibSource extends BookSource {
             }
             intro = intro.replace(/^[\s\S]*?内容简介[：:]/, "").trim()
             let tags = meta(["og:novel:tags"])
+            let chapters = {}
+            try {
+                let doc2 = await this.getDoc(this.base + "/novel/" + id + "/catalog")
+                for (let vol of doc2.querySelectorAll("div.volume")) {
+                    let nameEl = vol.querySelector(".volume-info .volume-title, .volume-info h2, .volume-info a, h2, h3")
+                    let volName = this._text(nameEl) || ("第" + (Object.keys(chapters).length + 1) + "卷")
+                    let group = {}
+                    for (let a of vol.querySelectorAll(".chapter-list a, ul a")) {
+                        let href = a.attributes["href"] || ""
+                        let m = href.match(/\/novel\/(\d+)\/(\d+)/)
+                        if (!m || m[1] !== String(id)) continue
+                        let t = this._text(a)
+                        if (t) group[m[2]] = t
+                    }
+                    if (Object.keys(group).length) chapters[volName] = group
+                }
+            } catch (e) {}
             return {
                 id: String(id),
                 title: name || ("小说_" + id),
                 cover: cover,
                 description: intro,
                 tags: tags ? { "标签": tags.split(/[ ,，]+/).filter((x) => x) } : {},
-                chapters: null,
+                chapters: chapters,
                 subId: null,
             }
         },
