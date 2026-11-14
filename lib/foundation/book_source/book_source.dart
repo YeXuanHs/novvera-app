@@ -65,27 +65,16 @@ class BookSourceManager with ChangeNotifier, Init {
       jsSources.addAll(await _loadJsSources());
     }
 
-    // 2) 内置源照旧 —— 搜索/发现/详情/目录/正文全部沿用 Dart 实现。
+    // 2) JS 源优先：同名内置源不再注册，全部逻辑走外置 JS。
+    final jsKeys = jsSources.map((e) => e.key).toSet();
     for (final source in createBuiltinNovelSources()) {
+      if (jsKeys.contains(source.key)) continue;
       await source.loadData();
       _sources.add(source);
     }
-
-    // 3) 同名 JS 源只用来补「登录 / 网络收藏」，其余能力不覆盖；
-    //    没有内置实现的 JS 源则作为独立源保留。
     for (final js in jsSources) {
-      final builtin = _sources.firstWhereOrNull((e) => e.key == js.key);
-      if (builtin == null) {
-        _sources.add(js);
-        continue;
-      }
-      if (js.account != null) builtin.account = js.account;
-      if (js.favoriteData != null) builtin.favoriteData = js.favoriteData;
-      Log.info(
-        "BookSource",
-        "patched ${js.key}: account=${js.account != null} "
-            "favorites=${js.favoriteData != null}",
-      );
+      await js.loadData();
+      _sources.add(js);
     }
   }
 
