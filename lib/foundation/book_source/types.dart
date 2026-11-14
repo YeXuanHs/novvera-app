@@ -91,3 +91,7 @@ typedef TagSuggestionSelectFunc = String Function(String namespace, String tag);
 
 /// [rating] is the rating value, 0-10. 1 represents 0.5 star.
 typedef StarRatingFunc = Future<Res<bool>> Function(String bookId, int rating);
+
+/// JS 源：小说正文（漫画语义的 loadEp 只给图片，阅读器需要文本）。
+typedef LoadNovelChapterFunc = Future<Res<Map<String, dynamic>>> Function(
+    String bookId, String epId);

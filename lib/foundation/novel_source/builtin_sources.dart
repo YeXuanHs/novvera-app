@@ -547,6 +547,11 @@ Future<Res<Map<String, dynamic>>> loadNovelChapter(
   String aid,
   String epId,
 ) async {
+  // 外置 JS 书源自己实现正文时，优先用它（内置 Dart 源没有这个回调）。
+  final jsLoader = BookSource.find(source)?.loadNovelChapter;
+  if (jsLoader != null) {
+    return jsLoader(aid, epId);
+  }
   try {
     final parts = epId.split('-');
     if (parts.length < 2) {

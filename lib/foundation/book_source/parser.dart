@@ -169,6 +169,8 @@ class BookSourceParser {
 
     await source.loadData();
 
+    source.loadNovelChapter = _parseLoadNovelChapterFunc();
+
     if (_checkExists("init")) {
       Future.delayed(const Duration(milliseconds: 50), () {
         JsEngine().runCode("ComicSource.sources.$_key.init()");
@@ -773,6 +775,24 @@ class BookSourceParser {
         res['bookId'] = id;
         res['sourceKey'] = _key;
         return Res(BookDetails.fromJson(res));
+      } catch (e, s) {
+        Log.error("Network", "$e\n$s");
+        return Res.error(e.toString());
+      }
+    };
+  }
+
+  /// 小说正文（JS 可选实现）。漫画的 loadEp 只返回图片，正文要靠这个。
+  LoadNovelChapterFunc? _parseLoadNovelChapterFunc() {
+    if (!_checkExists("comic.loadChapterText")) return null;
+    return (bookId, epId) async {
+      try {
+        var res = await JsEngine().runCode("""
+          ComicSource.sources.$_key.comic.loadChapterText(
+            ${jsonEncode(bookId)}, ${jsonEncode(epId)})
+        """);
+        if (res is! Map) throw "Invalid data";
+        return Res(Map<String, dynamic>.from(res));
       } catch (e, s) {
         Log.error("Network", "$e\n$s");
         return Res.error(e.toString());

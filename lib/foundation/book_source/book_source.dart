@@ -5,6 +5,7 @@ import 'dart:collection';
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_qjs/flutter_qjs.dart';
 import 'package:novvera/foundation/app.dart';
@@ -56,25 +57,54 @@ class BookSourceManager with ChangeNotifier, Init {
   Future<void> doInit() async {
     await JsEngine().ensureInit();
     _sources.clear();
+    final jsKeys = <String>{};
+    if (appdata.settings['jsBookSourcesEnabled'] == true) {
+      await _exportBundledJsSources();
+      jsKeys.addAll(await _loadJsSources());
+    }
     for (final source in createBuiltinNovelSources()) {
+      // JS 版同名源优先；只有没有 JS 实现时才回退到内置 Dart 源。
+      if (jsKeys.contains(source.key)) continue;
       await source.loadData();
       _sources.add(source);
     }
-    if (!appdata.settings['jsBookSourcesEnabled']) return;
-    // 外置 JS 书源（venera 同款）：<data>/comic_source/*.js
+  }
+
+  static const _bundledJsSources = ['wenku8.js'];
+
+  /// 首启把仓库里自带的 JS 源写到数据目录，之后用户可直接编辑/替换。
+  Future<void> _exportBundledJsSources() async {
     final dir = Directory("${App.dataPath}/comic_source");
-    if (!await dir.exists()) return;
-    await for (final entity in dir.list()) {
-      if (entity is File && entity.path.endsWith(".js")) {
-        try {
-          final source = await BookSourceParser()
-              .parse(await entity.readAsString(), entity.absolute.path);
-          _sources.add(source);
-        } catch (e, s) {
-          Log.error("BookSource", "${entity.path}: $e\n$s");
-        }
+    if (!await dir.exists()) await dir.create(recursive: true);
+    for (final name in _bundledJsSources) {
+      final file = File("${dir.path}/$name");
+      if (await file.exists()) continue;
+      try {
+        final js = await rootBundle.loadString("assets/js_sources/$name");
+        await file.writeAsString(js);
+      } catch (e) {
+        Log.warning("BookSource", "export $name: $e");
       }
     }
+  }
+
+  /// 扫描并解析 comic_source/*.js，返回已注册的 key。
+  Future<Set<String>> _loadJsSources() async {
+    final keys = <String>{};
+    final dir = Directory("${App.dataPath}/comic_source");
+    if (!await dir.exists()) return keys;
+    await for (final entity in dir.list()) {
+      if (entity is! File || !entity.path.endsWith(".js")) continue;
+      try {
+        final source = await BookSourceParser()
+            .parse(await entity.readAsString(), entity.absolute.path);
+        _sources.add(source);
+        keys.add(source.key);
+      } catch (e, s) {
+        Log.error("BookSource", "${entity.path}: $e\n$s");
+      }
+    }
+    return keys;
   }
 
   /// Register explore/search pages for builtin sources into settings.
@@ -213,6 +243,9 @@ class BookSource {
 
   /// Load book pages.
   final LoadBookPagesFunc? loadBookPages;
+
+  /// JS 源可选实现 comic.loadChapterText —— 给小说阅读器用的正文接口。
+  LoadNovelChapterFunc? loadNovelChapter;
 
   final GetImageLoadingConfigFunc? getImageLoadingConfig;
 

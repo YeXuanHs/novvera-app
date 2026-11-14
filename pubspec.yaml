@@ -115,6 +115,7 @@ flutter:
     - assets/tags_tw.json
     - assets/opencc.txt
     - assets/simhei.ttf
+    - assets/js_sources/
 
 flutter_to_arch:
   name: Novvera
