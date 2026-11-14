@@ -6,7 +6,7 @@
 class Wenku8Source extends BookSource {
     name = "轻小说文库"
     key = "wenku8"
-    version = "1.5.0"
+    version = "1.6.0"
     minAppVersion = "1.0.0"
     url = "https://www.wenku8.net"
 
@@ -361,5 +361,12 @@ class Wenku8Source extends BookSource {
             return { content: segs.join("\n"), images: images }
         },
         loadEp: async () => ({ images: [] }),
+        // 图片要带头，否则站点会拒绝（阅读器里表现为空白页）
+        onImageLoad: (url, bookId, epId) => ({
+            headers: {
+                "Referer": this.base + "/",
+                "User-Agent": this.webUa,
+            },
+        }),
     }
 }

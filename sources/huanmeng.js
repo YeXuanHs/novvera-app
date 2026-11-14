@@ -7,7 +7,7 @@
 class HuanmengSource extends BookSource {
     name = "幻梦轻小说"
     key = "huanmeng"
-    version = "1.5.0"
+    version = "1.6.0"
     minAppVersion = "1.0.0"
     url = "https://www.huanmengacg.com"
 
@@ -195,5 +195,12 @@ class HuanmengSource extends BookSource {
             return { content: parsed.lines.join("\n"), images: parsed.images }
         },
         loadEp: async () => ({ images: [] }),
+        // 图片要带头，否则站点会拒绝（阅读器里表现为空白页）
+        onImageLoad: (url, bookId, epId) => ({
+            headers: {
+                "Referer": this.base + "/",
+                "User-Agent": this.ua,
+            },
+        }),
     }
 }
