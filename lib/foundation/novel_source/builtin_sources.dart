@@ -641,10 +641,15 @@ Future<Res<List<String>>> _loadChapterPages(
     final trailingImages = (data['images'] as List? ?? [])
         .map((e) => e.toString())
         .toList();
-    return Res(buildNovelReaderPages(
+    final pages = buildNovelReaderPages(
       content: text,
       trailingImages: trailingImages,
-    ));
+    );
+    if (pages.isEmpty) {
+      // 不要把空章节当成成功：否则阅读器会沿用上一章的旧内容
+      return Res.error('章节内容为空: $ep');
+    }
+    return Res(pages);
   } catch (e) {
     return Res.error(e.toString());
   }
