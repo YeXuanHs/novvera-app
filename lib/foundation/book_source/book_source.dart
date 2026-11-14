@@ -55,11 +55,25 @@ class BookSourceManager with ChangeNotifier, Init {
   @protected
   Future<void> doInit() async {
     await JsEngine().ensureInit();
-    // Builtin novel sources only — do not load JS book sources.
     _sources.clear();
     for (final source in createBuiltinNovelSources()) {
       await source.loadData();
       _sources.add(source);
+    }
+    if (!appdata.settings['jsBookSourcesEnabled']) return;
+    // 外置 JS 书源（venera 同款）：<data>/comic_source/*.js
+    final dir = Directory("${App.dataPath}/comic_source");
+    if (!await dir.exists()) return;
+    await for (final entity in dir.list()) {
+      if (entity is File && entity.path.endsWith(".js")) {
+        try {
+          final source = await BookSourceParser()
+              .parse(await entity.readAsString(), entity.absolute.path);
+          _sources.add(source);
+        } catch (e, s) {
+          Log.error("BookSource", "${entity.path}: $e\n$s");
+        }
+      }
     }
   }
 
@@ -109,7 +123,11 @@ class BookSourceManager with ChangeNotifier, Init {
     appdata.settings['explore_pages'] = explorePages.toSet().toList();
     appdata.settings['categories'] = categoryPages.toSet().toList();
     appdata.settings['searchSources'] = searchPages.toSet().toList();
-    appdata.settings['favorites'] = <String>[]; // no network favorites
+    // 网络收藏入口：只保留真正提供 favoriteData 的源。
+    appdata.settings['favorites'] = _sources
+        .where((e) => e.favoriteData != null)
+        .map((e) => e.key)
+        .toList();
     appdata.saveData();
   }
 

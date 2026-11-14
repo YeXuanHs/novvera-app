@@ -28,6 +28,14 @@ class _NetworkSettingsState extends State<NetworkSettings> {
           min: 1,
           max: 16,
         ).toSliver(),
+        _PopupWindowSetting(
+          title: "书源".tl,
+          builder: () => const _BookSourcesView(),
+        ).toSliver(),
+        _PopupWindowSetting(
+          title: "文库8 账号".tl,
+          builder: () => const _Wenku8AccountView(),
+        ).toSliver(),
       ],
     );
   }

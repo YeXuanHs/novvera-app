@@ -6,6 +6,9 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:html/dom.dart';
 import 'package:novvera/foundation/app.dart';
+import 'package:novvera/foundation/appdata.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
+import 'package:novvera/foundation/res.dart';
 import 'package:novvera/foundation/consts.dart';
 import 'package:novvera/foundation/log.dart';
 import 'package:novvera/foundation/novel_backend/novel_http.dart';
@@ -161,6 +164,18 @@ class Wenku8Client {
 
   String? username;
   String? password;
+
+  /// 用户自己填的账号，优先于自动注册机生成的号。
+  String? userUsername;
+  String? userPassword;
+
+  /// 当前会话是不是在用用户自己的账号。
+  bool usingUserAccount = false;
+
+  bool get hasUserAccount =>
+      (userUsername?.isNotEmpty ?? false) &&
+      (userPassword?.isNotEmpty ?? false);
+
   DateTime? _lastLoginAt;
   Timer? _refreshTimer;
   String? _phpSessionId;
@@ -169,8 +184,13 @@ class Wenku8Client {
 
   Future<void> init() async {
     await _loadAccount();
-    // Do not hit wenku8.net here. Account/CF only when a wenku8 API path
-    // that needs the website session actually runs (e.g. home()).
+    // 每次启动都重新登录一次：cookie 有效期一年，主动续一次比带着可能
+    // 过期的 cookie 跑更可靠。只有明确认证失败才回退注册机账号。
+    try {
+      await ensureAccount(forceLogin: true);
+    } catch (e) {
+      Log.warning('Wenku8', 'startup login deferred: $e');
+    }
   }
 
   void _armRefreshTimer() {
@@ -188,6 +208,8 @@ class Wenku8Client {
       final map = jsonDecode(await _accountFile.readAsString()) as Map;
       username = map['username']?.toString();
       password = map['password']?.toString();
+      userUsername = appdata.implicitData['wenku8_user']?.toString();
+      userPassword = appdata.implicitData['wenku8_pass']?.toString();
     } catch (e) {
       Log.warning('Wenku8', 'load account: $e');
     }
@@ -209,12 +231,29 @@ class Wenku8Client {
       return true;
     }
     try {
+      // 1) 用户自己填的账号优先
+      if (hasUserAccount) {
+        if (await _login(userUsername!, userPassword!, isUser: true)) {
+          usingUserAccount = true;
+          return true;
+        }
+        usingUserAccount = false;
+        Log.warning(
+          'Wenku8',
+          'user account invalid; falling back to auto-registered account',
+        );
+      }
+      // 2) 注册机保存的账号
       if (username != null &&
           password != null &&
           username!.isNotEmpty &&
           password!.isNotEmpty) {
-        if (await _login(username!, password!)) return true;
+        if (await _login(username!, password!)) {
+          usingUserAccount = false;
+          return true;
+        }
       }
+      // 3) 都没有就注册一个新号
       for (var i = 0; i < 3; i++) {
         final u = _randUser();
         final p = _randPass();
@@ -222,15 +261,18 @@ class Wenku8Client {
           username = u;
           password = p;
           await _saveAccount();
+          usingUserAccount = false;
           return true;
         }
       }
     } on CloudflareException catch (e) {
       Log.warning('Wenku8', 'ensureAccount blocked by Cloudflare (${e.url})');
       rethrow;
+    } catch (e) {
+      // 网络/解析异常不等于"账号失效"：上抛，避免误切到注册机账号。
+      Log.warning('Wenku8', 'ensureAccount network error: $e');
+      rethrow;
     }
-    Log.warning('Wenku8', 'ensureAccount failed; continuing without login');
-    return _lastLoginAt != null;
   }
 
   String _randUser() {
@@ -283,7 +325,7 @@ class Wenku8Client {
     }
   }
 
-  Future<bool> _login(String user, String pass) async {
+  Future<bool> _login(String user, String pass, {bool isUser = false}) async {
     try {
       await _http.getHtml(
         '$_base/login.php',
@@ -308,10 +350,13 @@ class Wenku8Client {
       );
       final ok = res.html.contains('欢迎您') || res.html.contains('用户面板');
       if (ok) {
-        username = user;
-        password = pass;
+        if (!isUser) {
+          username = user;
+          password = pass;
+          await _saveAccount();
+        }
+        usingUserAccount = isUser;
         _lastLoginAt = DateTime.now();
-        await _saveAccount();
         _armRefreshTimer();
         Log.info('Wenku8', 'login ok ($user)');
       } else {
@@ -321,8 +366,144 @@ class Wenku8Client {
     } on CloudflareException {
       rethrow;
     } catch (e) {
-      Log.warning('Wenku8', 'login: $e');
-      return false;
+      // 网络异常 ≠ 密码错误，必须区分开，否则会误回退。
+      Log.warning('Wenku8', 'login network error: $e');
+      rethrow;
+    }
+  }
+
+  /// 设置/清除用户自己的账号。传空则回到注册机账号。
+  Future<bool> setUserAccount(String? user, String? password) async {
+    userUsername = user?.trim();
+    userPassword = password;
+    appdata.implicitData['wenku8_user'] = userUsername ?? '';
+    appdata.implicitData['wenku8_pass'] = userPassword ?? '';
+    appdata.writeImplicitData();
+    _lastLoginAt = null;
+    if (!hasUserAccount) {
+      usingUserAccount = false;
+      return ensureAccount(forceLogin: true);
+    }
+    final ok = await _login(userUsername!, userPassword!, isUser: true);
+    if (ok) {
+      usingUserAccount = true;
+      return true;
+    }
+    // 走到这里说明是明确的认证失败（密码改了/账号不存在）→ 回退注册机账号；
+    // 网络异常会直接抛出，不会误判成失效。
+    usingUserAccount = false;
+    return ensureAccount(forceLogin: true);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 网络收藏（网页书架）
+  //
+  // 实测 wenku8.net 行为：
+  //   列表  GET /modules/article/bookcase.php        （table.grid，每行一个书架项）
+  //   加入  GET /modules/article/addbookcase.php?bid={aid}
+  //   移除  GET /modules/article/bookcase.php?delid={书架项 bid}
+  // 书架项的 bid 与书的 aid 不是一个东西，增删分别用这两个。
+  // ---------------------------------------------------------------------------
+
+  static final _shelfAidRe = RegExp(r'aid=(\d+)');
+  static final _shelfBidRe = RegExp(r'bid=(\d+)');
+
+  Map<String, String> get _webHeaders => {
+        'User-Agent': _htmlUa,
+        'Referer': '$_base/index.php',
+        'Accept':
+            'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      };
+
+  /// 拉取网页书架。
+  Future<Res<List<Book>>> loadBookshelf() async {
+    try {
+      if (!await ensureAccount()) {
+        return Res.error('文库8 未登录');
+      }
+      final res = await _http.getHtml(
+        '$_base/modules/article/bookcase.php',
+        preferGbk: true,
+        headers: _webHeaders,
+      );
+      final doc = parseHtml(res.html);
+      final books = <Book>[];
+      for (final tr in doc.querySelectorAll('table.grid tr')) {
+        final a = tr.querySelector('a[href*="readbookcase.php?aid="]');
+        if (a == null) continue;
+        final href = a.attributes['href'] ?? '';
+        final aid = _shelfAidRe.firstMatch(href)?.group(1) ?? '';
+        final bid = _shelfBidRe.firstMatch(href)?.group(1) ?? '';
+        if (aid.isEmpty) continue;
+        final tds = tr.querySelectorAll('td');
+        final author = tds.length > 2
+            ? (tds[2].querySelector('a')?.text ?? '').trim()
+            : '';
+        final update = tds.length > 5 ? tds[5].text.trim() : '';
+        final status = (tr.querySelector('span.hottext')?.text ?? '').trim();
+        books.add(Book.fromJson({
+          'title': a.text.trim(),
+          'cover': '',
+          'id': aid,
+          'subTitle': author,
+          'tags': status.isEmpty ? <String>[] : [status],
+          'description': '',
+          'updateTime': update,
+          'favoriteId': bid,
+        }, 'wenku8'));
+      }
+      return Res(books);
+    } on CloudflareException catch (e) {
+      return Res.error(e.toString());
+    } catch (e) {
+      Log.warning('Wenku8', 'loadBookshelf: $e');
+      return Res.error(e.toString());
+    }
+  }
+
+  /// 加入书架。[aid] 是书的 id（网页 /book/{aid}.htm）。
+  Future<Res<String>> addToBookshelf(String aid) async {
+    try {
+      if (!await ensureAccount()) {
+        return Res.error('文库8 未登录');
+      }
+      final res = await _http.getHtml(
+        '$_base/modules/article/addbookcase.php?bid=$aid',
+        preferGbk: true,
+        headers: {..._webHeaders, 'Referer': '$_base/book/$aid.htm'},
+      );
+      final ok = res.html.contains('处理成功') ||
+          res.html.contains('已经在书架') ||
+          res.html.contains('已在书架');
+      Log.info('Wenku8', 'addbookshelf($aid) -> $ok');
+      return ok ? const Res('') : Res.error('加入书架失败');
+    } on CloudflareException catch (e) {
+      return Res.error(e.toString());
+    } catch (e) {
+      return Res.error(e.toString());
+    }
+  }
+
+  /// 移出书架。[bid] 是书架项 id（列表里 readbookcase.php?bid= 那个）。
+  Future<Res<String>> removeFromBookshelf(String bid) async {
+    if (bid.isEmpty) return Res.error('缺少书架项 id');
+    try {
+      if (!await ensureAccount()) {
+        return Res.error('文库8 未登录');
+      }
+      final res = await _http.getHtml(
+        '$_base/modules/article/bookcase.php?delid=$bid',
+        preferGbk: true,
+        headers: _webHeaders,
+      );
+      // 删除成功后会重定向回书架页；只要还是书架页就算成功。
+      final ok = res.html.contains('bookcase.php') || res.html.contains('书架');
+      Log.info('Wenku8', 'removebookshelf($bid) -> $ok');
+      return ok ? const Res('') : Res.error('移出书架失败');
+    } on CloudflareException catch (e) {
+      return Res.error(e.toString());
+    } catch (e) {
+      return Res.error(e.toString());
     }
   }
 
