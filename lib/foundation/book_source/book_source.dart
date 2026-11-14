@@ -57,34 +57,12 @@ class BookSourceManager with ChangeNotifier, Init {
   Future<void> doInit() async {
     await JsEngine().ensureInit();
     _sources.clear();
-    // 内置源先就位，界面立即可用。
-    for (final source in createBuiltinNovelSources()) {
-      await source.loadData();
-      _sources.add(source);
-    }
+    // 与 venera 一致：只加载数据目录里已有的源，不内置任何源。
     if (appdata.settings['jsBookSourcesEnabled'] == true) {
-      // 外置 JS 源逐个解析很慢（几十个源就是几十秒），放后台跑，不挡启动。
-      unawaited(_loadJsSourcesInBackground());
-    }
-  }
-
-  bool _jsLoading = false;
-
-  Future<void> _loadJsSourcesInBackground() async {
-    if (_jsLoading) return;
-    _jsLoading = true;
-    try {
-      final loaded = await _loadJsSources();
-      for (final js in loaded) {
+      for (final js in await _loadJsSources()) {
         await js.loadData();
-        _sources.removeWhere((e) => e.key == js.key);
         _sources.add(js);
       }
-      if (loaded.isNotEmpty) notifyListeners();
-    } catch (e) {
-      Log.error("BookSource", "background js load: $e");
-    } finally {
-      _jsLoading = false;
     }
   }
 
