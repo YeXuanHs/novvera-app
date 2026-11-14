@@ -27,6 +27,7 @@ import 'package:novvera/pages/js_login_page.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/js_pool.dart';
 import 'package:novvera/network/app_dio.dart';
+import 'package:novvera/network/cloudflare.dart';
 import 'package:novvera/network/cookie_jar.dart';
 import 'package:novvera/network/proxy.dart';
 import 'package:novvera/utils/init.dart';
@@ -220,7 +221,26 @@ class JsEngine with _JSEngineApi, JsUiApi, Init {
     }
   }
 
+  /// 与 Dart 版一致：命中 Cloudflare 挑战页时走 WebView 验证，拿到
+  /// cf_clearance 后自动重放一次请求；仍然失败才把错误交给 JS。
   Future<Map<String, dynamic>> _http(Map<String, dynamic> req) async {
+    var res = await _httpInner(req);
+    final err = res["error"];
+    if (err is String && err.startsWith("CloudflareChallenge")) {
+      final url = err.substring("CloudflareChallenge:".length).trim();
+      if (url.isNotEmpty) {
+        try {
+          await passCloudflare(CloudflareException(url), () {});
+        } catch (e) {
+          Log.warning("Cloudflare", "js verify failed: $e");
+        }
+        res = await _httpInner(req);
+      }
+    }
+    return res;
+  }
+
+  Future<Map<String, dynamic>> _httpInner(Map<String, dynamic> req) async {
     Response? response;
     String? error;
 
