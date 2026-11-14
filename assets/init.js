@@ -1518,3 +1518,5 @@ function compute(func, ...args) {
         args: args
     })
 }
+// novvera: 解析器要求基类名为 BookSource（venera 原版叫 ComicSource）
+var BookSource = ComicSource;

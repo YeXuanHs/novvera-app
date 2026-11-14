@@ -57,22 +57,41 @@ class BookSourceManager with ChangeNotifier, Init {
   Future<void> doInit() async {
     await JsEngine().ensureInit();
     _sources.clear();
-    final jsKeys = <String>{};
+
+    // 1) 先解析外置 JS 源（此时注册表为空，同名不会冲突）。
+    final jsSources = <BookSource>[];
     if (appdata.settings['jsBookSourcesEnabled'] == true) {
       await _exportBundledJsSources();
-      jsKeys.addAll(await _loadJsSources());
+      jsSources.addAll(await _loadJsSources());
     }
+
+    // 2) 内置源照旧 —— 搜索/发现/详情/目录/正文全部沿用 Dart 实现。
     for (final source in createBuiltinNovelSources()) {
-      // JS 版同名源优先；只有没有 JS 实现时才回退到内置 Dart 源。
-      if (jsKeys.contains(source.key)) continue;
       await source.loadData();
       _sources.add(source);
+    }
+
+    // 3) 同名 JS 源只用来补「登录 / 网络收藏」，其余能力不覆盖；
+    //    没有内置实现的 JS 源则作为独立源保留。
+    for (final js in jsSources) {
+      final builtin = _sources.firstWhereOrNull((e) => e.key == js.key);
+      if (builtin == null) {
+        _sources.add(js);
+        continue;
+      }
+      if (js.account != null) builtin.account = js.account;
+      if (js.favoriteData != null) builtin.favoriteData = js.favoriteData;
+      Log.info(
+        "BookSource",
+        "patched ${js.key}: account=${js.account != null} "
+            "favorites=${js.favoriteData != null}",
+      );
     }
   }
 
   static const _bundledJsSources = ['wenku8.js'];
 
-  /// 首启把仓库里自带的 JS 源写到数据目录，之后用户可直接编辑/替换。
+  /// 首启把仓库里自带的 JS 补丁写到数据目录，之后用户可直接编辑。
   Future<void> _exportBundledJsSources() async {
     final dir = Directory("${App.dataPath}/comic_source");
     if (!await dir.exists()) await dir.create(recursive: true);
@@ -88,23 +107,20 @@ class BookSourceManager with ChangeNotifier, Init {
     }
   }
 
-  /// 扫描并解析 comic_source/*.js，返回已注册的 key。
-  Future<Set<String>> _loadJsSources() async {
-    final keys = <String>{};
+  Future<List<BookSource>> _loadJsSources() async {
+    final list = <BookSource>[];
     final dir = Directory("${App.dataPath}/comic_source");
-    if (!await dir.exists()) return keys;
+    if (!await dir.exists()) return list;
     await for (final entity in dir.list()) {
       if (entity is! File || !entity.path.endsWith(".js")) continue;
       try {
-        final source = await BookSourceParser()
-            .parse(await entity.readAsString(), entity.absolute.path);
-        _sources.add(source);
-        keys.add(source.key);
+        list.add(await BookSourceParser()
+            .parse(await entity.readAsString(), entity.absolute.path));
       } catch (e, s) {
         Log.error("BookSource", "${entity.path}: $e\n$s");
       }
     }
-    return keys;
+    return list;
   }
 
   /// Register explore/search pages for builtin sources into settings.
@@ -218,8 +234,8 @@ class BookSource {
     return key.hashCode;
   }
 
-  /// Account config.
-  final AccountConfig? account;
+  /// Account config. JS 源可以给同名内置源补一个账号实现。
+  AccountConfig? account;
 
   /// Category data used to build a static category tags page.
   final CategoryData? categoryData;
@@ -227,8 +243,8 @@ class BookSource {
   /// Category books data used to build a books page with a category tag.
   final CategoryBooksData? categoryBooksData;
 
-  /// Favorite data used to build favorite page.
-  final FavoriteData? favoriteData;
+  /// Favorite data used to build favorite page. 同样允许 JS 补丁覆盖。
+  FavoriteData? favoriteData;
 
   /// Explore pages.
   final List<ExplorePageData> explorePages;

@@ -90,6 +90,75 @@ class _BookSourcesViewState extends State<_BookSourcesView> {
     }
   }
 
+  Future<void> _login(BookSource source) async {
+    final user = TextEditingController(text: "${source.data['account']?[0] ?? ''}");
+    final pass = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text("${source.name} · ${"登录".tl}"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: user,
+              decoration: InputDecoration(
+                labelText: "用户名".tl,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: pass,
+              obscureText: true,
+              decoration: InputDecoration(
+                labelText: "密码".tl,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: Text("Cancel".tl),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: Text("Confirm".tl),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _busy = true);
+    try {
+      final login = source.account?.login;
+      if (login == null) return;
+      final res = await login(user.text.trim(), pass.text);
+      if (!res.error) {
+        source.data['account'] = [user.text.trim(), pass.text];
+        await source.saveData();
+        if (mounted) {
+          context.showMessage(message: "登录成功".tl);
+          setState(() {});
+        }
+      } else if (mounted) {
+        context.showMessage(message: res.errorMessage ?? "登录失败".tl);
+      }
+    } catch (e) {
+      if (mounted) context.showMessage(message: e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _logout(BookSource source) async {
+    source.data.remove('account');
+    await source.saveData();
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final sources = BookSource.all();
@@ -138,12 +207,23 @@ class _BookSourcesViewState extends State<_BookSourcesView> {
                 ),
                 title: Text(s.name),
                 subtitle: Text("${s.key} · ${builtin ? "内置".tl : "JS".tl}"),
-                trailing: builtin
-                    ? null
-                    : IconButton(
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (s.account != null)
+                      TextButton(
+                        onPressed: _busy
+                            ? null
+                            : () => s.isLogged ? _logout(s) : _login(s),
+                        child: Text(s.isLogged ? "退出登录".tl : "登录".tl),
+                      ),
+                    if (!builtin)
+                      IconButton(
                         icon: const Icon(Icons.delete_outline),
                         onPressed: () => _delete(s),
                       ),
+                  ],
+                ),
               );
             },
             childCount: sources.length,
