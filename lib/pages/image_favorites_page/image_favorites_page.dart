@@ -25,9 +25,16 @@ part "image_favorites_item.dart";
 part "image_favorites_photo_view.dart";
 
 class ImageFavoritesPage extends StatefulWidget {
-  const ImageFavoritesPage({super.key, this.initialKeyword});
+  const ImageFavoritesPage({
+    super.key,
+    this.initialKeyword,
+    this.embedded = false,
+  });
 
   final String? initialKeyword;
+
+  /// 作为「收藏」页的一个 tab 使用时不画自己的标题栏。
+  final bool embedded;
 
   @override
   State<ImageFavoritesPage> createState() => _ImageFavoritesPageState();
@@ -194,7 +201,11 @@ class _ImageFavoritesPageState extends State<ImageFavoritesPage> {
       slivers: [
         if (!searchMode && !multiSelectMode)
           SliverAppbar(
-            title: Text("Image Favorites".tl),
+            // 嵌在「收藏」页里时，返回按钮由外层 AppBar 提供，这里不要重复画。
+            leading: widget.embedded ? const SizedBox.shrink() : null,
+            title: widget.embedded
+                ? const SizedBox.shrink()
+                : Text("Image Favorites".tl),
             actions: [
               Tooltip(
                 message: "Search".tl,

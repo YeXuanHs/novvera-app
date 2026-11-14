@@ -1,0 +1,732 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
+import 'package:novvera/components/components.dart';
+import 'package:novvera/foundation/app.dart';
+import 'package:novvera/foundation/appdata.dart';
+import 'package:novvera/foundation/book_source/book_source.dart';
+import 'package:novvera/foundation/history.dart';
+import 'package:novvera/foundation/novel_source/novel_paginator.dart';
+import 'package:novvera/pages/image_favorites_page/image_favorites_page.dart';
+import 'package:novvera/pages/image_favorites_page/type.dart';
+import 'package:novvera/pages/reader/reader.dart';
+import 'package:novvera/utils/translations.dart';
+
+/// 收藏页：把「摘录」（划选的文字）和「图片」放在一起，两个 tab。
+class CollectionPage extends StatefulWidget {
+  const CollectionPage({
+    super.key,
+    this.initialTab = 0,
+    this.initialImageKeyword,
+  });
+
+  final int initialTab;
+
+  /// 图片 tab 的初始搜索词（首页标签/作者榜点进来时用）。
+  final String? initialImageKeyword;
+
+  @override
+  State<CollectionPage> createState() => _CollectionPageState();
+}
+
+class _CollectionPageState extends State<CollectionPage>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController = TabController(
+    length: 2,
+    vsync: this,
+    initialIndex: widget.initialTab,
+  );
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text("Favorites".tl),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: [
+            Tab(text: "Excerpts".tl),
+            Tab(text: "Images".tl),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          const _ExcerptTab(),
+          ImageFavoritesPage(
+            embedded: true,
+            initialKeyword: widget.initialImageKeyword,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+enum _ExcerptSort {
+  timeDesc("Time Desc"),
+  timeAsc("Time Asc"),
+  title("Title"),
+  chapter("Chapter");
+
+  final String label;
+
+  const _ExcerptSort(this.label);
+
+  static _ExcerptSort fromValue(String? value) {
+    for (final e in values) {
+      if (e.name == value) return e;
+    }
+    return timeDesc;
+  }
+}
+
+class _ExcerptTab extends StatefulWidget {
+  const _ExcerptTab();
+
+  @override
+  State<_ExcerptTab> createState() => _ExcerptTabState();
+}
+
+class _ExcerptTabState extends State<_ExcerptTab> {
+  final _search = TextEditingController();
+
+  List<Excerpt> items = [];
+
+  bool _searching = false;
+
+  bool _multiSelect = false;
+
+  _ExcerptSort _sort = _ExcerptSort.timeDesc;
+
+  TimeRange _timeFilter = TimeRange.all;
+
+  int _minLength = 0;
+
+  final Set<String> _selected = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _sort = _ExcerptSort.fromValue(appdata.implicitData["excerpt_sort"]);
+    _timeFilter = TimeRange.fromString(
+      appdata.implicitData["excerpt_time_filter"],
+    );
+    _minLength = appdata.implicitData["excerpt_length_filter"] ?? 0;
+    _load();
+    ExcerptManager().addListener(_load);
+  }
+
+  @override
+  void dispose() {
+    ExcerptManager().removeListener(_load);
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _load() {
+    if (!mounted) return;
+    setState(() {
+      final matched = ExcerptManager()
+          .getAll(keyword: _search.text)
+          .where((e) =>
+              _timeFilter.contains(e.time) && e.text.length >= _minLength)
+          .toList();
+      items = _sorted(matched);
+      final keys = items.map((e) => e.key).toSet();
+      _selected.removeWhere((k) => !keys.contains(k));
+    });
+  }
+
+  List<Excerpt> _sorted(List<Excerpt> list) => switch (_sort) {
+        _ExcerptSort.timeDesc => list, // getAll 本身就是按时间倒序
+        _ExcerptSort.timeAsc => list.reversed.toList(),
+        _ExcerptSort.title =>
+          list..sort((a, b) => a.bookTitle.compareTo(b.bookTitle)),
+        _ExcerptSort.chapter => list..sort((a, b) {
+            final byBook = a.bookTitle.compareTo(b.bookTitle);
+            if (byBook != 0) return byBook;
+            if (a.ep != b.ep) return a.ep.compareTo(b.ep);
+            return a.blockIndex.compareTo(b.blockIndex);
+          }),
+      };
+
+  void _openOptions() {
+    showDialog(
+      context: context,
+      builder: (_) => _ExcerptOptionsDialog(
+        initSort: _sort,
+        initTimeFilter: _timeFilter,
+        initMinLength: _minLength,
+        updateConfig: (sort, timeRange, minLength) {
+          setState(() {
+            _sort = sort;
+            _timeFilter = timeRange;
+            _minLength = minLength;
+          });
+          _load();
+        },
+      ),
+    );
+  }
+
+  void _open(Excerpt e) {
+    App.rootContext.to(
+      () => ReaderWithLoading(
+        id: e.bookId,
+        sourceKey: e.sourceKey,
+        initialEp: e.ep,
+        // 具体位置由 initialCursor 决定；这里给 1 免得沿用别的章节的页码。
+        initialPage: 1,
+        initialCursor: NovelPageCursor(e.blockIndex, e.charStart),
+      ),
+    );
+  }
+
+  void _copy(Excerpt e) {
+    Clipboard.setData(ClipboardData(text: e.text));
+    App.rootContext.showMessage(message: "Excerpt copied".tl);
+  }
+
+  void _delete(Excerpt e) {
+    ExcerptManager().remove(e);
+  }
+
+  void _toggle(Excerpt e) {
+    setState(() {
+      if (!_selected.remove(e.key)) _selected.add(e.key);
+    });
+  }
+
+  void _deleteSelected() {
+    final targets = items.where((e) => _selected.contains(e.key)).toList();
+    if (targets.isEmpty) return;
+    ExcerptManager().removeAll(targets);
+    setState(() {
+      _selected.clear();
+      _multiSelect = false;
+    });
+  }
+
+  Widget _buildToolbar(BuildContext context) {
+    final theme = Theme.of(context);
+    const height = 52.0;
+
+    if (_multiSelect) {
+      return SizedBox(
+        height: height,
+        child: Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.close),
+              tooltip: "Cancel".tl,
+              onPressed: () => setState(() {
+                _multiSelect = false;
+                _selected.clear();
+              }),
+            ),
+            Text('${_selected.length}', style: theme.textTheme.titleMedium),
+            const Spacer(),
+            IconButton(
+              icon: const Icon(Icons.select_all),
+              tooltip: "Select All".tl,
+              onPressed: () => setState(() {
+                _selected
+                  ..clear()
+                  ..addAll(items.map((e) => e.key));
+              }),
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              tooltip: "Delete".tl,
+              onPressed: _selected.isEmpty ? null : _deleteSelected,
+            ),
+            const SizedBox(width: 8),
+          ],
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: height,
+      child: Row(
+        children: [
+          const SizedBox(width: 16),
+          if (_searching)
+            Expanded(
+              child: TextField(
+                controller: _search,
+                autofocus: true,
+                onChanged: (_) => _load(),
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: "Search excerpts, book title, chapter".tl,
+                  border: InputBorder.none,
+                ),
+              ),
+            )
+          else
+            Expanded(
+              child: Text(
+                "Excerpts".tl,
+                style: theme.textTheme.titleMedium,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          if (_searching)
+            IconButton(
+              icon: const Icon(Icons.close, size: 20),
+              tooltip: "Cancel".tl,
+              onPressed: () {
+                _search.clear();
+                setState(() => _searching = false);
+                _load();
+              },
+            )
+          else ...[
+            IconButton(
+              icon: const Icon(Icons.search),
+              tooltip: "Search".tl,
+              onPressed: () => setState(() => _searching = true),
+            ),
+            IconButton(
+              isSelected:
+                  _timeFilter != TimeRange.all || _minLength > 0,
+              tooltip: "Sort".tl,
+              icon: const Icon(Icons.sort_rounded),
+              onPressed: _openOptions,
+            ),
+            IconButton(
+              icon: const Icon(Icons.checklist),
+              tooltip: "Multi-Select".tl,
+              onPressed: () => setState(() => _multiSelect = true),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      children: [
+        _buildToolbar(context),
+        const Divider(height: 1),
+        Expanded(
+          child: items.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.format_quote,
+                        size: 48,
+                        color: theme.colorScheme.outline,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        "No excerpts yet".tl,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: theme.colorScheme.outline,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        "Tap the quote button while reading, then select the text you want to keep"
+                            .tl,
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.outline,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.only(top: 8, bottom: 24),
+                  itemCount: items.length,
+                  itemBuilder: (context, index) =>
+                      _buildItem(context, items[index]),
+                ),
+        ),
+      ],
+    );
+  }
+
+  void _showMenu(BuildContext context, Excerpt e, Offset position) {
+    showMenuX(context, position, [
+      MenuEntry(
+        icon: Icons.chrome_reader_mode_outlined,
+        text: "Go to text".tl,
+        onClick: () => _open(e),
+      ),
+      MenuEntry(
+        icon: Icons.copy,
+        text: "Copy".tl,
+        onClick: () => _copy(e),
+      ),
+      MenuEntry(
+        icon: Icons.delete_outline,
+        text: "Delete".tl,
+        onClick: () => _delete(e),
+      ),
+    ]);
+  }
+
+  void _showMenuAtCenter(BuildContext context, Excerpt e) {
+    final renderBox = context.findRenderObject() as RenderBox;
+    final size = renderBox.size;
+    _showMenu(
+      context,
+      e,
+      renderBox.localToGlobal(
+        Offset((size.width - 242) / 2, size.height / 2),
+      ),
+    );
+  }
+
+  /// 卡片结构与图片收藏保持一致：标题行 + 内容块 + 底部信息行。
+  Widget _buildItem(BuildContext context, Excerpt e) {
+    final theme = Theme.of(context);
+    final checked = _selected.contains(e.key);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      decoration: BoxDecoration(
+        color: checked ? theme.colorScheme.primaryContainer : null,
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant,
+          width: 0.6,
+        ),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () {
+          if (_multiSelect) {
+            _toggle(e);
+          } else {
+            _open(e);
+          }
+        },
+        onLongPress: () {
+          if (_multiSelect) {
+            _toggle(e);
+          } else {
+            _showMenuAtCenter(context, e);
+          }
+        },
+        onSecondaryTapDown: (details) {
+          _showMenu(context, e, details.globalPosition);
+        },
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildTop(context, e, checked),
+            _buildBody(context, e),
+            _buildBottom(context, e),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTop(BuildContext context, Excerpt e, bool checked) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          if (_multiSelect)
+            IgnorePointer(
+              child: Checkbox(
+                value: checked,
+                onChanged: (_) {},
+              ),
+            ),
+          Expanded(
+            child: Text(
+              e.bookTitle,
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+                fontSize: 16.0,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              softWrap: true,
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.secondaryContainer,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text("L${e.blockIndex + 1}", style: const TextStyle(fontSize: 12.0)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBody(BuildContext context, Excerpt e) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.secondaryContainer,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          e.text,
+          maxLines: 4,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 14.0, height: 1.6),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottom(BuildContext context, Excerpt e) {
+    final date = DateFormat('yyyy-MM-dd').format(e.time);
+    final sourceName = BookSource.find(e.sourceKey)?.name ?? "Unknown";
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+      child: Row(
+        children: [
+          Text(
+            "$date | $sourceName",
+            textAlign: TextAlign.left,
+            style: const TextStyle(fontSize: 12.0),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              e.epName,
+              textAlign: TextAlign.right,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12.0),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 摘录的排序 / 筛选弹窗——与图片收藏那个保持同一套结构与控件，只换文案。
+class _ExcerptOptionsDialog extends StatefulWidget {
+  const _ExcerptOptionsDialog({
+    required this.initSort,
+    required this.initTimeFilter,
+    required this.initMinLength,
+    required this.updateConfig,
+  });
+
+  final _ExcerptSort initSort;
+  final TimeRange initTimeFilter;
+  final int initMinLength;
+  final void Function(_ExcerptSort sort, TimeRange timeRange, int minLength)
+      updateConfig;
+
+  @override
+  State<_ExcerptOptionsDialog> createState() => _ExcerptOptionsDialogState();
+}
+
+class _ExcerptOptionsDialogState extends State<_ExcerptOptionsDialog> {
+  static const lengthOptions = [0, 10, 20, 50, 100, 200, 500];
+
+  final List<String> optionTypes = ['Sort', 'Filter'];
+
+  late _ExcerptSort sort = widget.initSort;
+
+  late int minLength = widget.initMinLength;
+
+  late TimeRangeType timeRangeType;
+
+  DateTime? start;
+
+  DateTime? end;
+
+  @override
+  void initState() {
+    super.initState();
+    timeRangeType = switch (widget.initTimeFilter) {
+      TimeRange.all => TimeRangeType.all,
+      TimeRange.lastWeek => TimeRangeType.lastWeek,
+      TimeRange.lastMonth => TimeRangeType.lastMonth,
+      TimeRange.lastHalfYear => TimeRangeType.lastHalfYear,
+      TimeRange.lastYear => TimeRangeType.lastYear,
+      _ => TimeRangeType.custom,
+    };
+    if (timeRangeType == TimeRangeType.custom) {
+      end = widget.initTimeFilter.end;
+      start = end!.subtract(widget.initTimeFilter.duration);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tabBar = Material(
+      borderRadius: BorderRadius.circular(8),
+      child: AppTabBar(
+        key: PageStorageKey(optionTypes),
+        tabs: optionTypes.map((e) => Tab(text: e.tl, key: Key(e))).toList(),
+      ),
+    ).paddingTop(context.padding.top);
+
+    return ContentDialog(
+      content: DefaultTabController(
+        length: 2,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            tabBar,
+            TabViewBody(
+              children: [
+                RadioGroup<_ExcerptSort>(
+                  groupValue: sort,
+                  onChanged: (v) {
+                    setState(() => sort = v ?? sort);
+                  },
+                  child: Column(
+                    children: _ExcerptSort.values
+                        .map(
+                          (e) => RadioListTile<_ExcerptSort>(
+                            title: Text(e.label.tl),
+                            value: e,
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+                Column(
+                  children: [
+                    ListTile(
+                      title: Text("Time Filter".tl),
+                      trailing: Select(
+                        current: timeRangeType.value.tl,
+                        values: TimeRangeType.values
+                            .map((e) => e.value.tl)
+                            .toList(),
+                        minWidth: 64,
+                        onTap: (index) {
+                          setState(() {
+                            timeRangeType = TimeRangeType.values[index];
+                          });
+                        },
+                      ),
+                    ),
+                    if (timeRangeType == TimeRangeType.custom)
+                      Column(
+                        children: [
+                          ListTile(
+                            title: Text("Start Time".tl),
+                            trailing: TextButton(
+                              onPressed: () async {
+                                final date = await showDatePicker(
+                                  context: context,
+                                  initialDate: start ?? DateTime.now(),
+                                  firstDate: DateTime(2000),
+                                  lastDate: end ?? DateTime.now(),
+                                );
+                                if (date != null) {
+                                  setState(() => start = date);
+                                }
+                              },
+                              child: Text(
+                                start == null
+                                    ? "Select Date".tl
+                                    : DateFormat("yyyy-MM-dd").format(start!),
+                              ),
+                            ),
+                          ),
+                          ListTile(
+                            title: Text("End Time".tl),
+                            trailing: TextButton(
+                              onPressed: () async {
+                                final date = await showDatePicker(
+                                  context: context,
+                                  initialDate: end ?? DateTime.now(),
+                                  firstDate: start ?? DateTime(2000),
+                                  lastDate: DateTime.now(),
+                                );
+                                if (date != null) {
+                                  setState(() => end = date);
+                                }
+                              },
+                              child: Text(
+                                end == null
+                                    ? "Select Date".tl
+                                    : DateFormat("yyyy-MM-dd").format(end!),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ListTile(
+                      title: Text("Text Length Greater Than".tl),
+                      trailing: Select(
+                        current: minLength.toString(),
+                        values:
+                            lengthOptions.map((e) => e.toString()).toList(),
+                        minWidth: 64,
+                        onTap: (index) {
+                          setState(() => minLength = lengthOptions[index]);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        FilledButton(
+          onPressed: () {
+            appdata.implicitData["excerpt_sort"] = sort.name;
+            TimeRange timeRange;
+            if (timeRangeType == TimeRangeType.custom) {
+              timeRange = TimeRange(
+                end: end,
+                duration: end!.difference(start!),
+              );
+            } else {
+              timeRange = switch (timeRangeType) {
+                TimeRangeType.all => TimeRange.all,
+                TimeRangeType.lastWeek => TimeRange.lastWeek,
+                TimeRangeType.lastMonth => TimeRange.lastMonth,
+                TimeRangeType.lastHalfYear => TimeRange.lastHalfYear,
+                TimeRangeType.lastYear => TimeRange.lastYear,
+                _ => TimeRange.all,
+              };
+            }
+            appdata.implicitData["excerpt_time_filter"] = timeRange.toString();
+            appdata.implicitData["excerpt_length_filter"] = minLength;
+            appdata.writeImplicitData();
+            if (mounted) {
+              Navigator.pop(context);
+              widget.updateConfig(sort, timeRange, minLength);
+            }
+          },
+          child: Text("Confirm".tl),
+        ),
+      ],
+    );
+  }
+}

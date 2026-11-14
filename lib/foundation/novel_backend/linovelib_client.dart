@@ -12,6 +12,7 @@ import 'package:novvera/foundation/novel_backend/novel_http.dart';
 import 'package:novvera/network/app_dio.dart';
 import 'package:novvera/network/cloudflare.dart';
 import 'package:novvera/network/cookie_jar.dart';
+import 'package:novvera/pages/linovelib_captcha_page.dart';
 import 'package:novvera/pages/webview.dart';
 
 const _base = 'https://www.linovelib.com';
@@ -60,14 +61,20 @@ class LinovelibClient {
   LinovelibClient._();
   static final LinovelibClient instance = LinovelibClient._();
 
-  final _http = NovelHttp(defaultReferer: '$_base/');
+  /// 桌面 Chrome 124 — same as [webUA] / CF Verify (never Mobile).
+  static const _ua = webUA;
+
+  /// 强制桌面 UA：本站有独立手机站，移动 UA 会被 302 到 m.linovelib.com。
+  final _http = NovelHttp(defaultReferer: '$_base/', userAgent: _ua);
+
   final _bookCache = <String, Map<String, dynamic>>{};
   final _catalogCache = <String, Map<String, dynamic>>{};
 
-  /// Desktop Chrome 124 — same as [webUA] / CF Verify (never Mobile).
-  static const _ua = webUA;
-
-  Map<String, String> get _uaHeaders => const {'User-Agent': _ua};
+  Map<String, String> get _uaHeaders => const {
+        'User-Agent': _ua,
+        'Sec-CH-UA-Mobile': '?0',
+        'Sec-CH-UA-Platform': '"Windows"',
+      };
 
   Future<void> init() async {
     try {
@@ -104,6 +111,12 @@ class LinovelibClient {
     return true;
   }
 
+  bool _isMobileSiteUrl(String url) => url.contains('://m.linovelib.com');
+
+  /// 搜索验证页（图片验证码）。出现时只能人工过一次，通过后 30 分钟免验证。
+  bool _isSearchCaptcha(String html) =>
+      html.contains('search_challenge') || html.contains('checkcode.php');
+
   bool _isCfHtml(String html) {
     final lower = html.toLowerCase();
     return lower.contains('just a moment') ||
@@ -118,9 +131,25 @@ class LinovelibClient {
   /// without this fallback the Verify button loops forever.
   Future<({int status, String html, String url})> _getHtml(String url) async {
     try {
-      final res = await _http.getHtml(url, headers: _uaHeaders);
+      var res = await _http.getHtml(url, headers: _uaHeaders);
       if (_isCfHtml(res.html)) {
         throw CloudflareException(url);
+      }
+      if (_isMobileSiteUrl(res.url)) {
+        // 被 302 到手机站：先换回电脑站地址重取，仍不行就走 WebView
+        // （WebView 的 UA/指纹一致，不会被判成手机）。
+        Log.warning('Linovelib', 'redirected to mobile site: ${res.url}');
+        final desktop = res.url.replaceFirst(
+          '://m.linovelib.com',
+          '://www.linovelib.com',
+        );
+        if (desktop != res.url) {
+          res = await _http.getHtml(desktop, headers: _uaHeaders);
+        }
+        if (_isMobileSiteUrl(res.url)) {
+          final html = await _fetchHtmlViaWebView(url);
+          return (status: 200, html: html, url: url);
+        }
       }
       return res;
     } on CloudflareException catch (e) {
@@ -414,6 +443,35 @@ class LinovelibClient {
       finalUrl = wv.url;
     }
 
+    // 搜索触发图片验证码：打开可见 WebView 让用户过一次。
+    // 通过后站点对该 IP 30 分钟内免验证，cookie 会回写到 Dio 的 jar。
+    if (_isSearchCaptcha(html)) {
+      Log.warning('Linovelib', 'search captcha required');
+      final passed = await _passSearchCaptcha();
+      if (passed) {
+        try {
+          final retry = await _http.postForm(
+            '$_base/S6/',
+            {'searchkey': keyword},
+            headers: {
+              'User-Agent': _ua,
+              'Origin': _base,
+              'Referer': '$_base/',
+            },
+          );
+          html = retry.html;
+          finalUrl = retry.url;
+        } catch (e) {
+          Log.warning('Linovelib', 'search retry after captcha: $e');
+        }
+      }
+      if (_isSearchCaptcha(html)) {
+        throw Exception(
+          '哔哩轻小说搜索需要人机验证，验证未通过，请稍后重试',
+        );
+      }
+    }
+
     final doc = parseHtml(html);
     // Unique hit: site 302s to `/novel/{aid}.html`. That detail page also lists
     // related books — scraping every /novel/*.html would inflate results.
@@ -479,6 +537,24 @@ class LinovelibClient {
       if (aid.isNotEmpty) return aid;
     }
     return null;
+  }
+
+  /// 打开可见 WebView 让用户手动过一次「搜索验证」（4 位图片验证码）。
+  ///
+  /// 实际 UI 在 [passLinovelibSearchCaptcha]（那边才能用 material 组件）。
+  Future<bool> _passSearchCaptcha() {
+    return passLinovelibSearchCaptcha(
+      base: _base,
+      userAgent: _ua,
+      isCaptcha: _isSearchCaptcha,
+      isResult: (url, html) =>
+          url.contains('/S6') ||
+          _aidRe.hasMatch(url) ||
+          html.contains('se-result') ||
+          html.contains('search-result') ||
+          html.contains('搜索结果') ||
+          html.contains('没有搜索到'),
+    );
   }
 
   /// Run search_guard + form POST inside WebView (browser TLS + cookies).

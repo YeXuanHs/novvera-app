@@ -61,6 +61,8 @@ part 'chapters.dart';
 
 part 'chapter_comments.dart';
 
+part 'excerpt_picker.dart';
+
 extension _ReaderContext on BuildContext {
   _ReaderState get reader => findAncestorStateOfType<_ReaderState>()!;
 
@@ -79,6 +81,7 @@ class Reader extends StatefulWidget {
     this.initialPage,
     this.initialChapter,
     this.initialChapterGroup,
+    this.initialCursor,
     required this.author,
     required this.tags,
   });
@@ -103,6 +106,9 @@ class Reader extends StatefulWidget {
 
   /// Starts from 1, invalid values equal to 1
   final int? initialChapterGroup;
+
+  /// 小说专用：打开后直接定位到这一行（摘录跳转用），优先于历史进度。
+  final NovelPageCursor? initialCursor;
 
   final History history;
 
@@ -200,9 +206,11 @@ class _ReaderState extends State<Reader>
     if (chapter < 1) {
       chapter = 1;
     }
-    if (widget.initialChapterGroup != null) {
-      for (int i = 0; i < (widget.initialChapterGroup! - 1); i++) {
-        chapter += widget.chapters!.getGroupByIndex(i).length;
+    final chapters = widget.chapters;
+    final group = widget.initialChapterGroup;
+    if (group != null && chapters != null) {
+      for (int i = 0; i < (group - 1) && i < chapters.groups.length; i++) {
+        chapter += chapters.getGroupByIndex(i).length;
       }
     }
     if (widget.initialPage != null) {
@@ -341,7 +349,15 @@ class _ReaderState extends State<Reader>
         final top = _imageViewController?.getTopCursor();
         history!.lineBlock = top?.blockIndex;
         history!.lineChar = top?.charIndex;
-        history!.page = page.clamp(1, images?.length ?? 1);
+        // `page` is reported as the line at the very top of the screen
+        // (1-based block index) — the same unit in both gallery and
+        // continuous mode, so "progress" never depends on how the chapter
+        // happens to be split into pages right now.
+        final lineCount = NovelPageCache.blocks.length;
+        history!.page = ((top?.blockIndex ?? (page - 1)) + 1).clamp(
+          1,
+          lineCount > 0 ? lineCount : 1,
+        );
         history!.maxPage = null;
       } else if (page >= maxPage) {
         /// Record the last image of chapter
@@ -429,6 +445,29 @@ class _ReaderState extends State<Reader>
 
   /// Books use P (page); novels use L (line / text block).
   String get pageUnit => isNovel ? 'L' : 'P';
+
+  /// 本章是否含文字（整章维度，不随滚动/翻页变化）。
+  bool get chapterHasText {
+    final blocks = NovelPageCache.blocks;
+    // 章节还没加载时先按"有文字"处理，避免按钮先闪掉再出现。
+    if (blocks.isEmpty) return true;
+    return blocks.any((b) => b is NovelTextBlock && b.text.trim().isNotEmpty);
+  }
+
+  /// 本章是否含插图。
+  bool get chapterHasImage {
+    final blocks = NovelPageCache.blocks;
+    return blocks.any((b) => b is NovelImageBlock);
+  }
+
+  /// 1-based index of the line (text block) sitting at the very top of the
+  /// screen. This is the reading position that both gallery and continuous
+  /// mode agree on, so it doubles as the progress value for novels.
+  int get topLineNumber {
+    final cursor = _imageViewController?.getTopCursor();
+    if (cursor != null) return cursor.blockIndex + 1;
+    return page;
+  }
 
   /// Set on chapter load from [History.lineBlock] so the active view can jump
   /// to the saved top-of-screen line once it knows its own geometry.

@@ -216,9 +216,23 @@ String gbkQueryEncode(String text) {
 /// Cloudflare challenges are detected only by [CloudflareInterceptor]
 /// (`403` + `cf-mitigated: challenge`), same as upstream Venera.
 class NovelHttp {
-  NovelHttp({this.defaultReferer});
+  NovelHttp({this.defaultReferer, this.userAgent});
 
   final String? defaultReferer;
+
+  /// 固定 User-Agent。哔哩轻小说有独立手机站，移动 UA 会被 302 到
+  /// m.linovelib.com，之后拿电脑站的 DOM 规则去解析就全错，所以强制桌面 UA。
+  final String? userAgent;
+
+  /// 桌面 UA + client hints，避免服务器只看 `Sec-CH-UA-Mobile` 就判成手机。
+  Map<String, String> get _forcedUaHeaders => userAgent == null
+      ? const {}
+      : {
+          'User-Agent': userAgent!,
+          'Sec-CH-UA-Mobile': '?0',
+          'Sec-CH-UA-Platform': '"Windows"',
+        };
+
   final Dio _dio = AppDio();
 
   Future<T> _guardDio<T>(Future<T> Function() run) async {
@@ -248,6 +262,7 @@ class NovelHttp {
           responseType: ResponseType.bytes,
           followRedirects: true,
           headers: {
+            ..._forcedUaHeaders,
             if (defaultReferer != null) 'Referer': defaultReferer!,
             'Accept':
                 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -279,6 +294,7 @@ class NovelHttp {
           responseType: ResponseType.bytes,
           followRedirects: true,
           headers: {
+            ..._forcedUaHeaders,
             if (defaultReferer != null) 'Referer': defaultReferer!,
             ...?headers,
           },
@@ -304,6 +320,7 @@ class NovelHttp {
           responseType: ResponseType.json,
           followRedirects: true,
           headers: {
+            ..._forcedUaHeaders,
             if (defaultReferer != null) 'Referer': defaultReferer!,
             'Accept': 'application/json, text/plain, */*',
             'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',

@@ -71,9 +71,10 @@ class _DownloadingPageState extends State<DownloadingPage> {
   }
 
   Widget buildTop() {
-    int speed = 0;
-    if (LocalManager().downloadingTasks.isNotEmpty) {
-      speed = LocalManager().downloadingTasks.first.speed;
+    // 多个任务并发时显示总速度，而不是只取第一个任务的。
+    var speed = 0;
+    for (final task in LocalManager().downloadingTasks) {
+      speed += task.speed;
     }
     var first = LocalManager().downloadingTasks.firstOrNull;
     return Container(

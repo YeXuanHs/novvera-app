@@ -1,0 +1,61 @@
+name: windows-package
+
+# 只打 Windows 的可直接运行程序包（zip），不含安装包。
+# 用于在特性分支上快速出可试用版本，不触发 main.yml 的全平台构建。
+on:
+  workflow_dispatch: {}
+  push:
+    paths:
+      - ".github/workflows/windows-package.yml"
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - run: pip install httpx
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+          architecture: x64
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Build Windows release
+        shell: pwsh
+        env:
+          RUSTFLAGS: "--cfg reqwest_unstable"
+        run: |
+          flutter build windows --release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python windows/build.py --package-only
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Collect zip only
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path result | Out-Null
+          Get-ChildItem build/windows -Filter *.zip |
+            Where-Object { $_.Name -match '^(Novvera|Venera)-' } |
+            ForEach-Object { Copy-Item $_.FullName result/ -Force }
+          Get-ChildItem result | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: novvera-windows-zip
+          path: result/
+          if-no-files-found: error

@@ -13,8 +13,8 @@ import 'package:novvera/pages/book_details_page/book_page.dart';
 import 'package:novvera/pages/book_source_page.dart';
 import 'package:novvera/pages/downloading_page.dart';
 import 'package:novvera/pages/follow_updates_page.dart';
+import 'package:novvera/pages/favorites/collection_page.dart';
 import 'package:novvera/pages/history_page.dart';
-import 'package:novvera/pages/image_favorites_page/image_favorites_page.dart';
 import 'package:novvera/pages/search_page.dart';
 import 'package:novvera/utils/data_sync.dart';
 import 'package:novvera/utils/tags_translation.dart';
@@ -695,19 +695,23 @@ class _ImageFavoritesState extends State<ImageFavorites> {
   void initState() {
     refreshImageFavorites();
     ImageFavoriteManager().addListener(refreshImageFavorites);
+    ExcerptManager().addListener(refreshImageFavorites);
     super.initState();
   }
 
   @override
   void dispose() {
     ImageFavoriteManager().removeListener(refreshImageFavorites);
+    ExcerptManager().removeListener(refreshImageFavorites);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    bool hasData =
+    final excerptCount = ExcerptManager().count;
+    bool hasImageData =
         imageFavoritesCompute != null && !imageFavoritesCompute!.isEmpty;
+    bool hasData = hasImageData || excerptCount > 0;
     return SliverToBoxAdapter(
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
@@ -721,9 +725,7 @@ class _ImageFavoritesState extends State<ImageFavorites> {
         child: InkWell(
           borderRadius: BorderRadius.circular(8),
           onTap: () {
-            context.to(
-              () => const ImageFavoritesPage()
-            );
+            context.to(() => const CollectionPage());
           },
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -733,7 +735,7 @@ class _ImageFavoritesState extends State<ImageFavorites> {
                 child: Row(
                   children: [
                     Center(
-                      child: Text('Image Favorites'.tl, style: ts.s18),
+                      child: Text('收藏', style: ts.s18),
                     ),
                     if (hasData)
                       Container(
@@ -746,7 +748,9 @@ class _ImageFavoritesState extends State<ImageFavorites> {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          imageFavoritesCompute!.count.toString(),
+                          (excerptCount +
+                                  (imageFavoritesCompute?.count ?? 0))
+                              .toString(),
                           style: ts.s12,
                         ),
                       ),
@@ -755,7 +759,7 @@ class _ImageFavoritesState extends State<ImageFavorites> {
                   ],
                 ),
               ).paddingHorizontal(16),
-              if (hasData)
+              if (hasImageData)
                 Row(
                   children: [
                     const Spacer(),
@@ -767,8 +771,8 @@ class _ImageFavoritesState extends State<ImageFavorites> {
                     const Spacer(),
                   ],
                 ),
-              if (hasData) const SizedBox(height: 8),
-              if (hasData)
+              if (hasImageData) const SizedBox(height: 8),
+              if (hasImageData)
                 buildChart(switch (displayType) {
                   0 => imageFavoritesCompute!.tags,
                   1 => imageFavoritesCompute!.authors,
@@ -843,7 +847,7 @@ class _ImageFavoritesState extends State<ImageFavorites> {
               enableTranslation: displayType != 2,
               onTap: (text) {
                 context.to(
-                  () => ImageFavoritesPage(initialKeyword: text),
+                  () => CollectionPage(initialTab: 1, initialImageKeyword: text),
                 );
               },
             );

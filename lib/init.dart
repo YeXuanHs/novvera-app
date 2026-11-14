@@ -41,7 +41,9 @@ Future<void> init() async {
   // rhttp (flutter_rust_bridge) must be ready before any AppDio / network use.
   await Rhttp.init();
   // In-process Dart novel backends (wenku8 / linovelib / huanmeng); no Python sidecar.
-  await NovelApiClient.instance.init().wait();
+  // 会话热身会打网络（linovelib 首页 + search_guard，可能几十秒），放后台跑，
+  // 不要挡住首屏；真正用到章节前它自然完成。
+  unawaited(NovelApiClient.instance.init().wait());
   try {
     var futures = [
       App.initComponents(),
