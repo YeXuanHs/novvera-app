@@ -39,7 +39,7 @@ class HuanmengSource extends BookSource {
             id: id,
             title: String(raw["name"] || "").trim(),
             cover: cover,
-            description: String(raw["intro"] || "").trim(),
+            description: String(raw["intro"] || raw["text"] || "").trim(),
             tags: String(raw["tags"] || raw["kind"] || "").split(/[,，、]/).map((x) => x.trim()).filter((x) => x),
             sourceKey: this.key,
         }
