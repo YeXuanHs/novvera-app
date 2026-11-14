@@ -6,7 +6,7 @@
 class Wenku8Source extends BookSource {
     name = "轻小说文库"
     key = "wenku8"
-    version = "1.6.1"
+    version = "1.7.0"
     minAppVersion = "1.0.0"
     url = "https://www.wenku8.net"
 
@@ -108,7 +108,7 @@ class Wenku8Source extends BookSource {
     _parseContent(raw) {
         let result = []
         let mdRe = /!\[[^\]]*\]\(\s*(https?:\/\/[^\s)]+?)\s*<!--image-->\s*[^)]*\)/gi
-        for (let rawLine of raw.split("\r\n")) {
+        for (let rawLine of raw.split(/\r?\n/)) {
             let line = rawLine
             if (/^ *$/.test(line)) continue
             if (mdRe.test(line)) {

@@ -5,7 +5,7 @@
     {
       "key": "wenku8",
       "name": "轻小说文库",
-      "version": "1.6.1",
+      "version": "1.7.0",
       "fileName": "wenku8.js",
       "description": "官方 App 中转 API：详情/目录/正文，网页搜索与排行，支持登录与网络收藏"
     },
