@@ -8,7 +8,7 @@
 class LinovelibSource extends BookSource {
     name = "哔哩轻小说"
     key = "linovelib"
-    version = "1.2.0"
+    version = "1.3.0"
     minAppVersion = "1.0.0"
     url = "https://www.linovelib.com"
 

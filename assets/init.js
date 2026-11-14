@@ -533,6 +533,24 @@ let Network = {
      * @param {Object} extra - Extra options to pass to the interceptor.
      * @returns {Promise<{status: number, headers: {}, body: string}>} The response from the request.
      */
+    /**
+     * 打开可见 WebView 登录（过 Cloudflare 那种），成功后 cookie 回写 jar。
+     * @param {string} url 登录页
+     * @param {string[]} keywords 登录成功的页面特征文字
+     * @param {string} ua WebView UA
+     * @param {string} cookieUrl 回写 cookie 用的域名
+     * @returns {Promise<boolean>}
+     */
+    async loginWithWebview(url, keywords, ua, cookieUrl) {
+        return await sendMessage({
+            method: 'webview_login',
+            url: url,
+            keywords: keywords || [],
+            ua: ua,
+            cookie_url: cookieUrl || url,
+        });
+    },
+
     async get(url, headers, extra) {
         return this.sendRequest('GET', url, headers, extra);
     },

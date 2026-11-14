@@ -23,6 +23,7 @@ import 'package:pointycastle/block/modes/ecb.dart';
 import 'package:pointycastle/block/modes/ofb.dart';
 import 'package:uuid/uuid.dart';
 import 'package:novvera/components/js_ui.dart';
+import 'package:novvera/pages/js_login_page.dart';
 import 'package:novvera/foundation/app.dart';
 import 'package:novvera/foundation/js_pool.dart';
 import 'package:novvera/network/app_dio.dart';
@@ -188,6 +189,14 @@ class JsEngine with _JSEngineApi, JsUiApi, Init {
               var res = await Clipboard.getData(Clipboard.kTextPlain);
               return res?.text;
             });
+          case "webview_login":
+            // JS 源登录被 Cloudflare 这类拦截时，交给真实 WebView 过一次。
+            return jsWebviewLogin(
+              url: message["url"].toString(),
+              userAgent: message["ua"]?.toString(),
+              successKeywords: List<String>.from(message["keywords"] ?? []),
+              cookieUrl: (message["cookie_url"] ?? message["url"]).toString(),
+            );
           case "compute":
             final func = message["function"];
             final args = message["args"];

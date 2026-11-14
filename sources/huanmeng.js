@@ -7,7 +7,7 @@
 class HuanmengSource extends BookSource {
     name = "幻梦轻小说"
     key = "huanmeng"
-    version = "1.2.0"
+    version = "1.3.0"
     minAppVersion = "1.0.0"
     url = "https://www.huanmengacg.com"
 

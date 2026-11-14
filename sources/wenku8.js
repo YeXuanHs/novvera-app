@@ -6,7 +6,7 @@
 class Wenku8Source extends BookSource {
     name = "轻小说文库"
     key = "wenku8"
-    version = "1.2.0"
+    version = "1.3.0"
     minAppVersion = "1.0.0"
     url = "https://www.wenku8.net"
 
@@ -147,15 +147,25 @@ class Wenku8Source extends BookSource {
 
     // ---- 登录 / 书架 ----
     async _login(user, pwd) {
-        let body = "username=" + encodeURIComponent(user) +
-            "&password=" + encodeURIComponent(pwd) +
-            "&usecookie=315360000&action=login&submit=" + encodeURIComponent("登 录")
-        let headers = this._headers(this.base + "/login.php")
-        headers["Content-Type"] = "application/x-www-form-urlencoded"
-        let res = await Network.fetchBytes(
-            "POST", this.base + "/login.php?do=submit", headers, body)
-        let html = await Convert.decodeGbk(res.body)
-        return html.includes("欢迎您") || html.includes("用户面板")
+        try {
+            let body = "username=" + encodeURIComponent(user) +
+                "&password=" + encodeURIComponent(pwd) +
+                "&usecookie=315360000&action=login&submit=" + encodeURIComponent("登 录")
+            let headers = this._headers(this.base + "/login.php")
+            headers["Content-Type"] = "application/x-www-form-urlencoded"
+            let res = await Network.fetchBytes(
+                "POST", this.base + "/login.php?do=submit", headers, body)
+            let html = await Convert.decodeGbk(res.body)
+            return html.includes("欢迎您") || html.includes("用户面板")
+        } catch (e) {
+            // 登录接口有 Cloudflare，Dio 没有浏览器指纹：交给原生 WebView 过。
+            return await Network.loginWithWebview(
+                this.base + "/login.php",
+                ["欢迎您", "用户面板"],
+                this.webUa,
+                this.base + "/",
+            )
+        }
     }
 
     async _refresh() {
