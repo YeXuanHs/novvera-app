@@ -57,23 +57,34 @@ class BookSourceManager with ChangeNotifier, Init {
   Future<void> doInit() async {
     await JsEngine().ensureInit();
     _sources.clear();
-
-    // 1) 先解析外置 JS 源（此时注册表为空，同名不会冲突）。
-    final jsSources = <BookSource>[];
-    if (appdata.settings['jsBookSourcesEnabled'] == true) {
-      jsSources.addAll(await _loadJsSources());
-    }
-
-    // 2) JS 源优先：同名内置源不再注册，全部逻辑走外置 JS。
-    final jsKeys = jsSources.map((e) => e.key).toSet();
+    // 内置源先就位，界面立即可用。
     for (final source in createBuiltinNovelSources()) {
-      if (jsKeys.contains(source.key)) continue;
       await source.loadData();
       _sources.add(source);
     }
-    for (final js in jsSources) {
-      await js.loadData();
-      _sources.add(js);
+    if (appdata.settings['jsBookSourcesEnabled'] == true) {
+      // 外置 JS 源逐个解析很慢（几十个源就是几十秒），放后台跑，不挡启动。
+      unawaited(_loadJsSourcesInBackground());
+    }
+  }
+
+  bool _jsLoading = false;
+
+  Future<void> _loadJsSourcesInBackground() async {
+    if (_jsLoading) return;
+    _jsLoading = true;
+    try {
+      final loaded = await _loadJsSources();
+      for (final js in loaded) {
+        await js.loadData();
+        _sources.removeWhere((e) => e.key == js.key);
+        _sources.add(js);
+      }
+      if (loaded.isNotEmpty) notifyListeners();
+    } catch (e) {
+      Log.error("BookSource", "background js load: $e");
+    } finally {
+      _jsLoading = false;
     }
   }
 

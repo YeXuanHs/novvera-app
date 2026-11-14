@@ -35,7 +35,7 @@ class HomePage extends StatelessWidget {
         const _History(),
         const _Local(),
         const FollowUpdatesWidget(),
-        // Book source management UI removed (builtin novel sources only)
+        const _BookSourceWidget(),
         const ImageFavorites(),
         SliverPadding(padding: EdgeInsets.only(top: context.padding.bottom)),
       ],
