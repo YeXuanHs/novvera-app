@@ -61,7 +61,6 @@ class BookSourceManager with ChangeNotifier, Init {
     // 1) 先解析外置 JS 源（此时注册表为空，同名不会冲突）。
     final jsSources = <BookSource>[];
     if (appdata.settings['jsBookSourcesEnabled'] == true) {
-      await _exportBundledJsSources();
       jsSources.addAll(await _loadJsSources());
     }
 
@@ -75,24 +74,6 @@ class BookSourceManager with ChangeNotifier, Init {
     for (final js in jsSources) {
       await js.loadData();
       _sources.add(js);
-    }
-  }
-
-  static const _bundledJsSources = ['wenku8.js', 'huanmeng.js', 'linovelib.js'];
-
-  /// 首启把仓库里自带的 JS 补丁写到数据目录，之后用户可直接编辑。
-  Future<void> _exportBundledJsSources() async {
-    final dir = Directory("${App.dataPath}/comic_source");
-    if (!await dir.exists()) await dir.create(recursive: true);
-    for (final name in _bundledJsSources) {
-      final file = File("${dir.path}/$name");
-      if (await file.exists()) continue;
-      try {
-        final js = await rootBundle.loadString("assets/js_sources/$name");
-        await file.writeAsString(js);
-      } catch (e) {
-        Log.warning("BookSource", "export $name: $e");
-      }
     }
   }
 

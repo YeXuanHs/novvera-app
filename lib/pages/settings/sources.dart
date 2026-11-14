@@ -13,6 +13,73 @@ class _BookSourcesViewState extends State<_BookSourcesView> {
 
   bool _busy = false;
 
+  /// 源仓库索引（venera 同款 index.json），按需下载，不内置 js 文件。
+  List<Map<String, dynamic>> _store = [];
+
+  bool _storeBusy = false;
+
+  String get _storeUrl =>
+      (appdata.settings['bookSourceListUrl'] ?? '').toString();
+
+  Future<void> _loadStore() async {
+    if (_storeUrl.isEmpty) {
+      context.showMessage(message: "请先设置源仓库地址".tl);
+      return;
+    }
+    setState(() => _storeBusy = true);
+    try {
+      final res = await Dio().get(_storeUrl,
+          options: Options(responseType: ResponseType.json));
+      final data = res.data;
+      final list = <Map<String, dynamic>>[];
+      void collect(dynamic raw) {
+        if (raw is List) {
+          for (final e in raw) {
+            if (e is Map) list.add(Map<String, dynamic>.from(e));
+          }
+        } else if (raw is Map) {
+          for (final key in ['sources', 'data', 'items', 'list']) {
+            if (raw[key] is List) collect(raw[key]);
+          }
+          if (raw['url'] != null && raw['name'] != null) {
+            list.add(Map<String, dynamic>.from(raw));
+          }
+        }
+      }
+
+      collect(data);
+      if (mounted) setState(() => _store = list);
+    } catch (e) {
+      if (mounted) context.showMessage(message: e.toString());
+    } finally {
+      if (mounted) setState(() => _storeBusy = false);
+    }
+  }
+
+  Future<void> _install(Map<String, dynamic> entry) async {
+    final url = (entry['url'] ?? '').toString();
+    if (url.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      final res = await Dio().get(url,
+          options: Options(responseType: ResponseType.plain));
+      final js = res.data.toString();
+      final key = (entry['key'] ?? entry['name'] ?? 'source').toString();
+      final dir = Directory("${App.dataPath}/comic_source");
+      if (!await dir.exists()) await dir.create(recursive: true);
+      await File("${dir.path}/$key.js").writeAsString(js);
+      await BookSourceManager().reload();
+      if (mounted) {
+        context.showMessage(message: "已安装 $key".tl);
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) context.showMessage(message: e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   void dispose() {
     _js.dispose();
@@ -175,6 +242,44 @@ class _BookSourcesViewState extends State<_BookSourcesView> {
             onChanged: _toggle,
           ),
         ),
+        SliverToBoxAdapter(
+          child: ListTile(
+            leading: const Icon(Icons.cloud_download_outlined),
+            title: Text("源仓库".tl),
+            subtitle: Text(
+              _storeUrl.isEmpty ? "未设置仓库地址".tl : _storeUrl,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: TextButton(
+              onPressed: _storeBusy ? null : _loadStore,
+              child: Text(_storeBusy ? "...".tl : "检查更新".tl),
+            ),
+          ),
+        ),
+        if (_store.isNotEmpty)
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, i) {
+                final e = _store[i];
+                final key = (e['key'] ?? e['name'] ?? '').toString();
+                final installed =
+                    BookSource.find(key) != null;
+                return ListTile(
+                  dense: true,
+                  title: Text("${e['name'] ?? key}"),
+                  subtitle: Text(key),
+                  trailing: TextButton(
+                    onPressed: _busy || installed
+                        ? null
+                        : () => _install(e),
+                    child: Text(installed ? "已安装".tl : "安装".tl),
+                  ),
+                );
+              },
+              childCount: _store.length,
+            ),
+          ),
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
