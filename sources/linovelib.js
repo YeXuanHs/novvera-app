@@ -8,7 +8,7 @@
 class LinovelibSource extends BookSource {
     name = "哔哩轻小说"
     key = "linovelib"
-    version = "1.3.0"
+    version = "1.4.0"
     minAppVersion = "1.0.0"
     url = "https://www.linovelib.com"
 
@@ -186,16 +186,21 @@ class LinovelibSource extends BookSource {
             let chapters = {}
             try {
                 let doc2 = await this.getDoc(this.base + "/novel/" + id + "/catalog")
-                for (let vol of doc2.querySelectorAll("div.volume")) {
+                let vols = doc2.querySelectorAll("div.volume")
+                for (let vi = 0; vi < vols.length; vi++) {
+                    let vol = vols[vi]
                     let nameEl = vol.querySelector(".volume-info .volume-title, .volume-info h2, .volume-info a, h2, h3")
-                    let volName = this._text(nameEl) || ("第" + (Object.keys(chapters).length + 1) + "卷")
+                    let volName = this._text(nameEl) || ("第" + (vi + 1) + "卷")
                     let group = {}
+                    let ci = 0
                     for (let a of vol.querySelectorAll(".chapter-list a, ul a")) {
                         let href = a.attributes["href"] || ""
                         let m = href.match(/\/novel\/(\d+)\/(\d+)/)
                         if (!m || m[1] !== String(id)) continue
                         let t = this._text(a)
-                        if (t) group[m[2]] = t
+                        if (!t) continue
+                        ci++
+                        group[(vi + 1) + "-" + ci] = t
                     }
                     if (Object.keys(group).length) chapters[volName] = group
                 }
@@ -203,6 +208,8 @@ class LinovelibSource extends BookSource {
             return {
                 id: String(id),
                 title: name || ("小说_" + id),
+                subtitle: meta(["og:novel:author", "author"]),
+                updateTime: meta(["og:novel:update_time", "update"]) || null,
                 cover: cover,
                 description: intro,
                 tags: tags ? { "标签": tags.split(/[ ,，]+/).filter((x) => x) } : {},
@@ -211,7 +218,24 @@ class LinovelibSource extends BookSource {
             }
         },
         loadChapterText: async (bookId, epId) => {
-            let cid = String(epId).split("-").pop()
+            // epId = "卷序号-章序号"：按目录顺序反查 cid
+            let parts = String(epId).split("-")
+            let vol = parseInt(parts[0])
+            let chap = parseInt(parts[1])
+            let doc0 = await this.getDoc(this.base + "/novel/" + bookId + "/catalog")
+            let vols0 = doc0.querySelectorAll("div.volume")
+            let target = vols0[vol - 1]
+            if (!target) throw "章节不存在: " + epId
+            let cid = null
+            let ci = 0
+            for (let a of target.querySelectorAll(".chapter-list a, ul a")) {
+                let href = a.attributes["href"] || ""
+                let m = href.match(/\/novel\/(\d+)\/(\d+)/)
+                if (!m || m[1] !== String(bookId)) continue
+                ci++
+                if (ci === chap) { cid = m[2]; break }
+            }
+            if (!cid) throw "章节不存在: " + epId
             let url = this.base + "/novel/" + bookId + "/" + cid + ".html"
             let lines = []
             let images = []

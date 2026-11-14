@@ -7,7 +7,7 @@
 class HuanmengSource extends BookSource {
     name = "幻梦轻小说"
     key = "huanmeng"
-    version = "1.3.0"
+    version = "1.4.0"
     minAppVersion = "1.0.0"
     url = "https://www.huanmengacg.com"
 
@@ -147,15 +147,20 @@ class HuanmengSource extends BookSource {
             let chapters = {}
             try {
                 let cat = await this.catalogData(String(id))
-                for (let vol of cat.order) {
+                for (let vi = 0; vi < cat.order.length; vi++) {
+                    let vol = cat.order[vi]
                     let group = {}
-                    for (let c of cat.map[vol]) group[c.cid] = c.title
+                    for (let ci = 0; ci < cat.map[vol].length; ci++) {
+                        group[(vi + 1) + "-" + (ci + 1)] = cat.map[vol][ci].title
+                    }
                     chapters[vol] = group
                 }
             } catch (e) {}
             return {
                 id: b.id,
                 title: b.title,
+                subtitle: String(data["author"] || "").trim(),
+                updateTime: String(data["addtime"] || "").trim() || null,
                 cover: b.cover,
                 description: b.description,
                 tags: { "标签": tags.length ? tags : b.tags },
@@ -164,9 +169,14 @@ class HuanmengSource extends BookSource {
             }
         },
         loadChapterText: async (bookId, epId) => {
-            // epId = "{卷序号}-{章节cid}"
+            // epId = "卷序号-章序号"
             let parts = String(epId).split("-")
-            let cid = parts.length > 1 ? parts.slice(1).join("-") : String(epId)
+            let vol = parseInt(parts[0])
+            let chap = parseInt(parts[1])
+            let cat = await this.catalogData(String(bookId))
+            let volName = cat.order[vol - 1]
+            if (!volName || !cat.map[volName][chap - 1]) throw "章节不存在: " + epId
+            let cid = cat.map[volName][chap - 1].cid
             let json = await this.apiGet("/index.php/bookapi/content", {
                 bid: String(bookId), cid: cid,
             })

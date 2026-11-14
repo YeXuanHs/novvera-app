@@ -5,21 +5,21 @@
     {
       "key": "wenku8",
       "name": "轻小说文库",
-      "version": "1.3.0",
+      "version": "1.4.0",
       "fileName": "wenku8.js",
       "description": "官方 App 中转 API：详情/目录/正文，网页搜索与排行，支持登录与网络收藏"
     },
     {
       "key": "huanmeng",
       "name": "幻梦轻小说",
-      "version": "1.3.0",
+      "version": "1.4.0",
       "fileName": "huanmeng.js",
       "description": "huanmengacg bookapi：搜索/详情/目录/正文"
     },
     {
       "key": "linovelib",
       "name": "哔哩轻小说",
-      "version": "1.3.0",
+      "version": "1.4.0",
       "fileName": "linovelib.js",
       "description": "linovelib：详情/目录/多页正文、search_guard 搜索与排行"
     }

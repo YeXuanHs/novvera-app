@@ -6,7 +6,7 @@
 class Wenku8Source extends BookSource {
     name = "轻小说文库"
     key = "wenku8"
-    version = "1.3.0"
+    version = "1.4.0"
     minAppVersion = "1.0.0"
     url = "https://www.wenku8.net"
 
@@ -304,18 +304,22 @@ class Wenku8Source extends BookSource {
             let name = this._dataValue(metaXml, "Title")
             let tags = this._dataAttr(metaXml, "Tags", "value")
             let volumes = await this._catalog(id)
-            // BookChapters 需要 {卷名: {章节id: 标题}}
+            let author = this._dataAttr(metaXml, "Author", "value")
+            let updateTime = this._dataAttr(metaXml, "LastUpdate", "value")
+            // 章节 id 用「卷序号-章序号」，阅读器就是按这个取正文
             let chapters = {}
-            for (let v of volumes) {
+            for (let vi = 0; vi < volumes.length; vi++) {
                 let group = {}
-                for (let c of v.chapters) {
-                    group[c.cid] = c.title
+                for (let ci = 0; ci < volumes[vi].chapters.length; ci++) {
+                    group[(vi + 1) + "-" + (ci + 1)] = volumes[vi].chapters[ci].title
                 }
-                chapters[v.name] = group
+                chapters[volumes[vi].name] = group
             }
             return {
                 id: String(id),
                 title: name || "未知书名",
+                subtitle: this._dataAttr(metaXml, "Author", "value") || "",
+                updateTime: this._dataAttr(metaXml, "LastUpdate", "value") || null,
                 cover: "https://img.wenku8.com/image/" + Math.floor(id / 1000) + "/" + id + "/" + id + "s.jpg",
                 description: intro,
                 tags: tags ? { "标签": tags.split(/[ ,，]+/).filter((x) => x) } : {},
@@ -324,9 +328,14 @@ class Wenku8Source extends BookSource {
             }
         },
         loadChapterText: async (bookId, epId) => {
-            // epId = "卷序号-章节cid"
+            // epId = "卷序号-章序号"
             let parts = String(epId).split("-")
-            let cid = parts.length > 1 ? parts.slice(1).join("-") : epId
+            let vol = parseInt(parts[0])
+            let chap = parseInt(parts[1])
+            let volumes = await this._catalog(bookId)
+            let v = volumes[vol - 1]
+            if (!v || !v.chapters[chap - 1]) throw "章节不存在: " + epId
+            let cid = v.chapters[chap - 1].cid
             let raw = await this._api("action=book&do=text&aid=" + bookId + "&cid=" + cid + "&t=0")
             let segs = this._parseContent(raw)
             let images = segs.filter((x) => x.startsWith("http"))
