@@ -8,7 +8,7 @@
 class LinovelibSource extends BookSource {
     name = "哔哩轻小说"
     key = "linovelib"
-    version = "1.4.0"
+    version = "1.5.0"
     minAppVersion = "1.0.0"
     url = "https://www.linovelib.com"
 
@@ -182,6 +182,8 @@ class LinovelibSource extends BookSource {
                 if (ps.length) intro = ps.join("\n")
             }
             intro = intro.replace(/^[\s\S]*?内容简介[：:]/, "").trim()
+            let author = meta(["og:novel:author", "author"])
+            let status = meta(["og:novel:status"])
             let tags = meta(["og:novel:tags"])
             let chapters = {}
             try {
@@ -212,7 +214,11 @@ class LinovelibSource extends BookSource {
                 updateTime: meta(["og:novel:update_time", "update"]) || null,
                 cover: cover,
                 description: intro,
-                tags: tags ? { "标签": tags.split(/[ ,，]+/).filter((x) => x) } : {},
+                tags: {
+                    "作者": author ? [author] : [],
+                    "状态": status ? [status] : [],
+                    "标签": tags ? tags.split(/[ ,，]+/).filter((x) => x) : [],
+                },
                 chapters: chapters,
                 subId: null,
             }

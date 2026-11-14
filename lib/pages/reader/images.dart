@@ -719,6 +719,12 @@ class _GalleryModeState extends State<_GalleryMode>
 
             photoViewControllers[index] ??= PhotoViewController();
 
+            if (pageImages.isEmpty) {
+              // 章节没有任何内容时不要 index [0]，否则 RangeError
+              return PhotoViewGalleryPageOptions.customChild(
+                child: const SizedBox(),
+              );
+            }
             if (reader.imagesPerPage == 1 || pageImages.length == 1) {
               final key = pageImages[0];
               if (NovelPageCache.isTextKey(key)) {

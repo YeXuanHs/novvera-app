@@ -7,7 +7,7 @@
 class HuanmengSource extends BookSource {
     name = "幻梦轻小说"
     key = "huanmeng"
-    version = "1.4.0"
+    version = "1.5.0"
     minAppVersion = "1.0.0"
     url = "https://www.huanmengacg.com"
 
@@ -38,6 +38,7 @@ class HuanmengSource extends BookSource {
         return {
             id: id,
             title: String(raw["name"] || "").trim(),
+            author: String(raw["author"] || "").trim(),
             cover: cover,
             description: String(raw["intro"] || raw["text"] || "").trim(),
             tags: String(raw["tags"] || raw["kind"] || "").split(/[,，、]/).map((x) => x.trim()).filter((x) => x),
@@ -163,7 +164,11 @@ class HuanmengSource extends BookSource {
                 updateTime: String(data["addtime"] || "").trim() || null,
                 cover: b.cover,
                 description: b.description,
-                tags: { "标签": tags.length ? tags : b.tags },
+                tags: {
+                    "作者": b.author ? [b.author] : [],
+                    "状态": String(data["state"] || "").trim() ? [String(data["state"]).trim()] : [],
+                    "标签": tags.length ? tags : b.tags,
+                },
                 chapters: chapters,
                 subId: null,
             }

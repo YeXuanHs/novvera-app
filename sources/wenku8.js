@@ -6,7 +6,7 @@
 class Wenku8Source extends BookSource {
     name = "轻小说文库"
     key = "wenku8"
-    version = "1.4.0"
+    version = "1.5.0"
     minAppVersion = "1.0.0"
     url = "https://www.wenku8.net"
 
@@ -48,11 +48,19 @@ class Wenku8Source extends BookSource {
         let body = "&appver=" + (await this._appver()) +
             "&request=" + (await Convert.encodeBase64Utf8(plain)) +
             "&timetoken=" + Date.now()
-        let res = await Network.fetchBytes("POST", this.relay, {
+        let headers = {
             "User-Agent": this.apiUa,
             "Content-Type": "application/x-www-form-urlencoded",
             "Accept-Encoding": "gzip",
-        }, body)
+        }
+        // 正文接口要同一会话：先 meta 拿 PHPSESSID，再带 Cookie 请求
+        if (this._sid) headers["Cookie"] = "PHPSESSID=" + this._sid
+        let res = await Network.fetchBytes("POST", this.relay, headers, body)
+        let sc = res.headers && (res.headers["set-cookie"] || res.headers["Set-Cookie"])
+        if (sc) {
+            let m = String(sc).match(/PHPSESSID=([^;]+)/)
+            if (m) this._sid = m[1]
+        }
         return await Convert.decodeUtf8(res.body)
     }
 
@@ -305,6 +313,7 @@ class Wenku8Source extends BookSource {
             let tags = this._dataAttr(metaXml, "Tags", "value")
             let volumes = await this._catalog(id)
             let author = this._dataAttr(metaXml, "Author", "value")
+            let status = this._dataAttr(metaXml, "BookStatus", "value")
             let updateTime = this._dataAttr(metaXml, "LastUpdate", "value")
             // 章节 id 用「卷序号-章序号」，阅读器就是按这个取正文
             let chapters = {}
@@ -322,7 +331,11 @@ class Wenku8Source extends BookSource {
                 updateTime: this._dataAttr(metaXml, "LastUpdate", "value") || null,
                 cover: "https://img.wenku8.com/image/" + Math.floor(id / 1000) + "/" + id + "/" + id + "s.jpg",
                 description: intro,
-                tags: tags ? { "标签": tags.split(/[ ,，]+/).filter((x) => x) } : {},
+                tags: {
+                    "作者": author ? [author] : [],
+                    "状态": status ? [status] : [],
+                    "标签": tags ? tags.split(/[ ,，]+/).filter((x) => x) : [],
+                },
                 chapters: chapters,
                 subId: null,
             }
@@ -337,6 +350,12 @@ class Wenku8Source extends BookSource {
             if (!v || !v.chapters[chap - 1]) throw "章节不存在: " + epId
             let cid = v.chapters[chap - 1].cid
             let raw = await this._api("action=book&do=text&aid=" + bookId + "&cid=" + cid + "&t=0")
+            if (!raw || raw.trim() === "" || raw.trim() === "null") {
+                // 没有会话时正文会返回 null：先用 meta 建会话，再取一次
+                await this._api("action=book&do=meta&aid=" + bookId + "&t=0")
+                raw = await this._api("action=book&do=text&aid=" + bookId + "&cid=" + cid + "&t=0")
+            }
+            if (!raw || raw.trim() === "null") throw "正文为空: " + epId
             let segs = this._parseContent(raw)
             let images = segs.filter((x) => x.startsWith("http"))
             return { content: segs.join("\n"), images: images }
